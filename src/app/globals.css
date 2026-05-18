@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: #0b0f14;
+    --bg-elev: #11171f;
+    --bg-elev-2: #1a2230;
+    --border: #1f2937;
+    --text: #e5e7eb;
+    --text-muted: #9ca3af;
+    --primary: #00d1a0;
+    --primary-foreground: #0b0f14;
+    --accent: #6366f1;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --success: #22c55e;
+  }
+
+  [data-theme="light"] {
+    --bg: #f9fafb;
+    --bg-elev: #ffffff;
+    --bg-elev-2: #f3f4f6;
+    --border: #e5e7eb;
+    --text: #0f172a;
+    --text-muted: #64748b;
+    --primary: #00b58a;
+    --primary-foreground: #ffffff;
+    --accent: #6366f1;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --success: #16a34a;
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  * {
+    border-color: var(--border);
+  }
+
+  /* Focus visível para acessibilidade */
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
+  /* Scrollbar mais discreta */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--bg-elev-2); border-radius: 999px; }
+}
+
+@layer utilities {
+  .glass {
+    background: color-mix(in oklab, var(--bg-elev) 90%, transparent);
+    backdrop-filter: blur(8px);
+  }
+}

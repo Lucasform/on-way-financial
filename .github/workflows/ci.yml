@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test (unit)
+        run: pnpm test
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy_key_for_build_dummy_key_for_build
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          NEXT_PUBLIC_APP_NAME: ON WAY FINANCIAL
+          SUPABASE_SERVICE_ROLE_KEY: dummy_service_role_key_for_build_only
+          WHATSAPP_PHONE_NUMBER_ID: "1"
+          WHATSAPP_BUSINESS_ACCOUNT_ID: "1"
+          WHATSAPP_ACCESS_TOKEN: dummy_token_for_build
+          WHATSAPP_VERIFY_TOKEN: dummy_verify_token
+          WHATSAPP_APP_SECRET: dummy_app_secret
+          ANTHROPIC_API_KEY: sk-ant-dummy
+          ANTHROPIC_MODEL: claude-haiku-4-5-20251001
+          CRON_SECRET: dummy_cron_secret_at_least_16
+        run: pnpm build
