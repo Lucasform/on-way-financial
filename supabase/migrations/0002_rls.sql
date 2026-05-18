@@ -27,13 +27,8 @@ as $$
   );
 $$;
 
-create or replace function module_household(m_id uuid)
-returns uuid
-language sql stable security definer
-set search_path = public
-as $$
-  select household_id from modules where id = m_id;
-$$;
+-- Nota: a função module_household() é criada em 0003_modules.sql
+-- logo após a tabela modules existir (dependência circular evitada).
 
 -- ---------- HOUSEHOLDS ----------
 alter table households enable row level security;

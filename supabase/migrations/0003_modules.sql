@@ -28,6 +28,15 @@ for each row execute function set_updated_at();
 create index on modules (household_id, kind);
 create index on modules (household_id, status);
 
+-- Função helper para RLS das tabelas dependentes de módulos
+create or replace function module_household(m_id uuid)
+returns uuid
+language sql stable security definer
+set search_path = public
+as $$
+  select household_id from modules where id = m_id;
+$$;
+
 -- ===== OBRA =====
 create table obra_phases (
   id uuid primary key default gen_random_uuid(),
