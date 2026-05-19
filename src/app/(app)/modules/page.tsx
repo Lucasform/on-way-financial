@@ -69,7 +69,7 @@ export default async function ModulesPage() {
                       <CardHeader className="pb-2">
                         <div className="flex items-center justify-between gap-2">
                           <CardTitle className="text-base">{meta.emoji} {m.name}</CardTitle>
-                          <Badge variant={m.status === "active" ? "success" : "secondary"}>{m.status}</Badge>
+                          <Badge variant={m.status === "active" ? "success" : "secondary"}>{statusLabel(m.status)}</Badge>
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-2">
@@ -127,6 +127,16 @@ export default async function ModulesPage() {
       </section>
     </div>
   );
+}
+
+function statusLabel(s: string): string {
+  switch (s) {
+    case "active": return "ativo";
+    case "paused": return "pausado";
+    case "completed": return "concluído";
+    case "archived": return "arquivado";
+    default: return s;
+  }
 }
 
 function describeKind(k: string): string {

@@ -42,6 +42,13 @@ export async function POST(req: NextRequest) {
     if (!me || (me.role !== "owner" && me.role !== "admin")) {
       return new NextResponse("forbidden", { status: 403 });
     }
+    // Nome do grupo (vai no email)
+    const { data: household } = await supabase
+      .from("households")
+      .select("name")
+      .eq("id", household_id)
+      .single();
+
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 7 * 86_400_000).toISOString();
     const { data, error } = await supabase
@@ -57,8 +64,40 @@ export async function POST(req: NextRequest) {
       .select("*")
       .single();
     if (error || !data) return NextResponse.json({ error: error?.message ?? "fail" }, { status: 500 });
-    // TODO: enviar email com link (Resend/Supabase email). Por ora retorna token.
-    return NextResponse.json(data);
+
+    // Envia email via Supabase Auth (usa SMTP já configurado — Resend)
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+    const inviteUrl = `${appUrl}/invite/${token}`;
+    let emailSent = false;
+    try {
+      const admin = createSupabaseAdmin();
+      const { error: mailErr } = await admin.auth.admin.inviteUserByEmail(email, {
+        redirectTo: inviteUrl,
+        data: {
+          invite_token: token,
+          household_id,
+          household_name: household?.name ?? "ON WAY FINANCIAL",
+          role,
+        },
+      });
+      if (!mailErr) {
+        emailSent = true;
+      } else {
+        // Se já existe um usuário com esse email, inviteUserByEmail falha;
+        // nesse caso usa generateLink (magiclink) que manda o mesmo SMTP
+        const { error: linkErr } = await admin.auth.admin.generateLink({
+          type: "magiclink",
+          email,
+          options: { redirectTo: inviteUrl },
+        });
+        if (!linkErr) emailSent = true;
+        else console.error("invite email failed:", mailErr.message, linkErr.message);
+      }
+    } catch (err) {
+      console.error("invite email exception:", err);
+    }
+
+    return NextResponse.json({ ...data, email_sent: emailSent, invite_url: inviteUrl });
   }
 
   // accept

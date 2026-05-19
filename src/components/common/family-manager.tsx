@@ -38,6 +38,12 @@ interface Props {
   invites: Invite[];
 }
 
+const ROLE_LABELS: Record<HouseholdRole, string> = {
+  owner: "Dono",
+  admin: "Administrador",
+  viewer: "Convidado",
+};
+
 function inviteLink(token: string): string {
   if (typeof window === "undefined") return `/invite/${token}`;
   return `${window.location.origin}/invite/${token}`;
@@ -79,15 +85,19 @@ export function FamilyManager({
         toast.error("Falha ao convidar.");
         return;
       }
-      const inv = (await res.json()) as Invite;
+      const inv = (await res.json()) as Invite & { email_sent?: boolean };
       setInvites((s) => [inv, ...s]);
       setEmail("");
-      // Copia o link automaticamente
+      // Copia o link automaticamente (fallback caso o email falhe)
       try {
         await navigator.clipboard.writeText(inviteLink(inv.token));
-        toast.success("Convite criado. Link copiado pra área de transferência.");
       } catch {
-        toast.success("Convite criado. Clique em copiar pra pegar o link.");
+        // ignora
+      }
+      if (inv.email_sent) {
+        toast.success(`Convite enviado por email pra ${normalized}. Link copiado também.`);
+      } else {
+        toast.success("Convite criado. Link copiado — mande manualmente pra pessoa.");
       }
     });
   }
@@ -190,12 +200,12 @@ export function FamilyManager({
                     onChange={(e) => changeRole(m.id, e.target.value as HouseholdRole)}
                     className="h-8 rounded-md border border-border bg-bg-elev px-2 text-xs"
                   >
-                    <option value="owner">owner</option>
-                    <option value="admin">admin</option>
-                    <option value="viewer">viewer</option>
+                    <option value="owner">Dono</option>
+                    <option value="admin">Administrador</option>
+                    <option value="viewer">Convidado</option>
                   </select>
                 ) : (
-                  <Badge variant="secondary">{m.role}</Badge>
+                  <Badge variant="secondary">{ROLE_LABELS[m.role]}</Badge>
                 )}
                 {currentRole === "owner" && (
                   <Button variant="ghost" size="icon" onClick={() => removeMember(m.id)} aria-label="Remover">
@@ -229,8 +239,8 @@ export function FamilyManager({
                 onChange={(e) => setRole(e.target.value as HouseholdRole)}
                 className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
               >
-                <option value="viewer">viewer</option>
-                <option value="admin">admin</option>
+                <option value="viewer">Convidado (só visualiza)</option>
+                <option value="admin">Administrador (lança e gerencia)</option>
               </select>
             </div>
             <div className="flex items-end">
@@ -258,7 +268,7 @@ export function FamilyManager({
                 <li key={inv.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
                   <div className="min-w-0 flex-1">
                     <p className="truncate">{inv.email ?? "—"}</p>
-                    <p className="text-xs text-text-muted">{inv.role}</p>
+                    <p className="text-xs text-text-muted">{ROLE_LABELS[inv.role]}</p>
                   </div>
                   <Badge variant={variant}>{status}</Badge>
                   {canManage && (

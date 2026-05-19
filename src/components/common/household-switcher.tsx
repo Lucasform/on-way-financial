@@ -3,6 +3,12 @@
 import { useRouter } from "next/navigation";
 import { Check, ChevronsUpDown, Home } from "lucide-react";
 
+const ROLE_LABELS: Record<string, string> = {
+  owner: "Dono",
+  admin: "Administrador",
+  viewer: "Convidado",
+};
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,7 +43,7 @@ export function HouseholdSwitcher({ ctx }: { ctx: ActiveContext }) {
         {ctx.households.map((h) => (
           <DropdownMenuItem key={h.id} onSelect={() => pick(h.id)}>
             <span className="truncate">{h.name}</span>
-            <span className="ml-auto text-xs text-text-muted">{h.role}</span>
+            <span className="ml-auto text-xs text-text-muted">{ROLE_LABELS[h.role] ?? h.role}</span>
             {h.id === ctx.householdId ? <Check className="ml-2 h-3.5 w-3.5 text-primary" /> : null}
           </DropdownMenuItem>
         ))}

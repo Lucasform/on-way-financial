@@ -78,6 +78,16 @@ interface Props {
 
 const KANBAN = ["todo", "doing", "done", "blocked"] as const;
 
+function statusLabel(s: string): string {
+  switch (s) {
+    case "active": return "ativo";
+    case "paused": return "pausado";
+    case "completed": return "concluído";
+    case "archived": return "arquivado";
+    default: return s;
+  }
+}
+
 export function ObraDashboard({ module, phases, workers, gallery, transactions, items, diary, householdId, canWrite }: Props) {
   const total = transactions.reduce((s, t) => s + Number(t.amount), 0);
   const pct = module.budget ? percent(total, Number(module.budget)) : 0;
@@ -92,7 +102,7 @@ export function ObraDashboard({ module, phases, workers, gallery, transactions, 
             {module.end_date && <>· Previsão {module.end_date}</>}
           </p>
         </div>
-        <Badge variant={module.status === "active" ? "success" : "secondary"}>{module.status}</Badge>
+        <Badge variant={module.status === "active" ? "success" : "secondary"}>{statusLabel(module.status)}</Badge>
       </header>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-4">
