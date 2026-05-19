@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Mail, Trash2 } from "lucide-react";
+import { Copy, Mail, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -38,22 +38,42 @@ interface Props {
   invites: Invite[];
 }
 
-export function FamilyManager({ householdId, currentRole, members: initialMembers, invites: initialInvites }: Props) {
+function inviteLink(token: string): string {
+  if (typeof window === "undefined") return `/invite/${token}`;
+  return `${window.location.origin}/invite/${token}`;
+}
+
+export function FamilyManager({
+  householdId,
+  currentRole,
+  members: initialMembers,
+  invites: initialInvites,
+}: Props) {
   const supabase = createSupabaseBrowser();
   const [members, setMembers] = useState(initialMembers);
   const [invites, setInvites] = useState(initialInvites);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<HouseholdRole>("viewer");
   const [pending, start] = useTransition();
+  const [busyId, setBusyId] = useState<string | null>(null);
   const canManage = currentRole === "owner" || currentRole === "admin";
 
   function invite() {
-    if (!canManage || !email) return;
+    if (!canManage || !email.trim()) return;
+    const normalized = email.trim().toLowerCase();
+    // Bloqueia duplicata pendente
+    const existing = invites.find(
+      (i) => !i.accepted_at && i.email?.toLowerCase() === normalized && new Date(i.expires_at) > new Date(),
+    );
+    if (existing) {
+      toast.error("Já existe convite pendente pra esse email. Cancele ou copie o link existente.");
+      return;
+    }
     start(async () => {
       const res = await fetch("/api/invite/accept", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "create", household_id: householdId, email, role }),
+        body: JSON.stringify({ action: "create", household_id: householdId, email: normalized, role }),
       });
       if (!res.ok) {
         toast.error("Falha ao convidar.");
@@ -62,7 +82,68 @@ export function FamilyManager({ householdId, currentRole, members: initialMember
       const inv = (await res.json()) as Invite;
       setInvites((s) => [inv, ...s]);
       setEmail("");
-      toast.success("Convite enviado.");
+      // Copia o link automaticamente
+      try {
+        await navigator.clipboard.writeText(inviteLink(inv.token));
+        toast.success("Convite criado. Link copiado pra área de transferência.");
+      } catch {
+        toast.success("Convite criado. Clique em copiar pra pegar o link.");
+      }
+    });
+  }
+
+  async function copyLink(inv: Invite) {
+    try {
+      await navigator.clipboard.writeText(inviteLink(inv.token));
+      toast.success("Link copiado.");
+    } catch {
+      toast.error("Não consegui copiar. Tente manualmente.");
+    }
+  }
+
+  function cancelInvite(id: string) {
+    if (!canManage) return;
+    if (!confirm("Cancelar este convite? Quem tiver o link não vai mais conseguir entrar.")) return;
+    setBusyId(id);
+    start(async () => {
+      const { error } = await supabase.from("household_invites").delete().eq("id", id);
+      if (error) {
+        toast.error(`Falha ao cancelar: ${error.message}`);
+        setBusyId(null);
+        return;
+      }
+      setInvites((s) => s.filter((i) => i.id !== id));
+      setBusyId(null);
+      toast.success("Convite cancelado.");
+    });
+  }
+
+  function regenerateInvite(old: Invite) {
+    if (!canManage || !old.email) return;
+    setBusyId(old.id);
+    start(async () => {
+      // Apaga o expirado
+      await supabase.from("household_invites").delete().eq("id", old.id);
+      // Cria um novo
+      const res = await fetch("/api/invite/accept", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "create", household_id: householdId, email: old.email, role: old.role }),
+      });
+      if (!res.ok) {
+        toast.error("Falha ao gerar novo convite.");
+        setBusyId(null);
+        return;
+      }
+      const inv = (await res.json()) as Invite;
+      setInvites((s) => [inv, ...s.filter((i) => i.id !== old.id)]);
+      setBusyId(null);
+      try {
+        await navigator.clipboard.writeText(inviteLink(inv.token));
+        toast.success("Novo link gerado e copiado.");
+      } catch {
+        toast.success("Novo link gerado.");
+      }
     });
   }
 
@@ -80,6 +161,7 @@ export function FamilyManager({ householdId, currentRole, members: initialMember
 
   function removeMember(id: string) {
     if (currentRole !== "owner") return;
+    if (!confirm("Remover este membro do grupo?")) return;
     start(async () => {
       const { error } = await supabase.from("household_members").delete().eq("id", id);
       if (error) {
@@ -152,7 +234,7 @@ export function FamilyManager({ householdId, currentRole, members: initialMember
               </select>
             </div>
             <div className="flex items-end">
-              <Button onClick={invite} disabled={pending || !email} className="w-full">
+              <Button onClick={invite} disabled={pending || !email.trim()} className="w-full">
                 <Mail className="h-4 w-4" /> Convidar
               </Button>
             </div>
@@ -169,15 +251,69 @@ export function FamilyManager({ householdId, currentRole, members: initialMember
             {invites.map((inv) => {
               const expired = new Date(inv.expires_at) < new Date();
               const accepted = !!inv.accepted_at;
+              const status = accepted ? "aceito" : expired ? "expirado" : "pendente";
+              const variant = accepted ? "success" : expired ? "danger" : "warning";
+              const isBusy = busyId === inv.id;
               return (
-                <li key={inv.id} className="flex items-center justify-between px-4 py-2 text-sm">
-                  <div>
-                    <p>{inv.email ?? "—"}</p>
+                <li key={inv.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate">{inv.email ?? "—"}</p>
                     <p className="text-xs text-text-muted">{inv.role}</p>
                   </div>
-                  <Badge variant={accepted ? "success" : expired ? "danger" : "warning"}>
-                    {accepted ? "aceito" : expired ? "expirado" : "pendente"}
-                  </Badge>
+                  <Badge variant={variant}>{status}</Badge>
+                  {canManage && (
+                    <div className="flex items-center gap-1">
+                      {!accepted && !expired && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => copyLink(inv)}
+                          aria-label="Copiar link"
+                          title="Copiar link"
+                          disabled={isBusy}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {!accepted && expired && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => regenerateInvite(inv)}
+                          aria-label="Gerar novo link"
+                          title="Gerar novo link"
+                          disabled={isBusy}
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {!accepted && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => cancelInvite(inv.id)}
+                          aria-label="Cancelar convite"
+                          title="Cancelar convite"
+                          disabled={isBusy}
+                          className="text-danger hover:bg-danger/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {accepted && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => cancelInvite(inv.id)}
+                          aria-label="Remover do histórico"
+                          title="Remover do histórico"
+                          disabled={isBusy}
+                        >
+                          <Trash2 className="h-4 w-4 text-text-muted" />
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </li>
               );
             })}
