@@ -125,7 +125,7 @@ export default function LandingPage() {
             visualizador.
           </Step>
           <Step number={2} title="Conecte um chat">
-            Vincule sua conta ao bot no celular. Mande mensagens normais ("gastei 50 no mercado")
+            Vincule sua conta ao bot no celular. Mande mensagens normais (&quot;gastei 50 no mercado&quot;)
             e o bot entende e registra.
           </Step>
           <Step number={3} title="Acompanhe pelo app">
@@ -141,7 +141,7 @@ export default function LandingPage() {
           Módulos especiais pra quem planeja grande
         </h2>
         <p className="mx-auto mt-2 max-w-2xl text-center text-text-muted">
-          Não é só "categoria de despesa". É um espaço inteiro com fases, metas e linha do tempo.
+          Não é só &quot;categoria de despesa&quot;. É um espaço inteiro com fases, metas e linha do tempo.
         </p>
         <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <ModuleCard

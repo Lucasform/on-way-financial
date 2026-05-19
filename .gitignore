@@ -26,3 +26,5 @@ supabase/.temp
 supabase/.branches
 .docx-tmp
 .docx-tmp.zip
+
+.vercel
