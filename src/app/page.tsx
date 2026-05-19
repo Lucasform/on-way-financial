@@ -33,10 +33,9 @@ export default function LandingPage() {
 
       {/* Top nav */}
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/15 text-primary">
-            <Sparkles className="h-4 w-4" />
-          </div>
+        <Link href="/" className="flex items-center gap-2" aria-label="ON WAY FINANCIAL">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icons/icon.svg" alt="" width={32} height={32} className="rounded-md" />
           <span className="text-sm font-semibold tracking-wide">ON WAY FINANCIAL</span>
         </Link>
         <div className="flex items-center gap-2">

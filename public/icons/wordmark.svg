@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" role="img" aria-label="ON WAY FINANCIAL">
+  <defs>
+    <linearGradient id="ring2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#10e3b0"/>
+      <stop offset="100%" stop-color="#009f7c"/>
+    </linearGradient>
+    <linearGradient id="arrow2" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#10e3b0"/>
+      <stop offset="100%" stop-color="#5cffd0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Símbolo -->
+  <g transform="translate(8 8)">
+    <circle cx="32" cy="32" r="26" fill="none" stroke="url(#ring2)" stroke-width="7" stroke-linecap="round"/>
+    <path d="M 20 42 L 32 22 L 44 42"
+          stroke="url(#arrow2)" stroke-width="7"
+          stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <circle cx="32" cy="22" r="3" fill="#5cffd0"/>
+  </g>
+
+  <!-- Texto -->
+  <g transform="translate(80 0)" font-family="Inter,system-ui,sans-serif" fill="currentColor">
+    <text x="0" y="38" font-size="22" font-weight="800" letter-spacing="2">ON WAY</text>
+    <text x="0" y="60" font-size="12" font-weight="500" letter-spacing="3" opacity="0.65">FINANCIAL</text>
+  </g>
+</svg>

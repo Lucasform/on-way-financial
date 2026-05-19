@@ -1,1 +1,40 @@
-﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" fill="#0B0F14" rx="40"/><circle cx="96" cy="96" r="56" fill="#00D1A0"/><text x="96" y="118" text-anchor="middle" font-family="Inter,sans-serif" font-size="64" font-weight="700" fill="#0B0F14">$</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="ON WAY FINANCIAL">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f1419"/>
+      <stop offset="100%" stop-color="#0a0d12"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#10e3b0"/>
+      <stop offset="100%" stop-color="#009f7c"/>
+    </linearGradient>
+    <linearGradient id="arrow" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#10e3b0"/>
+      <stop offset="100%" stop-color="#5cffd0"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="192" height="192" rx="42" fill="url(#bg)"/>
+
+  <!-- O: anel verde gradiente -->
+  <circle cx="96" cy="96" r="58" fill="none" stroke="url(#ring)" stroke-width="14" stroke-linecap="round"/>
+
+  <!-- Seta para cima dentro (N + crescimento) -->
+  <g filter="url(#glow)">
+    <path d="M 70 116 L 96 70 L 122 116"
+          stroke="url(#arrow)"
+          stroke-width="14"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          fill="none"/>
+    <!-- ponta da seta enfatizada -->
+    <circle cx="96" cy="70" r="6" fill="#5cffd0"/>
+  </g>
+</svg>
