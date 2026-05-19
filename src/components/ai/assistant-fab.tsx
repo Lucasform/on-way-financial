@@ -16,18 +16,15 @@ interface Msg {
 const SUGGESTIONS = [
   "Quanto gastei em alimentação esse mês?",
   "Em que posso economizar agora?",
-  "Tenho saldo pra investir? Quanto?",
   "Compare meus gastos com o mês passado",
   "Quais minhas 3 maiores despesas recentes?",
 ];
 
 const WELCOME: Msg = {
   role: "assistant",
-  content: `Oi! 👋 Sou seu assistente financeiro.
+  content: `Oi! 👋 Sou seu copiloto financeiro.
 
-Posso responder sobre seus números, sugerir economias, falar de investimento (genérico) e mais.
-
-Tente perguntas como as abaixo.`,
+Posso responder sobre seus gastos, sugerir economias e analisar tendências dos seus dados. Pergunta aí.`,
 };
 
 export function AssistantFab() {
@@ -89,7 +86,7 @@ export function AssistantFab() {
         onClick={() => setOpen(true)}
         aria-label="Abrir assistente"
         className={cn(
-          "fixed bottom-24 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full md:bottom-6 md:right-6 md:h-14 md:w-14",
+          "fixed bottom-40 right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full md:bottom-6 md:right-6 md:h-14 md:w-14",
           "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-2xl",
           "transition-transform hover:scale-105 active:scale-95",
         )}
@@ -195,7 +192,7 @@ export function AssistantFab() {
             </Button>
           </div>
           <p className="mt-1.5 text-[10px] text-text-muted">
-            Powered by Claude · respeitamos seus dados, contexto é por sessão
+            By On Way · respeitamos seus dados, contexto é por sessão
           </p>
         </form>
       </aside>

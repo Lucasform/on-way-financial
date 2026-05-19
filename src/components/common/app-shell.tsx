@@ -43,10 +43,10 @@ const MOBILE_NAV = [
   { href: "/overview", label: "Início", icon: Home },
   { href: "/transactions", label: "Extrato", icon: Wallet },
   { href: "/reports", label: "Relatórios", icon: LineChart },
-  { href: "/modules", label: "Módulos", icon: Boxes },
 ];
 
 const MORE_NAV = [
+  { href: "/modules", label: "Módulos", icon: Boxes },
   { href: "/import", label: "Importar extrato", icon: FileUp },
   { href: "/categories", label: "Categorias", icon: Folders },
   { href: "/payment-methods", label: "Métodos", icon: CreditCard },
@@ -126,7 +126,7 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
       </Button>
 
       {/* Bottom nav mobile */}
-      <nav className="glass fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-border md:hidden">
+      <nav className="glass fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-border md:hidden">
         {MOBILE_NAV.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;
