@@ -154,7 +154,7 @@ async function createTransactionFromParsed(
       occurred_at: occurredAt,
       category_id: categoryId,
       payment_method_id: paymentMethodId,
-      module_kind: moduleRef?.kind ?? null,
+      module_kind: (moduleRef?.kind as "obra" | "travel" | "car" | "gift" | "education" | "custom" | undefined) ?? null,
       module_id: moduleRef?.id ?? null,
       source: "whatsapp",
       created_by: member.user_id,
@@ -252,7 +252,7 @@ async function sendBalance(householdId: string, from: string): Promise<void> {
     if (tx.type === "income") income += amt;
     if (tx.type === "expense") {
       expense += amt;
-      const name = (tx as { categories: { name: string } | null }).categories?.name ?? "Outros";
+      const name = (tx as unknown as { categories: { name: string } | null }).categories?.name ?? "Outros";
       byCategory.set(name, (byCategory.get(name) ?? 0) + amt);
     }
   }

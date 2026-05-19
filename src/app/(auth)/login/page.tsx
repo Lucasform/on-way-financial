@@ -10,7 +10,7 @@ export default function LoginPage({ searchParams }: { searchParams: { next?: str
       </Link>
       <h1 className="text-2xl font-semibold">Entrar na sua conta</h1>
       <p className="mt-2 text-sm text-text-muted">
-        Use seu email para receber um link mágico. Sem senha, sem complicação.
+        Crie uma conta com email e senha, ou peça um link direto no email.
       </p>
       <div className="mt-8">
         <LoginForm next={searchParams.next ?? "/overview"} />

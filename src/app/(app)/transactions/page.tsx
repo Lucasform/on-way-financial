@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { Plus, ReceiptText } from "lucide-react";
+import { Filter, Plus, Search } from "lucide-react";
 
+import { GroupedTransactionList } from "@/components/transactions/grouped-list";
 import { TransactionFilters } from "@/components/transactions/transaction-filters";
-import { TransactionsTable } from "@/components/transactions/transactions-table";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
+import { Money } from "@/components/ui/money";
 import { loadActiveContext } from "@/lib/household";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
@@ -26,13 +26,13 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const ctx = (await loadActiveContext())!;
   const supabase = createSupabaseServer();
   const page = Math.max(1, Number(searchParams.page ?? 1));
-  const pageSize = 50;
+  const pageSize = 100;
   const fromIdx = (page - 1) * pageSize;
 
   let q = supabase
     .from("transactions")
     .select(
-      "id, type, amount, description, occurred_at, source, categories:categories(name,color), payment_methods:payment_methods(name,kind)",
+      "id, type, amount, description, occurred_at, source, installment_number, installments_total, categories:categories(name,color,icon), payment_methods:payment_methods(name,kind)",
       { count: "exact" },
     )
     .eq("household_id", ctx.householdId)
@@ -58,27 +58,125 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       .order("name"),
   ]);
 
+  const txs = (rows ?? []) as Array<{
+    id: string;
+    type: string;
+    amount: number | string;
+    description: string | null;
+    occurred_at: string;
+    source: string;
+    installment_number: number | null;
+    installments_total: number | null;
+    categories: { name: string; color: string | null; icon: string | null } | null;
+    payment_methods: { name: string; kind: string } | null;
+  }>;
+
+  // Totalizadores filtrados
+  const incomeSum = txs.filter((r) => r.type === "income").reduce((a, r) => a + Number(r.amount), 0);
+  const expenseSum = txs.filter((r) => r.type === "expense").reduce((a, r) => a + Number(r.amount), 0);
+
+  const hasFilters = Boolean(
+    searchParams.q ||
+      searchParams.from ||
+      searchParams.to ||
+      searchParams.category ||
+      searchParams.payment ||
+      searchParams.source ||
+      searchParams.module,
+  );
+
+  const lastPage = Math.max(1, Math.ceil((count ?? 0) / pageSize));
+
   return (
-    <div className="space-y-4">
-      <header className="flex items-center justify-between">
+    <div className="space-y-5">
+      {/* Header */}
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Transações</h1>
-          <p className="text-sm text-text-muted">{count ?? 0} registros</p>
+          <h1 className="text-2xl font-semibold sm:text-3xl">Transações</h1>
+          <p className="text-sm text-text-muted">
+            {count ?? 0} {(count ?? 0) === 1 ? "registro" : "registros"}
+            {hasFilters && " (filtrado)"}
+          </p>
         </div>
         <Button asChild>
-          <Link href="/transactions/new"><Plus className="h-4 w-4" /> Nova</Link>
+          <Link href="/transactions/new">
+            <Plus className="h-4 w-4" /> Nova transação
+          </Link>
         </Button>
       </header>
 
-      <Card className="p-4">
-        <TransactionFilters categories={categories ?? []} methods={methods ?? []} />
-      </Card>
+      {/* Totais filtrados */}
+      <section className="grid grid-cols-3 gap-3 sm:max-w-xl">
+        <Total label="Entradas" value={incomeSum} tone="success" />
+        <Total label="Saídas" value={expenseSum} tone="danger" />
+        <Total label="Saldo" value={incomeSum - expenseSum} tone={incomeSum - expenseSum >= 0 ? "success" : "danger"} />
+      </section>
 
-      {(!rows || rows.length === 0) ? (
-        <Empty icon={ReceiptText} title="Nada encontrado" description="Tente limpar os filtros ou adicionar uma nova transação." />
+      {/* Filters */}
+      <details className="surface-elevated overflow-hidden">
+        <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium select-none">
+          <Filter className="h-4 w-4 text-text-muted" />
+          <span>Filtros</span>
+          {hasFilters && <span className="ml-auto rounded-full bg-primary/15 px-2 py-0.5 text-xs text-primary">ativo</span>}
+        </summary>
+        <div className="border-t border-border p-4">
+          <TransactionFilters categories={categories ?? []} methods={methods ?? []} />
+        </div>
+      </details>
+
+      {/* List */}
+      {txs.length === 0 ? (
+        <Empty
+          icon={Search}
+          title={hasFilters ? "Nada encontrado" : "Sem transações ainda"}
+          description={hasFilters ? "Tente limpar os filtros." : "Adicione a primeira pra começar."}
+          action={
+            !hasFilters ? (
+              <Button asChild>
+                <Link href="/transactions/new">Adicionar despesa</Link>
+              </Button>
+            ) : null
+          }
+        />
       ) : (
-        <TransactionsTable rows={rows} page={page} pageSize={pageSize} total={count ?? 0} />
+        <>
+          <GroupedTransactionList transactions={txs} />
+
+          {lastPage > 1 && (
+            <nav className="flex items-center justify-between pt-2 text-xs text-text-muted">
+              <span>
+                Página {page} de {lastPage}
+              </span>
+              <div className="flex gap-2">
+                <Button asChild size="sm" variant="ghost" disabled={page <= 1}>
+                  <Link href={pageLink(searchParams, Math.max(1, page - 1))}>← Anterior</Link>
+                </Button>
+                <Button asChild size="sm" variant="ghost" disabled={page >= lastPage}>
+                  <Link href={pageLink(searchParams, Math.min(lastPage, page + 1))}>Próxima →</Link>
+                </Button>
+              </div>
+            </nav>
+          )}
+        </>
       )}
     </div>
   );
+}
+
+function Total({ label, value, tone }: { label: string; value: number; tone: "success" | "danger" }) {
+  return (
+    <div className="surface p-3">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-text-muted">{label}</p>
+      <Money value={value} tone={tone} className="num mt-1 block text-base font-medium" />
+    </div>
+  );
+}
+
+function pageLink(sp: SearchParams, page: number): string {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp)) {
+    if (v && k !== "page") params.set(k, String(v));
+  }
+  params.set("page", String(page));
+  return `/transactions?${params.toString()}`;
 }

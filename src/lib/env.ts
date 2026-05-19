@@ -9,14 +9,18 @@ const publicSchema = z.object({
 
 const serverSchema = publicSchema.extend({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20),
-  WHATSAPP_PHONE_NUMBER_ID: z.string().min(1),
-  WHATSAPP_BUSINESS_ACCOUNT_ID: z.string().min(1),
-  WHATSAPP_ACCESS_TOKEN: z.string().min(10),
-  WHATSAPP_VERIFY_TOKEN: z.string().min(8),
-  WHATSAPP_APP_SECRET: z.string().min(8),
+  // WhatsApp é opcional — só obrigatório se for usar o webhook do WhatsApp.
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+  WHATSAPP_BUSINESS_ACCOUNT_ID: z.string().optional(),
+  WHATSAPP_ACCESS_TOKEN: z.string().optional(),
+  WHATSAPP_VERIFY_TOKEN: z.string().optional(),
+  WHATSAPP_APP_SECRET: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().startsWith("sk-ant-"),
   ANTHROPIC_MODEL: z.string().default("claude-haiku-4-5-20251001"),
   CRON_SECRET: z.string().min(16),
+  TELEGRAM_BOT_TOKEN: z.string().min(20).optional(),
+  TELEGRAM_BOT_USERNAME: z.string().min(3).optional(),
+  TELEGRAM_WEBHOOK_SECRET: z.string().min(16).optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverSchema>;

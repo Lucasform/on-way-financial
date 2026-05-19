@@ -27,7 +27,7 @@ interface Item {
   due_date: string | null;
   status: string;
   position: number;
-  data: Record<string, unknown>;
+  data: unknown;
 }
 
 export function CustomDashboard({ module, items: initial, canWrite }: { module: Module; items: Item[]; canWrite: boolean }) {
@@ -45,7 +45,7 @@ export function CustomDashboard({ module, items: initial, canWrite }: { module: 
       const updated = [...definedFields, newField];
       const { error } = await supabase
         .from("modules")
-        .update({ config: { fields: updated } })
+        .update({ config: JSON.parse(JSON.stringify({ fields: updated })) })
         .eq("id", module.id);
       if (error) {
         toast.error("Falha ao salvar campo.");
@@ -72,7 +72,7 @@ export function CustomDashboard({ module, items: initial, canWrite }: { module: 
           due_date: draft.due_date ?? null,
           status: "todo",
           position: items.length * 10 + 10,
-          data,
+          data: JSON.parse(JSON.stringify(data)),
         })
         .select("*")
         .single();
@@ -159,7 +159,7 @@ export function CustomDashboard({ module, items: initial, canWrite }: { module: 
                   <p className="font-semibold">{i.title}</p>
                   <p className="text-xs text-text-muted">
                     {i.due_date && `prazo ${i.due_date} · `}
-                    {definedFields.map((f) => `${f.label}: ${String(i.data?.[f.key] ?? "—")}`).join(" · ")}
+                    {definedFields.map((f) => `${f.label}: ${String((i.data as Record<string, unknown> | null)?.[f.key] ?? "—")}`).join(" · ")}
                   </p>
                 </div>
                 <Money value={i.amount} size="sm" />

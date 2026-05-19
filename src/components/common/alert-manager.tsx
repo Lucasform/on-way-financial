@@ -16,7 +16,7 @@ interface Alert {
   id: string;
   kind: string;
   name: string;
-  config: Record<string, unknown> | null;
+  config: unknown;
   channels: unknown;
   target_member_ids: string[];
   frequency: string;
@@ -68,11 +68,11 @@ export function AlertManager({ householdId, userId, canWrite, initial, categorie
         .from("alerts")
         .insert({
           household_id: householdId,
-          kind: draft.kind,
+          kind: draft.kind as "budget_exceeded" | "category_threshold" | "large_expense" | "recurring_due" | "invoice_closing" | "goal_progress" | "custom",
           name: draft.name,
-          config,
+          config: config as Record<string, string | number | boolean | null>,
           target_member_ids: draft.member_id ? [draft.member_id] : [],
-          frequency: draft.frequency,
+          frequency: draft.frequency as "immediate" | "daily" | "weekly",
           channels: ["whatsapp"],
           active: true,
           created_by: userId,
@@ -193,7 +193,7 @@ export function AlertManager({ householdId, userId, canWrite, initial, categorie
                 <p className="font-medium">{a.name}</p>
                 <p className="text-xs text-text-muted">
                   {KIND_LABELS[a.kind] ?? a.kind} ·{" "}
-                  {a.config && typeof (a.config as { threshold?: number }).threshold === "number" && (
+                  {!!a.config && typeof (a.config as { threshold?: number }).threshold === "number" && (
                     <Money value={(a.config as { threshold?: number }).threshold ?? 0} size="sm" tone="muted" />
                   )}
                 </p>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Archive, CreditCard, Plus } from "lucide-react";
+import { CreditCard, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,7 @@ interface PM {
   closing_day: number | null;
   due_day: number | null;
   is_default: boolean;
+  archived_at?: string | null;
 }
 
 const KIND_LABELS: Record<string, string> = {
@@ -36,15 +37,28 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 interface Props {
-  initial: PM[];
+  initialActive: PM[];
+  initialArchived: PM[];
+  usageCount: Record<string, number>;
   invoices: Record<string, number>;
   householdId: string;
   canWrite: boolean;
 }
 
-export function PaymentMethodManager({ initial, invoices, householdId, canWrite }: Props) {
+export function PaymentMethodManager({
+  initialActive,
+  initialArchived,
+  usageCount,
+  invoices,
+  householdId,
+  canWrite,
+}: Props) {
   const supabase = createSupabaseBrowser();
-  const [items, setItems] = useState(initial);
+  // Junta ativos + arquivados — não exibimos mais a distinção
+  const [items, setItems] = useState<PM[]>(() =>
+    [...initialActive, ...initialArchived].sort((a, b) => a.name.localeCompare(b.name)),
+  );
+  const [counts, setCounts] = useState(usageCount);
   const [pending, start] = useTransition();
   const [draft, setDraft] = useState<Partial<PM>>({ kind: "pix", name: "" });
 
@@ -56,7 +70,15 @@ export function PaymentMethodManager({ initial, invoices, householdId, canWrite 
         .insert({
           household_id: householdId,
           name: draft.name!.trim(),
-          kind: draft.kind!,
+          kind: draft.kind! as
+            | "cash"
+            | "pix"
+            | "debit_card"
+            | "credit_card"
+            | "bank_transfer"
+            | "boleto"
+            | "meal_voucher"
+            | "other",
           last_four: draft.last_four ?? null,
           brand: draft.brand ?? null,
           credit_limit: draft.credit_limit ?? null,
@@ -70,23 +92,51 @@ export function PaymentMethodManager({ initial, invoices, householdId, canWrite 
         toast.error("Falha ao salvar.");
         return;
       }
-      setItems((s) => [...s, data as PM]);
+      setItems((s) => [...s, data as PM].sort((a, b) => a.name.localeCompare(b.name)));
       setDraft({ kind: "pix", name: "" });
     });
   }
 
-  function archive(id: string) {
+  function remove(id: string) {
     if (!canWrite) return;
+    const item = items.find((i) => i.id === id);
+    if (!item) return;
+    const count = counts[id] ?? 0;
+    const msg =
+      count > 0
+        ? `Excluir "${item.name}"? ${count} transação${count === 1 ? "" : "ões"} vão ficar sem método (o histórico continua intacto).`
+        : `Excluir "${item.name}"? Essa ação não pode ser desfeita.`;
+    if (!confirm(msg)) return;
+
     start(async () => {
-      const { error } = await supabase
-        .from("payment_methods")
-        .update({ archived_at: new Date().toISOString() })
-        .eq("id", id);
+      // Desvincula transações antes de apagar (preserva histórico)
+      if (count > 0) {
+        const { error: unlinkErr } = await supabase
+          .from("transactions")
+          .update({ payment_method_id: null })
+          .eq("household_id", householdId)
+          .eq("payment_method_id", id);
+        if (unlinkErr) {
+          toast.error(`Falha ao desvincular transações: ${unlinkErr.message}`);
+          return;
+        }
+      }
+      const { error } = await supabase.from("payment_methods").delete().eq("id", id);
       if (error) {
-        toast.error("Falha ao arquivar.");
+        toast.error(`Falha ao excluir: ${error.message}`);
         return;
       }
       setItems((s) => s.filter((i) => i.id !== id));
+      setCounts((c) => {
+        const next = { ...c };
+        delete next[id];
+        return next;
+      });
+      toast.success(
+        count > 0
+          ? `"${item.name}" excluído. ${count} transação(ões) preservadas sem método.`
+          : `"${item.name}" excluído.`,
+      );
     });
   }
 
@@ -101,7 +151,7 @@ export function PaymentMethodManager({ initial, invoices, householdId, canWrite 
                 id="pmname"
                 value={draft.name ?? ""}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                placeholder="Nubank Roxinho"
+                placeholder="Nome do cartão"
               />
             </div>
             <div className="space-y-1">
@@ -113,7 +163,9 @@ export function PaymentMethodManager({ initial, invoices, householdId, canWrite 
                 className="flex h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
               >
                 {Object.entries(KIND_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
                 ))}
               </select>
             </div>
@@ -126,7 +178,9 @@ export function PaymentMethodManager({ initial, invoices, householdId, canWrite 
                     type="number"
                     step="0.01"
                     value={draft.credit_limit ?? ""}
-                    onChange={(e) => setDraft({ ...draft, credit_limit: Number(e.target.value) || null })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, credit_limit: Number(e.target.value) || null })
+                    }
                   />
                 </div>
                 <div className="space-y-1">
@@ -137,7 +191,9 @@ export function PaymentMethodManager({ initial, invoices, householdId, canWrite 
                     min={1}
                     max={31}
                     value={draft.closing_day ?? ""}
-                    onChange={(e) => setDraft({ ...draft, closing_day: Number(e.target.value) || null })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, closing_day: Number(e.target.value) || null })
+                    }
                   />
                 </div>
                 <div className="space-y-1">
@@ -148,7 +204,9 @@ export function PaymentMethodManager({ initial, invoices, householdId, canWrite 
                     min={1}
                     max={31}
                     value={draft.due_day ?? ""}
-                    onChange={(e) => setDraft({ ...draft, due_day: Number(e.target.value) || null })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, due_day: Number(e.target.value) || null })
+                    }
                   />
                 </div>
               </>
@@ -163,35 +221,53 @@ export function PaymentMethodManager({ initial, invoices, householdId, canWrite 
       )}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {items.map((m) => (
-          <Card key={m.id} className="p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <CreditCard className="h-4 w-4 text-text-muted" />
-                  <p className="font-semibold">{m.name}</p>
-                  {m.is_default && <Badge>padrão</Badge>}
-                </div>
-                <p className="text-xs text-text-muted">{KIND_LABELS[m.kind] ?? m.kind}</p>
-                {m.kind === "credit_card" && (
-                  <div className="mt-2 space-y-1 text-xs text-text-muted">
-                    {m.closing_day && <p>Fecha dia {m.closing_day} · Vence dia {m.due_day}</p>}
-                    {invoices[m.id] != null && (
-                      <p>
-                        Fatura atual: <Money value={invoices[m.id]} size="sm" />
-                      </p>
-                    )}
+        {items.map((m) => {
+          const count = counts[m.id] ?? 0;
+          return (
+            <Card key={m.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="h-4 w-4 text-text-muted" />
+                    <p className="font-semibold">{m.name}</p>
+                    {m.is_default && <Badge>padrão</Badge>}
                   </div>
+                  <p className="text-xs text-text-muted">{KIND_LABELS[m.kind] ?? m.kind}</p>
+                  <p className="mt-1 text-[11px] text-text-muted">
+                    {count} transação{count === 1 ? "" : "ões"} vinculada{count === 1 ? "" : "s"}
+                  </p>
+                  {m.kind === "credit_card" && (
+                    <div className="mt-2 space-y-1 text-xs text-text-muted">
+                      {m.closing_day && (
+                        <p>
+                          Fecha dia {m.closing_day} · Vence dia {m.due_day}
+                        </p>
+                      )}
+                      {invoices[m.id] != null && (
+                        <p>
+                          Fatura atual: <Money value={invoices[m.id]} size="sm" />
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {canWrite && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => remove(m.id)}
+                    aria-label="Excluir"
+                    title="Excluir"
+                    disabled={pending}
+                    className="text-danger hover:bg-danger/10"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 )}
               </div>
-              {canWrite && (
-                <Button variant="ghost" size="icon" onClick={() => archive(m.id)} aria-label="Arquivar">
-                  <Archive className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

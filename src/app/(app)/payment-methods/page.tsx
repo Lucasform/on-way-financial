@@ -7,15 +7,29 @@ export const dynamic = "force-dynamic";
 export default async function PaymentMethodsPage() {
   const ctx = (await loadActiveContext())!;
   const supabase = createSupabaseServer();
-  const { data } = await supabase
+  const { data: allMethods } = await supabase
     .from("payment_methods")
     .select("*")
     .eq("household_id", ctx.householdId)
-    .is("archived_at", null)
     .order("name");
 
-  // Compute current invoice for credit cards
-  const cards = (data ?? []).filter((m) => m.kind === "credit_card");
+  const active = (allMethods ?? []).filter((m) => !m.archived_at);
+  const archived = (allMethods ?? []).filter((m) => m.archived_at);
+
+  // Contagem de transações por método (pra liberar exclusão definitiva só quando = 0)
+  const { data: txMethods } = await supabase
+    .from("transactions")
+    .select("payment_method_id")
+    .eq("household_id", ctx.householdId)
+    .not("payment_method_id", "is", null);
+  const usageCount: Record<string, number> = {};
+  for (const r of txMethods ?? []) {
+    const id = (r as { payment_method_id: string | null }).payment_method_id;
+    if (id) usageCount[id] = (usageCount[id] ?? 0) + 1;
+  }
+
+  // Compute current invoice for credit cards (ativos)
+  const cards = active.filter((m) => m.kind === "credit_card");
   const invoices: Record<string, number> = {};
   for (const c of cards) {
     if (!c.closing_day) continue;
@@ -39,7 +53,9 @@ export default async function PaymentMethodsPage() {
         <p className="text-sm text-text-muted">Cartões, PIX, dinheiro, vouchers.</p>
       </header>
       <PaymentMethodManager
-        initial={data ?? []}
+        initialActive={active}
+        initialArchived={archived}
+        usageCount={usageCount}
         invoices={invoices}
         householdId={ctx.householdId}
         canWrite={ctx.role !== "viewer"}

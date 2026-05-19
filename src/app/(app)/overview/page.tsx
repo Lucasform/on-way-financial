@@ -1,150 +1,329 @@
-import { ArrowDownRight, ArrowUpRight, Boxes, CalendarDays } from "lucide-react";
+import Link from "next/link";
+import {
+  ArrowRight,
+  CalendarClock,
+  CreditCard,
+  PiggyBank,
+  Sparkles,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 
 import { CategoryDonut } from "@/components/charts/category-donut";
 import { DailyBars } from "@/components/charts/daily-bars";
-import { RecentTransactions } from "@/components/transactions/recent-transactions";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Money } from "@/components/ui/money";
+import { BalanceHero } from "@/components/common/balance-hero";
+import { CategoryIcon } from "@/components/common/category-icon";
+import { KpiCard } from "@/components/common/kpi-card";
+import { MonthPicker } from "@/components/common/month-picker";
+import { QuickActions } from "@/components/common/quick-actions";
+import { RealtimeRefresher } from "@/components/common/realtime-refresher";
+import { GroupedTransactionList } from "@/components/transactions/grouped-list";
+import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/ui/empty";
+import { Money } from "@/components/ui/money";
 import { loadActiveContext } from "@/lib/household";
-import { monthRangeISO, previousMonthRange, todayISO } from "@/lib/dates";
-import { format } from "date-fns";
+import { addMonths, fmtDate, format, isAfter, isBefore, parseISO, todayISO } from "@/lib/dates";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export default async function OverviewPage() {
+interface SearchParams {
+  month?: string;
+}
+
+export default async function OverviewPage({ searchParams }: { searchParams: SearchParams }) {
   const ctx = (await loadActiveContext())!;
   const supabase = createSupabaseServer();
-  const { start, end } = monthRangeISO();
-  const prev = previousMonthRange();
-  const prevStart = format(prev.start, "yyyy-MM-dd");
-  const prevEnd = format(prev.end, "yyyy-MM-dd");
 
-  const [{ data: txMonth }, { data: txPrev }, { data: cards }] = await Promise.all([
+  const today = new Date(todayISO());
+  const monthRef = searchParams.month ? parseISO(searchParams.month) : today;
+  const monthStart = new Date(monthRef.getFullYear(), monthRef.getMonth(), 1);
+  const monthEnd = new Date(monthRef.getFullYear(), monthRef.getMonth() + 1, 0);
+  const prevStart = new Date(monthRef.getFullYear(), monthRef.getMonth() - 1, 1);
+  const prevEnd = new Date(monthRef.getFullYear(), monthRef.getMonth(), 0);
+
+  const monthStartStr = format(monthStart, "yyyy-MM-dd");
+  const monthEndStr = format(monthEnd, "yyyy-MM-dd");
+  const prevStartStr = format(prevStart, "yyyy-MM-dd");
+  const prevEndStr = format(prevEnd, "yyyy-MM-dd");
+
+  // 90 dias atrás pra sparklines
+  const sparkFromStr = format(addMonths(monthStart, -3), "yyyy-MM-dd");
+
+  const [txMonth, txPrev, txSpark, cards] = await Promise.all([
     supabase
       .from("transactions")
-      .select("id, type, amount, occurred_at, description, category_id, payment_method_id, categories:categories(name,color,icon), payment_methods:payment_methods(name,kind)")
+      .select(
+        "id, type, amount, occurred_at, description, category_id, payment_method_id, source, installment_number, installments_total, categories:categories(name,color,icon), payment_methods:payment_methods(name,kind)",
+      )
       .eq("household_id", ctx.householdId)
-      .gte("occurred_at", start)
-      .lte("occurred_at", end)
+      .gte("occurred_at", monthStartStr)
+      .lte("occurred_at", monthEndStr)
       .order("occurred_at", { ascending: false }),
     supabase
       .from("transactions")
       .select("type, amount")
       .eq("household_id", ctx.householdId)
-      .gte("occurred_at", prevStart)
-      .lte("occurred_at", prevEnd),
+      .gte("occurred_at", prevStartStr)
+      .lte("occurred_at", prevEndStr),
+    supabase
+      .from("transactions")
+      .select("type, amount, occurred_at")
+      .eq("household_id", ctx.householdId)
+      .gte("occurred_at", sparkFromStr)
+      .lte("occurred_at", monthEndStr),
     supabase
       .from("payment_methods")
-      .select("id, name, closing_day, due_day")
+      .select("id, name, closing_day, due_day, credit_limit")
       .eq("household_id", ctx.householdId)
       .eq("kind", "credit_card")
       .is("archived_at", null),
   ]);
 
-  const list = txMonth ?? [];
+  const list = (txMonth.data ?? []) as Array<{
+    id: string;
+    type: string;
+    amount: number | string;
+    description: string | null;
+    occurred_at: string;
+    source: string;
+    installment_number: number | null;
+    installments_total: number | null;
+    categories: { name: string; color: string | null; icon: string | null } | null;
+    payment_methods: { name: string; kind: string } | null;
+  }>;
+
   const income = sumByType(list, "income");
   const expense = sumByType(list, "expense");
   const balance = income - expense;
-  const prevExpense = sumByType(txPrev ?? [], "expense");
-  const variation = prevExpense > 0 ? ((expense - prevExpense) / prevExpense) * 100 : 0;
+  const prevExpense = sumByType((txPrev.data ?? []) as Array<{ type: string; amount: number | string }>, "expense");
+  const prevIncome = sumByType((txPrev.data ?? []) as Array<{ type: string; amount: number | string }>, "income");
+  const deltaExpense = prevExpense > 0 ? ((expense - prevExpense) / prevExpense) * 100 : null;
+  const deltaIncome = prevIncome > 0 ? ((income - prevIncome) / prevIncome) * 100 : null;
 
-  const byCategory = new Map<string, { name: string; total: number; color: string }>();
+  // Sparkline (90 dias agrupado por mês de gastos)
+  const sparkMap = new Map<string, number>();
+  for (const t of (txSpark.data ?? []) as Array<{ type: string; amount: number | string; occurred_at: string }>) {
+    if (t.type !== "expense") continue;
+    const key = t.occurred_at.slice(0, 7); // YYYY-MM
+    sparkMap.set(key, (sparkMap.get(key) ?? 0) + Number(t.amount));
+  }
+  const sparkExpense = [...sparkMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, v]) => ({ value: v }));
+
+  const sparkIncomeMap = new Map<string, number>();
+  for (const t of (txSpark.data ?? []) as Array<{ type: string; amount: number | string; occurred_at: string }>) {
+    if (t.type !== "income") continue;
+    const key = t.occurred_at.slice(0, 7);
+    sparkIncomeMap.set(key, (sparkIncomeMap.get(key) ?? 0) + Number(t.amount));
+  }
+  const sparkIncome = [...sparkIncomeMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, v]) => ({ value: v }));
+
+  const sparkBalance: { value: number }[] = [];
+  const allMonths = new Set([...sparkMap.keys(), ...sparkIncomeMap.keys()]);
+  [...allMonths].sort().forEach((k) => {
+    sparkBalance.push({ value: (sparkIncomeMap.get(k) ?? 0) - (sparkMap.get(k) ?? 0) });
+  });
+
+  // By category
+  const byCategory = new Map<string, { name: string; total: number; color: string; icon: string | null }>();
   for (const tx of list) {
     if (tx.type !== "expense") continue;
-    const cat = (tx as { categories: { name: string; color: string | null } | null }).categories;
+    const cat = tx.categories;
     const key = cat?.name ?? "Outros";
-    const entry = byCategory.get(key) ?? { name: key, total: 0, color: cat?.color ?? "#9CA3AF" };
+    const entry = byCategory.get(key) ?? {
+      name: key,
+      total: 0,
+      color: cat?.color ?? "#9CA3AF",
+      icon: cat?.icon ?? null,
+    };
     entry.total += Number(tx.amount);
     byCategory.set(key, entry);
   }
   const byCategoryArr = [...byCategory.values()].sort((a, b) => b.total - a.total);
   const topCategory = byCategoryArr[0];
 
+  // By day for bar chart
   const byDay = aggregateByDay(list.filter((t) => t.type === "expense"));
 
-  const upcomingInvoices = (cards ?? [])
+  // Upcoming invoices (≤ 14 dias)
+  const upcomingInvoices = (cards.data ?? [])
     .filter((c) => c.closing_day != null)
     .map((c) => {
-      const today = new Date(todayISO());
       const day = c.closing_day!;
-      const date = new Date(today.getFullYear(), today.getMonth(), day);
-      if (date < today) date.setMonth(date.getMonth() + 1);
-      const daysTo = Math.ceil((date.getTime() - today.getTime()) / 86_400_000);
-      return { name: c.name, date, daysTo };
+      const candidates = [-1, 0, 1].map((m) => new Date(today.getFullYear(), today.getMonth() + m, day));
+      const next = candidates.find((d) => !isBefore(d, today)) ?? candidates[candidates.length - 1]!;
+      const daysTo = Math.ceil((next.getTime() - today.getTime()) / 86_400_000);
+      return { name: c.name, date: next, daysTo, limit: c.credit_limit };
     })
-    .filter((c) => c.daysTo <= 7)
+    .filter((c) => c.daysTo <= 14 && c.daysTo >= 0)
     .sort((a, b) => a.daysTo - b.daysTo);
+
+  // Savings rate
+  const savingsRate = income > 0 ? Math.max(0, Math.min(100, ((income - expense) / income) * 100)) : 0;
+
+  const isCurrentMonth = format(monthStart, "yyyy-MM") === format(today, "yyyy-MM");
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Visão geral</h1>
-        <p className="text-sm text-text-muted">Mês atual — {format(new Date(), "MMMM yyyy")}</p>
+      <RealtimeRefresher table="transactions" filter={`household_id=eq.${ctx.householdId}`} />
+      {/* Header */}
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold sm:text-3xl">Visão geral</h1>
+          <p className="text-sm text-text-muted">
+            {isCurrentMonth ? "Este mês" : "Mês selecionado"} · {ctx.households.find((h) => h.id === ctx.householdId)?.name}
+          </p>
+        </div>
+        <MonthPicker value={format(monthStart, "yyyy-MM-01")} />
       </header>
 
+      {/* Balance hero */}
+      <BalanceHero balance={balance} income={income} expense={expense} spark={sparkBalance} />
+
+      {/* Quick actions */}
+      <QuickActions />
+
+      {/* KPIs */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Saldo do mês</CardTitle></CardHeader>
-          <CardContent className="pt-0">
-            <Money value={balance} size="xl" tone={balance >= 0 ? "success" : "danger"} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Gastos do mês</CardTitle></CardHeader>
-          <CardContent className="pt-0">
-            <Money value={expense} size="xl" />
-            <p className="mt-1 inline-flex items-center gap-1 text-xs text-text-muted">
-              {variation >= 0 ? <ArrowUpRight className="h-3 w-3 text-danger" /> : <ArrowDownRight className="h-3 w-3 text-success" />}
-              {Math.abs(variation).toFixed(1)}% vs mês passado
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Maior categoria</CardTitle></CardHeader>
-          <CardContent className="pt-0">
-            <p className="truncate text-lg font-semibold">{topCategory?.name ?? "—"}</p>
-            <Money value={topCategory?.total ?? 0} size="sm" tone="muted" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Próximas faturas</CardTitle></CardHeader>
-          <CardContent className="pt-0">
-            {upcomingInvoices.length === 0 ? (
-              <p className="text-sm text-text-muted">Nenhuma nos próximos 7 dias.</p>
+        <KpiCard
+          label="Entradas"
+          value={income}
+          icon={TrendingUp}
+          tone="success"
+          delta={deltaIncome}
+          deltaLabel="vs mês passado"
+          sparkline={sparkIncome}
+          sparklineTone="success"
+          animationDelay={0}
+        />
+        <KpiCard
+          label="Saídas"
+          value={expense}
+          icon={TrendingDown}
+          delta={deltaExpense}
+          deltaLabel="vs mês passado"
+          inverseDelta
+          sparkline={sparkExpense}
+          sparklineTone="danger"
+          animationDelay={0.06}
+        />
+        <KpiCard
+          label="Taxa de poupança"
+          value={savingsRate}
+          icon={PiggyBank}
+          tone={savingsRate >= 20 ? "success" : "muted"}
+          sparklineTone="primary"
+          animationDelay={0.12}
+        />
+        <KpiCard
+          label="Top categoria"
+          value={topCategory?.total ?? 0}
+          icon={Sparkles}
+          tone="muted"
+          deltaLabel={topCategory?.name ?? "—"}
+          animationDelay={0.18}
+        />
+      </section>
+
+      {/* Charts */}
+      <section className="grid gap-4 lg:grid-cols-5">
+        <article className="surface-elevated col-span-3 p-5">
+          <header className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Gastos por dia</h2>
+            <span className="text-xs text-text-muted">{fmtDate(monthStart, "MMM yyyy")}</span>
+          </header>
+          <div className="h-64">
+            {byDay.length === 0 ? (
+              <Empty icon={Wallet} title="Nada gasto neste mês" description="Adicione uma despesa pra começar a ver gráficos." />
             ) : (
-              <ul className="space-y-1 text-sm">
-                {upcomingInvoices.slice(0, 2).map((c) => (
-                  <li key={c.name} className="flex items-center justify-between">
-                    <span className="truncate">{c.name}</span>
-                    <span className="text-text-muted"><CalendarDays className="mr-1 inline h-3 w-3" />{c.daysTo}d</span>
+              <DailyBars data={byDay} />
+            )}
+          </div>
+        </article>
+
+        <article className="surface-elevated col-span-2 p-5">
+          <header className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Por categoria</h2>
+            <Link href="/categories" className="text-xs text-text-muted hover:text-text">
+              gerenciar →
+            </Link>
+          </header>
+          {byCategoryArr.length === 0 ? (
+            <Empty title="Sem dados" description="Sem despesas neste mês." className="border-0 p-4" />
+          ) : (
+            <>
+              <div className="h-40">
+                <CategoryDonut data={byCategoryArr} />
+              </div>
+              <ul className="mt-4 space-y-2.5">
+                {byCategoryArr.slice(0, 5).map((c) => (
+                  <li key={c.name} className="flex items-center gap-3 text-sm">
+                    <CategoryIcon icon={c.icon} color={c.color} size="sm" />
+                    <span className="flex-1 truncate text-text">{c.name}</span>
+                    <Money value={c.total} size="sm" className="num text-text-soft" />
                   </li>
                 ))}
               </ul>
-            )}
-          </CardContent>
-        </Card>
+            </>
+          )}
+        </article>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle className="text-base">Gastos por dia</CardTitle></CardHeader>
-          <CardContent className="h-64"><DailyBars data={byDay} /></CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle className="text-base">Por categoria</CardTitle></CardHeader>
-          <CardContent className="h-64">
-            {byCategoryArr.length === 0 ? (
-              <Empty icon={Boxes} title="Sem despesas neste mês" description="Aposto que você está economizando 🤑" />
-            ) : (
-              <CategoryDonut data={byCategoryArr} />
-            )}
-          </CardContent>
-        </Card>
-      </section>
+      {/* Upcoming invoices */}
+      {upcomingInvoices.length > 0 && (
+        <section className="surface-elevated p-5">
+          <header className="mb-3 flex items-center gap-2">
+            <CalendarClock className="h-4 w-4 text-warning" />
+            <h2 className="text-sm font-semibold">Faturas nas próximas 2 semanas</h2>
+          </header>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {upcomingInvoices.map((c) => (
+              <li key={c.name} className="surface flex items-center gap-3 p-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-warning/15 text-warning">
+                  <CreditCard className="h-4 w-4" />
+                </span>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{c.name}</p>
+                  <p className="text-xs text-text-muted">
+                    fecha em {c.daysTo} {c.daysTo === 1 ? "dia" : "dias"} · {fmtDate(c.date, "dd/MM")}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
-      <RecentTransactions transactions={list.slice(0, 10)} />
+      {/* Recent transactions */}
+      <section>
+        <header className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Extrato do mês</h2>
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/transactions">
+              Ver tudo <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </header>
+        {list.length === 0 ? (
+          <Empty
+            icon={Wallet}
+            title="Sem transações neste mês"
+            description="Adicione a primeira pra começar."
+            action={
+              <Button asChild>
+                <Link href="/transactions/new">Adicionar despesa</Link>
+              </Button>
+            }
+          />
+        ) : (
+          <GroupedTransactionList transactions={list.slice(0, 20)} />
+        )}
+      </section>
     </div>
   );
 }
@@ -160,3 +339,7 @@ function aggregateByDay(rows: { occurred_at: string; amount: number | string }[]
   }
   return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, total]) => ({ day, total }));
 }
+
+// Silence unused import lint in some setups
+const _silence = isAfter;
+void _silence;

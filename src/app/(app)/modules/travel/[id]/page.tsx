@@ -16,15 +16,32 @@ export default async function TravelPage({ params }: { params: { id: string } })
     .eq("household_id", ctx.householdId)
     .maybeSingle();
   if (!mod) notFound();
-  const [{ data: items }, { data: tx }] = await Promise.all([
-    supabase.from("travel_items").select("*").eq("module_id", params.id).order("start_date"),
-    supabase
-      .from("transactions")
-      .select("id, amount, description, occurred_at")
-      .eq("module_id", params.id)
-      .order("occurred_at", { ascending: false }),
-  ]);
+
+  const [{ data: items }, { data: tx }, { data: days }, { data: activities }, { data: checklist }, { data: gallery }] =
+    await Promise.all([
+      supabase.from("travel_items").select("*").eq("module_id", params.id).order("start_date"),
+      supabase
+        .from("transactions")
+        .select("id, amount, description, occurred_at")
+        .eq("module_id", params.id)
+        .order("occurred_at", { ascending: false }),
+      supabase.from("travel_days").select("*").eq("module_id", params.id).order("day_number"),
+      supabase.from("travel_activities").select("*").eq("module_id", params.id).order("position"),
+      supabase.from("travel_checklist").select("*").eq("module_id", params.id).order("position"),
+      supabase.from("travel_gallery").select("*").eq("module_id", params.id).order("taken_at", { ascending: false }),
+    ]);
+
   return (
-    <TravelDashboard module={mod} items={items ?? []} transactions={tx ?? []} canWrite={ctx.role !== "viewer"} />
+    <TravelDashboard
+      module={mod}
+      items={items ?? []}
+      transactions={tx ?? []}
+      days={(days ?? []) as never}
+      activities={(activities ?? []) as never}
+      checklist={(checklist ?? []) as never}
+      gallery={(gallery ?? []) as never}
+      householdId={ctx.householdId}
+      canWrite={ctx.role !== "viewer"}
+    />
   );
 }

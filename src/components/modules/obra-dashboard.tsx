@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Camera, Hammer, MessageSquare, Plus, Send } from "lucide-react";
+import { Camera, Hammer, MessageSquare, Plus, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -14,9 +14,11 @@ import { Money } from "@/components/ui/money";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Empty } from "@/components/ui/empty";
+import { ObraDiaryTab, type DiaryEntry } from "@/components/modules/obra-diary-tab";
+import { ObraItemsTab, type ObraItem } from "@/components/modules/obra-items-tab";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { fmtRelative } from "@/lib/dates";
-import { normalizePhone } from "@/lib/utils";
+import { normalizePhone, sanitizeFilename } from "@/lib/utils";
 import { percent } from "@/lib/money";
 
 interface Module {
@@ -31,7 +33,7 @@ interface Phase {
   id: string;
   name: string;
   planned_budget: number | null;
-  status: "todo" | "doing" | "done" | "blocked";
+  status: string;
   position: number;
   planned_start: string | null;
   planned_end: string | null;
@@ -49,6 +51,9 @@ interface GalleryItem {
   caption: string | null;
   taken_at: string;
   phase_id: string | null;
+  media_type?: string;
+  thumbnail_url?: string | null;
+  duration_seconds?: number | null;
 }
 interface Tx {
   id: string;
@@ -64,6 +69,8 @@ interface Props {
   workers: Worker[];
   gallery: GalleryItem[];
   transactions: Tx[];
+  items: ObraItem[];
+  diary: DiaryEntry[];
   householdId: string;
   userId: string;
   canWrite: boolean;
@@ -71,7 +78,7 @@ interface Props {
 
 const KANBAN = ["todo", "doing", "done", "blocked"] as const;
 
-export function ObraDashboard({ module, phases, workers, gallery, transactions, householdId, canWrite }: Props) {
+export function ObraDashboard({ module, phases, workers, gallery, transactions, items, diary, householdId, canWrite }: Props) {
   const total = transactions.reduce((s, t) => s + Number(t.amount), 0);
   const pct = module.budget ? percent(total, Number(module.budget)) : 0;
   return (
@@ -112,14 +119,32 @@ export function ObraDashboard({ module, phases, workers, gallery, transactions, 
       </section>
 
       <Tabs defaultValue="phases">
-        <TabsList>
+        <TabsList className="flex flex-wrap">
           <TabsTrigger value="phases">Fases</TabsTrigger>
+          <TabsTrigger value="items">Materiais</TabsTrigger>
+          <TabsTrigger value="diary">Diário</TabsTrigger>
           <TabsTrigger value="expenses">Despesas</TabsTrigger>
           <TabsTrigger value="gallery">Galeria</TabsTrigger>
           <TabsTrigger value="workers">Equipe</TabsTrigger>
         </TabsList>
         <TabsContent value="phases">
           <PhasesKanban moduleId={module.id} phases={phases} canWrite={canWrite} />
+        </TabsContent>
+        <TabsContent value="items">
+          <ObraItemsTab
+            moduleId={module.id}
+            initial={items}
+            phases={phases.map((p) => ({ id: p.id, name: p.name }))}
+            canWrite={canWrite}
+          />
+        </TabsContent>
+        <TabsContent value="diary">
+          <ObraDiaryTab
+            moduleId={module.id}
+            initial={diary}
+            phases={phases.map((p) => ({ id: p.id, name: p.name }))}
+            canWrite={canWrite}
+          />
         </TabsContent>
         <TabsContent value="expenses">
           {transactions.length === 0 ? (
@@ -153,17 +178,49 @@ export function ObraDashboard({ module, phases, workers, gallery, transactions, 
   );
 }
 
-function PhasesKanban({ moduleId, phases: initialPhases, canWrite }: { moduleId: string; phases: Phase[]; canWrite: boolean }) {
+const COL_LABEL: Record<string, string> = {
+  todo: "A fazer",
+  doing: "Em andamento",
+  done: "Concluídas",
+  blocked: "Bloqueadas",
+};
+
+const COL_COLOR: Record<string, string> = {
+  todo: "text-text-muted",
+  doing: "text-accent",
+  done: "text-success",
+  blocked: "text-danger",
+};
+
+function PhasesKanban({
+  moduleId,
+  phases: initialPhases,
+  canWrite,
+}: {
+  moduleId: string;
+  phases: Phase[];
+  canWrite: boolean;
+}) {
   const supabase = createSupabaseBrowser();
   const [phases, setPhases] = useState(initialPhases);
   const [pending, start] = useTransition();
   const [newName, setNewName] = useState("");
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropZone, setDropZone] = useState<string | null>(null);
 
-  async function move(id: string, status: Phase["status"]) {
+  async function move(id: string, status: string) {
     if (!canWrite) return;
+    const cur = phases.find((p) => p.id === id);
+    if (!cur || cur.status === status) return;
+    // optimistic
+    setPhases((s) => s.map((p) => (p.id === id ? { ...p, status } : p)));
     start(async () => {
-      await supabase.from("obra_phases").update({ status }).eq("id", id);
-      setPhases((s) => s.map((p) => (p.id === id ? { ...p, status } : p)));
+      const { error } = await supabase.from("obra_phases").update({ status }).eq("id", id);
+      if (error) {
+        // rollback
+        setPhases((s) => s.map((p) => (p.id === id ? { ...p, status: cur.status } : p)));
+        toast.error("Não consegui mover.");
+      }
     });
   }
 
@@ -180,39 +237,120 @@ function PhasesKanban({ moduleId, phases: initialPhases, canWrite }: { moduleId:
     });
   }
 
+  function onDragStart(e: React.DragEvent, id: string) {
+    if (!canWrite) return;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/phase-id", id);
+    setDraggingId(id);
+  }
+
+  function onDragEnd() {
+    setDraggingId(null);
+    setDropZone(null);
+  }
+
+  function onDragOver(e: React.DragEvent, col: string) {
+    if (!canWrite) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dropZone !== col) setDropZone(col);
+  }
+
+  function onDragLeave(col: string) {
+    if (dropZone === col) setDropZone(null);
+  }
+
+  function onDrop(e: React.DragEvent, col: string) {
+    if (!canWrite) return;
+    e.preventDefault();
+    const id = e.dataTransfer.getData("text/phase-id");
+    if (id) void move(id, col);
+    setDropZone(null);
+    setDraggingId(null);
+  }
+
   return (
     <div className="space-y-4">
       {canWrite && (
         <div className="flex gap-2">
           <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nova fase..." />
-          <Button onClick={add} disabled={pending}><Plus className="h-4 w-4" /> Adicionar</Button>
+          <Button onClick={add} disabled={pending}>
+            <Plus className="h-4 w-4" /> Adicionar
+          </Button>
         </div>
       )}
+      {canWrite && (
+        <p className="text-[10px] text-text-muted">💡 Arraste os cards entre as colunas pra mover.</p>
+      )}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-        {KANBAN.map((col) => (
-          <div key={col} className="rounded-lg border border-border bg-bg-elev p-3">
-            <div className="mb-2 text-xs font-semibold uppercase text-text-muted">
-              {col === "todo" ? "A fazer" : col === "doing" ? "Em andamento" : col === "done" ? "Concluídas" : "Bloqueadas"}
+        {KANBAN.map((col) => {
+          const colPhases = phases.filter((p) => p.status === col);
+          const isDropTarget = dropZone === col;
+          return (
+            <div
+              key={col}
+              onDragOver={(e) => onDragOver(e, col)}
+              onDragLeave={() => onDragLeave(col)}
+              onDrop={(e) => onDrop(e, col)}
+              className={
+                "rounded-lg border bg-bg-elev p-3 transition-colors " +
+                (isDropTarget ? "border-primary bg-primary/5" : "border-border")
+              }
+            >
+              <div className={"mb-2 flex items-center justify-between text-xs font-semibold uppercase " + COL_COLOR[col]!}>
+                <span>{COL_LABEL[col] ?? col}</span>
+                <span className="rounded-full bg-bg-elev-2 px-1.5 py-0.5 text-[10px] text-text-muted">
+                  {colPhases.length}
+                </span>
+              </div>
+              <ul className="min-h-[60px] space-y-2">
+                {colPhases.map((p) => {
+                  const isDragging = draggingId === p.id;
+                  return (
+                    <li
+                      key={p.id}
+                      draggable={canWrite}
+                      onDragStart={(e) => onDragStart(e, p.id)}
+                      onDragEnd={onDragEnd}
+                      className={
+                        "rounded-md bg-bg-elev-2 p-2.5 text-sm transition-all " +
+                        (canWrite ? "cursor-grab active:cursor-grabbing hover:bg-bg-elev-3 " : "") +
+                        (isDragging ? "opacity-50" : "")
+                      }
+                    >
+                      <p className="font-medium">{p.name}</p>
+                      {p.planned_budget && (
+                        <p className="text-xs text-text-muted">
+                          <Money value={p.planned_budget} size="sm" tone="muted" />
+                        </p>
+                      )}
+                      {canWrite && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {KANBAN.filter((c) => c !== col).map((c) => (
+                            <Button
+                              key={c}
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 text-[10px]"
+                              onClick={() => move(p.id, c)}
+                            >
+                              → {COL_LABEL[c]}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+                {colPhases.length === 0 && (
+                  <li className="rounded-md border border-dashed border-border p-3 text-center text-[10px] text-text-muted">
+                    {canWrite ? "solte aqui" : "vazio"}
+                  </li>
+                )}
+              </ul>
             </div>
-            <ul className="space-y-2">
-              {phases.filter((p) => p.status === col).map((p) => (
-                <li key={p.id} className="rounded-md bg-bg-elev-2 p-2 text-sm">
-                  <p className="font-medium">{p.name}</p>
-                  {p.planned_budget && <p className="text-xs text-text-muted"><Money value={p.planned_budget} size="sm" tone="muted" /></p>}
-                  {canWrite && (
-                    <div className="mt-2 flex gap-1">
-                      {KANBAN.filter((c) => c !== col).map((c) => (
-                        <Button key={c} variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => move(p.id, c)}>
-                          → {c}
-                        </Button>
-                      ))}
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -222,22 +360,39 @@ function Gallery({ moduleId, householdId, initial, canWrite }: { moduleId: strin
   const supabase = createSupabaseBrowser();
   const [items, setItems] = useState(initial);
   const [uploading, setUploading] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   async function upload(files: FileList | null) {
     if (!files || !canWrite) return;
     setUploading(true);
     try {
       for (const f of Array.from(files)) {
-        const path = `${householdId}/${moduleId}/${crypto.randomUUID()}-${f.name}`;
-        const { error } = await supabase.storage.from("obra-gallery").upload(path, f, { cacheControl: "3600" });
-        if (error) { toast.error("Falha no upload."); continue; }
+        const isVideo = f.type.startsWith("video/");
+        const safe = sanitizeFilename(f.name);
+        const path = `${householdId}/${moduleId}/${crypto.randomUUID()}-${safe}`;
+        const { error } = await supabase.storage
+          .from("obra-gallery")
+          .upload(path, f, { cacheControl: "3600", contentType: f.type || undefined });
+        if (error) {
+          toast.error(`Falha no upload: ${error.message}`);
+          continue;
+        }
         const { data: pub } = supabase.storage.from("obra-gallery").getPublicUrl(path);
         const url = pub.publicUrl;
-        const { data: row } = await supabase
+        const { data: row, error: dbErr } = await supabase
           .from("obra_gallery")
-          .insert({ module_id: moduleId, image_url: url, caption: null })
+          .insert({
+            module_id: moduleId,
+            image_url: url,
+            caption: null,
+            media_type: isVideo ? "video" : "image",
+          })
           .select("*")
           .single();
+        if (dbErr) {
+          toast.error(`Falha ao registrar: ${dbErr.message}`);
+          continue;
+        }
         if (row) setItems((s) => [row as GalleryItem, ...s]);
       }
     } finally {
@@ -245,23 +400,105 @@ function Gallery({ moduleId, householdId, initial, canWrite }: { moduleId: strin
     }
   }
 
+  async function remove(item: GalleryItem) {
+    if (!canWrite) return;
+    if (!confirm("Tem certeza que deseja excluir este arquivo?")) return;
+    setRemovingId(item.id);
+    try {
+      const marker = "/obra-gallery/";
+      const idx = item.image_url.indexOf(marker);
+      const storagePath = idx >= 0 ? item.image_url.slice(idx + marker.length) : null;
+      if (storagePath) {
+        const { error: rmErr } = await supabase.storage
+          .from("obra-gallery")
+          .remove([decodeURIComponent(storagePath)]);
+        if (rmErr) {
+          toast.error(`Falha ao remover do storage: ${rmErr.message}`);
+          return;
+        }
+      }
+      const { error: dbErr } = await supabase.from("obra_gallery").delete().eq("id", item.id);
+      if (dbErr) {
+        toast.error(`Falha ao remover registro: ${dbErr.message}`);
+        return;
+      }
+      setItems((s) => s.filter((x) => x.id !== item.id));
+      toast.success("Arquivo removido.");
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
       {canWrite && (
-        <div>
-          <Label htmlFor="gphoto" className="sr-only">Adicionar foto</Label>
-          <Input id="gphoto" type="file" accept="image/*" multiple disabled={uploading} onChange={(e) => upload(e.target.files)} />
+        <div className="surface flex flex-wrap items-center gap-3 p-3">
+          <Label htmlFor="gphoto" className="text-xs font-medium">
+            📸 Foto / 🎬 Vídeo
+          </Label>
+          <Input
+            id="gphoto"
+            type="file"
+            accept="image/*,video/*"
+            multiple
+            disabled={uploading}
+            onChange={(e) => upload(e.target.files)}
+            className="max-w-md"
+          />
+          {uploading && <span className="text-xs text-text-muted">Enviando...</span>}
         </div>
       )}
       {items.length === 0 ? (
-        <Empty icon={Camera} title="Galeria da obra vazia" description="Bora registrar essa transformação 📸" />
+        <Empty
+          icon={Camera}
+          title="Galeria da obra vazia"
+          description="Bora registrar essa transformação 📸 — fotos e vídeos pra deixar o sonho documentado."
+        />
       ) : (
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          {items.map((i) => (
-            <a key={i.id} href={i.image_url} target="_blank" rel="noreferrer" className="block aspect-square overflow-hidden rounded-md border border-border">
-              <img src={i.image_url} alt={i.caption ?? "Foto"} className="h-full w-full object-cover" />
-            </a>
-          ))}
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
+          {items.map((i) => {
+            const isVideo = i.media_type === "video";
+            return (
+              <div
+                key={i.id}
+                className="group relative block aspect-square overflow-hidden rounded-lg border border-border bg-bg-elev-2"
+              >
+                <a href={i.image_url} target="_blank" rel="noreferrer" className="block h-full w-full">
+                  {isVideo ? (
+                    <>
+                      <video src={i.image_url} className="h-full w-full object-cover" muted preload="metadata" />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors group-hover:bg-black/40">
+                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-black">
+                          ▶
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={i.image_url} alt={i.caption ?? "Foto da obra"} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                  )}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
+                    <p className="text-xs text-white">{i.caption ?? (isVideo ? "Vídeo" : "Foto")}</p>
+                  </div>
+                </a>
+                {canWrite && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void remove(i);
+                    }}
+                    disabled={removingId === i.id}
+                    aria-label="Excluir arquivo"
+                    className="absolute right-1.5 top-1.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-danger group-hover:opacity-100 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

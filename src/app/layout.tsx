@@ -11,7 +11,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 const jbMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 
 export const viewport: Viewport = {
-  themeColor: "#0B0F14",
+  themeColor: "#0a0d12",
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
@@ -25,18 +25,25 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "ON WAY" },
   formatDetection: { telephone: false },
   icons: {
-    icon: [{ url: "/icons/icon-192.png", sizes: "192x192" }],
-    apple: [{ url: "/icons/icon-192.png" }],
+    icon: [{ url: "/icons/icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/icons/icon.svg" }],
   },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" className={`${inter.variable} ${jbMono.variable}`} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('onway-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}})()`,
+          }}
+        />
+      </head>
       <body className="min-h-dvh bg-bg font-sans text-text antialiased">
         <QueryProvider>
           {children}
-          <Toaster richColors position="top-right" />
+          <Toaster richColors position="top-right" theme="system" />
         </QueryProvider>
       </body>
     </html>

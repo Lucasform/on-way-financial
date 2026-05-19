@@ -34,7 +34,10 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  experimental: { typedRoutes: false },
+  experimental: {
+    typedRoutes: false,
+    serverComponentsExternalPackages: ["pdf-parse", "pdfjs-dist"],
+  },
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "**.supabase.co" },

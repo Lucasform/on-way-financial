@@ -23,18 +23,23 @@ export function OnboardingWizard({ userId }: { userId: string }) {
   async function createHousehold() {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("households")
-        .insert({ name: householdName.trim(), created_by: userId })
-        .select("id")
-        .single();
-      if (error || !data) throw error ?? new Error("falhou");
-      setHouseholdId(data.id);
-      document.cookie = `current_household_id=${data.id}; path=/; max-age=${60 * 60 * 24 * 365}`;
+      const res = await fetch("/api/onboarding/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: householdName.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      const { household_id } = (await res.json()) as { household_id: string };
+      setHouseholdId(household_id);
+      document.cookie = `current_household_id=${household_id}; path=/; max-age=${60 * 60 * 24 * 365}`;
       setStep(2);
     } catch (err) {
-      console.error(err);
-      toast.error("Não consegui criar a família.");
+      console.error("createHousehold error:", err);
+      const msg = err instanceof Error ? err.message : JSON.stringify(err);
+      toast.error(`Falha: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -54,7 +59,8 @@ export function OnboardingWizard({ userId }: { userId: string }) {
       setStep(3);
     } catch (err) {
       console.error(err);
-      toast.error("Não consegui salvar o perfil.");
+      const msg = err instanceof Error ? err.message : "Erro";
+      toast.error(`Falha ao salvar perfil: ${msg}`);
     } finally {
       setLoading(false);
     }

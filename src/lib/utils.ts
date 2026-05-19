@@ -37,6 +37,19 @@ export function slugify(input: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+export function sanitizeFilename(input: string): string {
+  const dot = input.lastIndexOf(".");
+  const base = dot > 0 ? input.slice(0, dot) : input;
+  const ext = dot > 0 ? input.slice(dot + 1).toLowerCase().replace(/[^a-z0-9]+/g, "") : "";
+  const safeBase = base
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "arquivo";
+  return ext ? `${safeBase}.${ext}` : safeBase;
+}
+
 export function normalizePhone(input: string): string {
   const digits = input.replace(/\D+/g, "");
   if (digits.startsWith("55")) return `+${digits}`;

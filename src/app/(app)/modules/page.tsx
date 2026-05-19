@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { ModuleCreateDialog } from "@/components/modules/module-create-dialog";
+import { ModuleDeleteButton } from "@/components/modules/module-delete-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
 import { Badge } from "@/components/ui/badge";
@@ -62,31 +63,38 @@ export default async function ModulesPage() {
               const used = totalsByModule[m.id] ?? 0;
               const pct = m.budget && m.budget > 0 ? Math.min(100, (used / Number(m.budget)) * 100) : 0;
               return (
-                <Link key={m.id} href={meta.href(m.id)}>
-                  <Card className="transition-colors hover:bg-bg-elev-2">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-base">{meta.emoji} {m.name}</CardTitle>
-                        <Badge variant={m.status === "active" ? "success" : "secondary"}>{m.status}</Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <div className="flex items-baseline justify-between text-sm">
-                        <span className="text-text-muted">Usado</span>
-                        <Money value={used} size="sm" />
-                      </div>
-                      <div className="flex items-baseline justify-between text-sm">
-                        <span className="text-text-muted">Orçamento</span>
-                        <Money value={m.budget} size="sm" tone="muted" />
-                      </div>
-                      {m.budget && (
-                        <div className="h-1.5 overflow-hidden rounded-full bg-bg-elev-2">
-                          <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                <div key={m.id} className="group relative">
+                  <Link href={meta.href(m.id)}>
+                    <Card className="transition-colors hover:bg-bg-elev-2">
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <CardTitle className="text-base">{meta.emoji} {m.name}</CardTitle>
+                          <Badge variant={m.status === "active" ? "success" : "secondary"}>{m.status}</Badge>
                         </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </Link>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <div className="flex items-baseline justify-between text-sm">
+                          <span className="text-text-muted">Usado</span>
+                          <Money value={used} size="sm" />
+                        </div>
+                        <div className="flex items-baseline justify-between text-sm">
+                          <span className="text-text-muted">Orçamento</span>
+                          <Money value={m.budget} size="sm" tone="muted" />
+                        </div>
+                        {m.budget && (
+                          <div className="h-1.5 overflow-hidden rounded-full bg-bg-elev-2">
+                            <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Link>
+                  {ctx.role !== "viewer" && (
+                    <div className="absolute right-2 top-2 z-10">
+                      <ModuleDeleteButton moduleId={m.id} moduleName={m.name} />
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

@@ -9,6 +9,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const env = getServerEnv();
+  if (!env.WHATSAPP_VERIFY_TOKEN) {
+    return new NextResponse("whatsapp not configured", { status: 503 });
+  }
   const params = req.nextUrl.searchParams;
   const mode = params.get("hub.mode");
   const token = params.get("hub.verify_token");
@@ -21,6 +24,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const env = getServerEnv();
+  if (!env.WHATSAPP_APP_SECRET) {
+    return new NextResponse("whatsapp not configured", { status: 503 });
+  }
   const raw = await req.text();
   const signature = req.headers.get("x-hub-signature-256") ?? "";
 

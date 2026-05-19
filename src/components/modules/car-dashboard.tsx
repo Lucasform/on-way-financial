@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Calculator, Car, Plus, Trash2 } from "lucide-react";
+import { Calculator, Car, Plus, Sparkles, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +12,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Money } from "@/components/ui/money";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
+
+interface TcoYear {
+  year: number;
+  fuel: number;
+  ipva: number;
+  insurance: number;
+  maintenance: number;
+  depreciation: number;
+  total: number;
+}
+interface TcoResult {
+  summary: string;
+  years: TcoYear[];
+  total_5y?: number;
+}
 
 interface Module { id: string; name: string; status: string; budget: number | null }
 interface Option {
@@ -105,46 +121,141 @@ export function CarDashboard({ module, options: initial, savings, canWrite }: { 
         <Empty icon={Car} title="Sem modelos ainda" description="Adicione um carro para comparar." />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
-          {options.map((o) => {
-            const sim = simulate(o);
-            return (
-              <Card key={o.id} className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-semibold">{o.model} {o.year && <span className="text-text-muted">· {o.year}</span>}</p>
-                    <Money value={o.price} size="lg" />
-                  </div>
-                  {canWrite && (
-                    <Button variant="ghost" size="icon" onClick={() => remove(o.id)}>
-                      <Trash2 className="h-4 w-4 text-danger" />
-                    </Button>
-                  )}
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                  <p className="text-text-muted">Entrada: <Money value={o.down_payment} size="sm" /></p>
-                  <p className="text-text-muted">Parcelas: {o.installments ?? "—"}</p>
-                  {sim && (
-                    <>
-                      <p className="text-text-muted">Parcela: <Money value={sim.installment} size="sm" /></p>
-                      <p className="text-text-muted">Custo total: <Money value={sim.totalCost} size="sm" tone="danger" /></p>
-                    </>
-                  )}
-                </div>
-                {(o.pros || o.cons) && (
-                  <div className="mt-3 grid gap-2 text-xs">
-                    {o.pros && <p>✅ {o.pros}</p>}
-                    {o.cons && <p>⚠️ {o.cons}</p>}
-                  </div>
-                )}
-                <div className="mt-3 flex items-center gap-2 text-xs text-text-muted">
-                  <Calculator className="h-3.5 w-3.5" /> Simulação PRICE (juros a.m.)
-                </div>
-              </Card>
-            );
-          })}
+          {options.map((o) => (
+            <CarOptionCard key={o.id} option={o} canWrite={canWrite} onRemove={() => remove(o.id)} />
+          ))}
         </div>
       )}
     </div>
+  );
+}
+
+function CarOptionCard({
+  option: o,
+  canWrite,
+  onRemove,
+}: {
+  option: Option;
+  canWrite: boolean;
+  onRemove: () => void;
+}) {
+  const [tco, setTco] = useState<TcoResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const sim = simulate(o);
+
+  async function analyze() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/ai/car-tco", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: o.model,
+          year: o.year,
+          price: Number(o.price),
+          km_per_year: 15000,
+          years: 5,
+        }),
+      });
+      if (!res.ok) throw new Error("Falha na IA");
+      const data = (await res.json()) as TcoResult;
+      setTco(data);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const total5y = tco?.total_5y ?? tco?.years.reduce((s, y) => s + y.total, 0) ?? 0;
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-semibold">
+            {o.model} {o.year && <span className="text-text-muted">· {o.year}</span>}
+          </p>
+          <Money value={o.price} size="lg" />
+        </div>
+        {canWrite && (
+          <Button variant="ghost" size="icon" onClick={onRemove}>
+            <Trash2 className="h-4 w-4 text-danger" />
+          </Button>
+        )}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <p className="text-text-muted">
+          Entrada: <Money value={o.down_payment} size="sm" />
+        </p>
+        <p className="text-text-muted">Parcelas: {o.installments ?? "—"}</p>
+        {sim && (
+          <>
+            <p className="text-text-muted">
+              Parcela: <Money value={sim.installment} size="sm" />
+            </p>
+            <p className="text-text-muted">
+              Custo financ.: <Money value={sim.totalCost} size="sm" tone="danger" />
+            </p>
+          </>
+        )}
+      </div>
+      {(o.pros || o.cons) && (
+        <div className="mt-3 grid gap-2 text-xs">
+          {o.pros && <p>✅ {o.pros}</p>}
+          {o.cons && <p>⚠️ {o.cons}</p>}
+        </div>
+      )}
+
+      <div className="mt-3 border-t border-border pt-3">
+        {!tco ? (
+          <Button variant="outline" size="sm" onClick={analyze} disabled={loading} className="w-full">
+            <Sparkles className="h-4 w-4" />
+            {loading ? "Analisando..." : "Análise 5 anos com IA"}
+          </Button>
+        ) : (
+          <div className="space-y-2 text-xs">
+            <p className="text-text-muted">{tco.summary}</p>
+            <div className="flex items-center justify-between">
+              <span className="font-semibold">Custo total 5 anos (TCO):</span>
+              <Money value={total5y} size="sm" tone="danger" className="num" />
+            </div>
+            <details className="text-text-muted">
+              <summary className="cursor-pointer">Detalhe ano a ano</summary>
+              <table className="mt-2 w-full text-[10px]">
+                <thead className="text-text-muted">
+                  <tr>
+                    <th className="text-left">Ano</th>
+                    <th className="text-right">Combust.</th>
+                    <th className="text-right">IPVA</th>
+                    <th className="text-right">Seguro</th>
+                    <th className="text-right">Manut.</th>
+                    <th className="text-right">Deprec.</th>
+                    <th className="text-right font-semibold">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tco.years.map((y) => (
+                    <tr key={y.year} className="border-t border-border">
+                      <td>{y.year}</td>
+                      <td className="text-right num">{y.fuel.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</td>
+                      <td className="text-right num">{y.ipva.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</td>
+                      <td className="text-right num">{y.insurance.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</td>
+                      <td className="text-right num">{y.maintenance.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</td>
+                      <td className="text-right num">{y.depreciation.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</td>
+                      <td className="text-right num font-semibold text-text">{y.total.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+            <Button variant="ghost" size="sm" onClick={() => setTco(null)} className="text-[10px]">
+              Refazer análise
+            </Button>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 
