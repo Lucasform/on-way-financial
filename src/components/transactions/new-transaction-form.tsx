@@ -64,7 +64,7 @@ export function NewTransactionForm({ userId, householdId, categories, methods, m
     resolver: zodResolver(schema),
     defaultValues: {
       type: "expense",
-      amount: 0,
+      amount: undefined as unknown as number,
       description: "",
       occurred_at: todayISO(),
       category_id: "",
@@ -218,6 +218,7 @@ export function NewTransactionForm({ userId, householdId, categories, methods, m
               min="0"
               inputMode="decimal"
               autoFocus
+              placeholder="0,00"
               className="num h-14 text-2xl font-semibold"
               {...form.register("amount")}
             />

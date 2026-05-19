@@ -1,16 +1,16 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  Boxes,
   CalendarClock,
   CreditCard,
   PiggyBank,
-  Plus,
   Sparkles,
   TrendingDown,
   TrendingUp,
   Wallet,
 } from "lucide-react";
+
+import { FeaturedModule, type FeaturedModuleData } from "@/components/modules/featured-module";
 
 import { CategoryDonut } from "@/components/charts/category-donut";
 import { DailyBars } from "@/components/charts/daily-bars";
@@ -114,14 +114,10 @@ export default async function OverviewPage({ searchParams }: { searchParams: Sea
     }
   }
 
-  const MODULE_META: Record<string, { emoji: string; href: (id: string) => string }> = {
-    obra: { emoji: "🧱", href: (id) => `/modules/obra/${id}` },
-    travel: { emoji: "✈️", href: (id) => `/modules/travel/${id}` },
-    car: { emoji: "🚗", href: (id) => `/modules/car/${id}` },
-    gift: { emoji: "🎁", href: (id) => `/modules/gift/${id}` },
-    education: { emoji: "🎓", href: (id) => `/modules/education/${id}` },
-    custom: { emoji: "✨", href: (id) => `/modules/custom/${id}` },
-  };
+  const featuredModulesData: FeaturedModuleData[] = activeModules.map((m) => ({
+    ...m,
+    used: moduleTotals[m.id] ?? 0,
+  }));
 
   const list = (txMonth.data ?? []) as Array<{
     id: string;
@@ -341,66 +337,8 @@ export default async function OverviewPage({ searchParams }: { searchParams: Sea
         </section>
       )}
 
-      {/* Módulos ativos */}
-      {activeModules.length > 0 && (
-        <section>
-          <header className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Boxes className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Meus módulos</h2>
-            </div>
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/modules">
-                Ver todos <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          </header>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {activeModules.map((m) => {
-              const meta = MODULE_META[m.kind] ?? MODULE_META.custom!;
-              const used = moduleTotals[m.id] ?? 0;
-              const pct = m.budget && Number(m.budget) > 0 ? Math.min(100, (used / Number(m.budget)) * 100) : 0;
-              return (
-                <Link
-                  key={m.id}
-                  href={meta.href(m.id)}
-                  className="surface-elevated group block p-4 transition-colors hover:bg-bg-elev-2"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-semibold">
-                      <span className="mr-1">{meta.emoji}</span>
-                      {m.name}
-                    </p>
-                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-text-muted transition-transform group-hover:translate-x-0.5" />
-                  </div>
-                  <div className="mt-2 flex items-baseline justify-between text-xs text-text-muted">
-                    <span>Usado</span>
-                    <Money value={used} size="sm" />
-                  </div>
-                  <div className="flex items-baseline justify-between text-xs text-text-muted">
-                    <span>Orçamento</span>
-                    <Money value={m.budget} size="sm" tone="muted" />
-                  </div>
-                  {m.budget && Number(m.budget) > 0 && (
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-bg-elev-2">
-                      <div
-                        className={pct >= 100 ? "h-full bg-danger" : pct >= 80 ? "h-full bg-warning" : "h-full bg-primary"}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  )}
-                </Link>
-              );
-            })}
-            <Link
-              href="/modules"
-              className="surface flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border p-4 text-sm text-text-muted transition-colors hover:border-primary hover:text-primary"
-            >
-              <Plus className="h-4 w-4" /> Novo módulo
-            </Link>
-          </div>
-        </section>
-      )}
+      {/* Módulo em destaque */}
+      <FeaturedModule modules={featuredModulesData} />
 
       {/* Recent transactions */}
       <section>
