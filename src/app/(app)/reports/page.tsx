@@ -123,7 +123,7 @@ export default async function ReportsPage() {
       {/* Trend chart */}
       <article className="surface-elevated p-5">
         <header className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Receitas vs Despesas — 12 meses</h2>
+          <h2 className="text-sm font-semibold">Receitas vs Despesas · 12 meses</h2>
           <span className="text-xs text-text-muted">
             Balanço total:{" "}
             <Money value={totalBalance} tone={totalBalance >= 0 ? "success" : "danger"} size="sm" className="num" />

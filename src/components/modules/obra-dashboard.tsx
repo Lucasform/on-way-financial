@@ -452,7 +452,7 @@ function Gallery({ moduleId, householdId, initial, canWrite }: { moduleId: strin
         <Empty
           icon={Camera}
           title="Galeria da obra vazia"
-          description="Bora registrar essa transformação 📸 — fotos e vídeos pra deixar o sonho documentado."
+          description="Bora registrar essa transformação 📸 com fotos e vídeos pra deixar o sonho documentado."
         />
       ) : (
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">

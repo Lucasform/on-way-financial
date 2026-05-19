@@ -18,15 +18,15 @@ export function tgHelpMessage(): string {
     "🤖 *ON WAY FINANCIAL*",
     "",
     "*Comandos:*",
-    "• `/despesa 50 mercado #Mercado @pix` — registra despesa",
-    "• `/receita 5000 salário #Salário` — registra receita",
-    "• `/saldo` — resumo do mês",
-    "• `/categorias` — lista categorias",
-    "• `/metodos` — lista métodos de pagamento",
-    "• `/obra 230 cimento` — atalho para obra ativa",
-    "• `/viagem 800 voo` — atalho para viagem ativa",
-    "• `/cancelar` — desfaz última transação (5 min)",
-    "• `/ajuda` — este menu",
+    "• `/despesa 50 mercado #Mercado @pix` ·registra despesa",
+    "• `/receita 5000 salário #Salário` ·registra receita",
+    "• `/saldo` ·resumo do mês",
+    "• `/categorias` ·lista categorias",
+    "• `/metodos` ·lista métodos de pagamento",
+    "• `/obra 230 cimento` ·atalho para obra ativa",
+    "• `/viagem 800 voo` ·atalho para viagem ativa",
+    "• `/cancelar` ·desfaz última transação (5 min)",
+    "• `/ajuda` ·este menu",
     "",
     "Ou apenas escreva: _gastei 50 no mercado ontem pix_ que eu entendo.",
   ].join("\n");
@@ -43,7 +43,7 @@ export function tgConfirmTransaction(args: {
   const verb = args.type === "income" ? "Receita" : "Despesa";
   return [
     `✅ *${verb} registrada*`,
-    `💰 ${formatBRL(args.amount)}${args.description ? ` — ${safe(args.description)}` : ""}`,
+    `💰 ${formatBRL(args.amount)}${args.description ? ` ·${safe(args.description)}` : ""}`,
     args.categoryName ? `🏷️ ${safe(args.categoryName)}` : null,
     args.paymentName ? `💳 ${safe(args.paymentName)}` : null,
     `📅 ${fmtRelative(args.occurredAt)}`,
@@ -63,7 +63,7 @@ export function tgWelcomeNotLinked(appUrl: string): string {
     `Pra vincular:`,
     `1. Abra ${appUrl}/settings`,
     "2. Em *Telegram*, clique em *Conectar*",
-    "3. Será gerado um link `/start <código>` — abra ele aqui mesmo.",
+    "3. Será gerado um link `/start <código>` ·abra ele aqui mesmo.",
   ].join("\n");
 }
 

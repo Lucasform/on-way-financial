@@ -488,7 +488,7 @@ async function dispatchLargeExpenseAlert(householdId: string, amount: number): P
         if (t.whatsapp_phone) {
           await sendWhatsAppText(
             t.whatsapp_phone,
-            `🚨 *Alerta — ${rule.name}*\nDespesa grande detectada: ${formatBRL(amount)}.`,
+            `🚨 *Alerta · ${rule.name}*\nDespesa grande detectada: ${formatBRL(amount)}.`,
           );
         }
       }

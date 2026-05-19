@@ -516,7 +516,7 @@ async function dispatchLargeExpenseAlert(householdId: string, amount: number): P
         if (t.telegram_chat_id) {
           await sendTelegramText(
             t.telegram_chat_id,
-            `🚨 *Alerta — ${rule.name}*\nDespesa grande detectada: ${formatBRL(amount)}.`,
+            `🚨 *Alerta · ${rule.name}*\nDespesa grande detectada: ${formatBRL(amount)}.`,
           );
         }
       }
