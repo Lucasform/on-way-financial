@@ -61,7 +61,7 @@ export default function LandingPage() {
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-balance text-base text-text-muted sm:text-lg">
           Lance gastos por mensagem, acompanhe a obra em fases, planeje a viagem do ano e
-          mantenha toda a família alinhada — sem planilha, sem caderninho, sem perder de
+          mantenha toda a família alinhada. Sem planilha, sem caderninho, sem perder de
           vista pra onde o dinheiro foi.
         </p>
 
@@ -70,9 +70,6 @@ export default function LandingPage() {
             <Link href="/login">
               Criar conta grátis <ArrowRight className="h-4 w-4" />
             </Link>
-          </Button>
-          <Button asChild variant="outline" size="lg" className="w-full sm:w-auto">
-            <Link href="/preview">Ver demo (sem login)</Link>
           </Button>
         </div>
 
@@ -95,7 +92,7 @@ export default function LandingPage() {
             <ChatLine>
               ✅ <strong>Despesa registrada</strong>
               <br />
-              💰 R$ 80,00 — posto
+              💰 R$ 80,00 · posto
               <br />
               🏷️ Transporte · 💳 Crédito · 📅 ontem
             </ChatLine>
@@ -186,7 +183,7 @@ export default function LandingPage() {
       {/* Features grid */}
       <section className="mx-auto max-w-6xl px-6 pb-20">
         <h2 className="text-center text-2xl font-semibold sm:text-3xl">
-          Tudo que você esperaria de um app de banco — e mais
+          Tudo que você esperaria de um app de banco, e mais
         </h2>
         <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Feature
@@ -202,7 +199,7 @@ export default function LandingPage() {
           <Feature
             icon={<MessageSquare className="h-5 w-5 text-primary" />}
             title="Bot inteligente"
-            desc="Linguagem natural com IA — 'comprei pão 8 reais' vira despesa em Alimentação."
+            desc="Linguagem natural com IA. 'Comprei pão 8 reais' vira despesa em Alimentação."
           />
           <Feature
             icon={<Bell className="h-5 w-5 text-warning" />}
