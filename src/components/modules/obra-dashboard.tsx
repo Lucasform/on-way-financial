@@ -119,7 +119,7 @@ export function ObraDashboard({ module, phases, workers, gallery, transactions, 
       </section>
 
       <Tabs defaultValue="phases">
-        <TabsList className="flex flex-wrap">
+        <TabsList>
           <TabsTrigger value="phases">Fases</TabsTrigger>
           <TabsTrigger value="items">Materiais</TabsTrigger>
           <TabsTrigger value="diary">Diário</TabsTrigger>

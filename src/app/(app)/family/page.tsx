@@ -23,8 +23,8 @@ export default async function FamilyPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-semibold">Família</h1>
-        <p className="text-sm text-text-muted">Gerencie membros, papéis e convites.</p>
+        <h1 className="text-2xl font-semibold">Grupo financeiro</h1>
+        <p className="text-sm text-text-muted">Convide pessoas pra ver e lançar transações junto com você.</p>
       </header>
       <FamilyManager
         householdId={ctx.householdId}

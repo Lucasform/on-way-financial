@@ -134,7 +134,7 @@ export function TravelDashboard({
       </section>
 
       <Tabs defaultValue="itinerary">
-        <TabsList className="flex flex-wrap">
+        <TabsList>
           <TabsTrigger value="itinerary">Itinerário</TabsTrigger>
           <TabsTrigger value="reservations">Reservas</TabsTrigger>
           <TabsTrigger value="checklist">Checklist</TabsTrigger>

@@ -28,12 +28,12 @@ export function HouseholdSwitcher({ ctx }: { ctx: ActiveContext }) {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" className="gap-2 px-2">
           <Home className="h-4 w-4 text-primary" />
-          <span className="max-w-[180px] truncate text-sm font-medium">{current?.name ?? "Família"}</span>
+          <span className="max-w-[180px] truncate text-sm font-medium">{current?.name ?? "Meu grupo"}</span>
           <ChevronsUpDown className="h-3.5 w-3.5 text-text-muted" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        <DropdownMenuLabel>Suas famílias</DropdownMenuLabel>
+        <DropdownMenuLabel>Seus grupos</DropdownMenuLabel>
         {ctx.households.map((h) => (
           <DropdownMenuItem key={h.id} onSelect={() => pick(h.id)}>
             <span className="truncate">{h.name}</span>
@@ -42,7 +42,7 @@ export function HouseholdSwitcher({ ctx }: { ctx: ActiveContext }) {
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => router.push("/onboarding")}>+ Criar nova família</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => router.push("/onboarding")}>+ Novo grupo financeiro</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
