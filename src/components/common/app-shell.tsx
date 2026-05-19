@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Bell,
   Boxes,
@@ -45,6 +45,19 @@ const MOBILE_NAV = [
   { href: "/reports", label: "Relatórios", icon: LineChart },
 ];
 
+const MODULE_EMOJI: Record<string, string> = {
+  obra: "🧱",
+  travel: "✈️",
+  car: "🚗",
+  gift: "🎁",
+  education: "🎓",
+  custom: "✨",
+};
+
+function moduleHref(kind: string, id: string): string {
+  return `/modules/${kind}/${id}`;
+}
+
 const MORE_NAV = [
   { href: "/modules", label: "Módulos", icon: Boxes },
   { href: "/import", label: "Importar extrato", icon: FileUp },
@@ -59,6 +72,26 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
   const pathname = usePathname() ?? "";
   const router = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
+
+  // Módulo destacado: lê do localStorage (gravado pelo FeaturedModule no overview)
+  const [featuredId, setFeaturedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    function readPin() {
+      try {
+        const saved = localStorage.getItem("onway-featured-module");
+        setFeaturedId(saved && ctx.activeModules.some((m) => m.id === saved) ? saved : null);
+      } catch {
+        setFeaturedId(null);
+      }
+    }
+    readPin();
+    window.addEventListener("storage", readPin);
+    return () => window.removeEventListener("storage", readPin);
+  }, [ctx.activeModules]);
+
+  const featuredModule =
+    ctx.activeModules.find((m) => m.id === featuredId) ?? ctx.activeModules[0] ?? null;
   return (
     <div className="min-h-dvh bg-bg">
       {/* Sidebar desktop */}
@@ -111,8 +144,8 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
         </div>
       </header>
 
-      <main className="px-4 pb-28 pt-6 md:pl-72 md:pr-6">
-        <div className="mx-auto max-w-6xl">{children}</div>
+      <main className="px-3 pb-28 pt-5 sm:px-4 sm:pt-6 md:pl-72 md:pr-6">
+        <div className="mx-auto w-full max-w-md sm:max-w-6xl">{children}</div>
       </main>
 
       {/* FAB mobile */}
@@ -126,7 +159,12 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
       </Button>
 
       {/* Bottom nav mobile */}
-      <nav className="glass fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-border md:hidden">
+      <nav
+        className={cn(
+          "glass fixed inset-x-0 bottom-0 z-20 grid border-t border-border md:hidden",
+          featuredModule ? "grid-cols-5" : "grid-cols-4",
+        )}
+      >
         {MOBILE_NAV.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;
@@ -144,6 +182,23 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
             </Link>
           );
         })}
+        {featuredModule && (
+          <Link
+            href={moduleHref(featuredModule.kind, featuredModule.id)}
+            className={cn(
+              "flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
+              pathname.startsWith(`/modules/${featuredModule.kind}/${featuredModule.id}`)
+                ? "text-primary"
+                : "text-text-muted",
+            )}
+            title={featuredModule.name}
+          >
+            <span className="text-lg leading-5">
+              {MODULE_EMOJI[featuredModule.kind] ?? "✨"}
+            </span>
+            <span className="max-w-[60px] truncate">{featuredModule.name}</span>
+          </Link>
+        )}
         <button
           type="button"
           onClick={() => setMoreOpen(true)}

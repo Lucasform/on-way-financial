@@ -150,14 +150,6 @@ export function SettingsPanel({
       </Card>
 
       <Card className="p-4">
-        <h2 className="mb-3 text-base font-semibold">Aparência</h2>
-        <p className="text-sm text-text-muted">
-          Use o ícone de sol/lua no canto superior direito pra alternar entre tema claro e escuro.
-          Sua preferência fica salva no navegador.
-        </p>
-      </Card>
-
-      <Card className="p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-semibold">Telegram</h2>
           {tgChatId ? <Badge variant="success">vinculado</Badge> : <Badge variant="secondary">desvinculado</Badge>}

@@ -1,4 +1,8 @@
+import Link from "next/link";
+import { Plus } from "lucide-react";
+
 import { FamilyManager } from "@/components/common/family-manager";
+import { Button } from "@/components/ui/button";
 import { loadActiveContext } from "@/lib/household";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
@@ -22,9 +26,16 @@ export default async function FamilyPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Grupo financeiro</h1>
-        <p className="text-sm text-text-muted">Convide pessoas pra ver e lançar transações junto com você.</p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Grupo financeiro</h1>
+          <p className="text-sm text-text-muted">Convide pessoas pra ver e lançar transações junto com você.</p>
+        </div>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/onboarding">
+            <Plus className="h-4 w-4" /> Novo grupo financeiro
+          </Link>
+        </Button>
       </header>
       <FamilyManager
         householdId={ctx.householdId}

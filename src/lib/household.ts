@@ -12,6 +12,7 @@ export interface ActiveContext {
   householdId: string;
   role: HouseholdRole;
   households: { id: string; name: string; role: HouseholdRole }[];
+  activeModules: { id: string; kind: string; name: string }[];
 }
 
 /**
@@ -40,18 +41,26 @@ export async function loadActiveContext(): Promise<ActiveContext | null> {
       .filter((x): x is { id: string; name: string; role: HouseholdRole } => x !== null) ?? [];
 
   if (households.length === 0) {
-    return { userId: user.id, householdId: "", role: "viewer", households: [] };
+    return { userId: user.id, householdId: "", role: "viewer", households: [], activeModules: [] };
   }
 
   const cookieStore = cookies();
   const fromCookie = cookieStore.get(HOUSEHOLD_COOKIE)?.value;
   const active = households.find((h) => h.id === fromCookie) ?? households[0]!;
 
+  const { data: mods } = await supabase
+    .from("modules")
+    .select("id, kind, name")
+    .eq("household_id", active.id)
+    .eq("status", "active")
+    .order("created_at", { ascending: false });
+
   return {
     userId: user.id,
     householdId: active.id,
     role: active.role,
     households,
+    activeModules: (mods ?? []) as { id: string; kind: string; name: string }[],
   };
 }
 
