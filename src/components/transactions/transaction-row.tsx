@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { CategoryIcon } from "@/components/common/category-icon";
@@ -86,15 +86,25 @@ export function TransactionRow({ tx }: { tx: TxRow }) {
           </Badge>
         )}
       </div>
-      <button
-        type="button"
-        onClick={handleDelete}
-        disabled={pending || deleting}
-        aria-label="Excluir transação"
-        className="relative z-10 flex h-8 w-8 items-center justify-center rounded-md text-text-muted opacity-0 transition-all hover:bg-danger/10 hover:text-danger focus:opacity-100 group-hover:opacity-100 disabled:opacity-50"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
+      <div className="relative z-10 flex items-center gap-0.5">
+        <Link
+          href={`/transactions/${tx.id}/edit`}
+          onClick={(e) => e.stopPropagation()}
+          aria-label="Editar transação"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted opacity-0 transition-all hover:bg-primary/10 hover:text-primary focus:opacity-100 group-hover:opacity-100"
+        >
+          <Pencil className="h-4 w-4" />
+        </Link>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={pending || deleting}
+          aria-label="Excluir transação"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted opacity-0 transition-all hover:bg-danger/10 hover:text-danger focus:opacity-100 group-hover:opacity-100 disabled:opacity-50"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   );
 }

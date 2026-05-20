@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
-import { ChevronDown, ChevronRight, ExternalLink, Hammer, Pencil, Save, X } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, Hammer, Pencil, Save, Settings2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -236,7 +237,7 @@ function ExpenseDetails({
       </div>
 
       {canWrite && (
-        <div className="mt-3 flex justify-end gap-2">
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
           {editing ? (
             <>
               <Button size="sm" variant="ghost" onClick={cancel} disabled={pending}>
@@ -247,9 +248,16 @@ function ExpenseDetails({
               </Button>
             </>
           ) : (
-            <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
-              <Pencil className="h-4 w-4" /> Editar
-            </Button>
+            <>
+              <Button size="sm" variant="ghost" asChild>
+                <Link href={`/transactions/${tx.id}/edit`}>
+                  <Settings2 className="h-4 w-4" /> Editar tudo
+                </Link>
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                <Pencil className="h-4 w-4" /> Editar fornecedor/notas
+              </Button>
+            </>
           )}
         </div>
       )}
