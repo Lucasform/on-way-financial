@@ -65,6 +65,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     description: string | null;
     occurred_at: string;
     source: string;
+    notes: string | null;
     installment_number: number | null;
     installments_total: number | null;
     categories: { name: string; color: string | null; icon: string | null } | null;

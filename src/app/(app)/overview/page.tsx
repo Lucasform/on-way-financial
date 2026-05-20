@@ -57,7 +57,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Sea
     supabase
       .from("transactions")
       .select(
-        "id, type, amount, occurred_at, description, category_id, payment_method_id, source, installment_number, installments_total, categories:categories(name,color,icon), payment_methods:payment_methods(name,kind)",
+        "id, type, amount, occurred_at, description, category_id, payment_method_id, source, notes, installment_number, installments_total, categories:categories(name,color,icon), payment_methods:payment_methods(name,kind)",
       )
       .eq("household_id", ctx.householdId)
       .gte("occurred_at", monthStartStr)
@@ -126,6 +126,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Sea
     description: string | null;
     occurred_at: string;
     source: string;
+    notes: string | null;
     installment_number: number | null;
     installments_total: number | null;
     categories: { name: string; color: string | null; icon: string | null } | null;
