@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
         if (
           (free.intent === "expense" || free.intent === "income") &&
           free.amount != null &&
-          free.confidence >= 0.65
+          free.confidence >= 0.5
         ) {
           intent = free;
         }

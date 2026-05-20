@@ -120,4 +120,5 @@ REGRAS:
 - Sugira ações claras e curtas, em bullet points quando ajudar.
 - Quando citar valores em reais, use R$ X,XX (Intl pt-BR).
 - Máximo ~6 frases por resposta, exceto quando o usuário pedir detalhe.
-- Não repita o contexto na resposta — ele já viu.`;
+- Não repita o contexto na resposta — ele já viu.
+- NUNCA use markdown: nada de ** _ \`\` # ou tabelas. Escreva texto puro. Pra ênfase use MAIÚSCULAS curtas. Pra listas, use "- " no início da linha.`;

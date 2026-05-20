@@ -13,6 +13,21 @@ interface Msg {
   content: string;
 }
 
+// Renderiza marcas leves (**bold**, *italic*) caso o modelo deslize.
+function renderInline(text: string): React.ReactNode {
+  const cleaned = text.replace(/^#{1,6}\s+/gm, "").replace(/`([^`]+)`/g, "$1");
+  const parts = cleaned.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*)/g);
+  return parts.map((p, i) => {
+    if (p.startsWith("**") && p.endsWith("**")) {
+      return <strong key={i}>{p.slice(2, -2)}</strong>;
+    }
+    if (p.startsWith("*") && p.endsWith("*") && p.length > 2) {
+      return <em key={i}>{p.slice(1, -1)}</em>;
+    }
+    return <span key={i}>{p}</span>;
+  });
+}
+
 const SUGGESTIONS = [
   "Quanto gastei em alimentação esse mês?",
   "Gastei 50 no mercado hoje",
@@ -150,7 +165,7 @@ export function AssistantFab() {
                     : "rounded-tl-sm bg-bg-elev-2 text-text",
                 )}
               >
-                {m.content}
+                {m.role === "assistant" ? renderInline(m.content) : m.content}
               </div>
             </div>
           ))}
