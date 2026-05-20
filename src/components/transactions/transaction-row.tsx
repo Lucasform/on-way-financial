@@ -18,10 +18,27 @@ export interface TxRow {
   description: string | null;
   occurred_at: string;
   source: string;
+  notes: string | null;
   installment_number: number | null;
   installments_total: number | null;
   categories: { name: string; color: string | null; icon: string | null } | null;
   payment_methods: { name: string; kind: string } | null;
+}
+
+const ORIGIN_LABEL: Record<string, string> = {
+  ai_chat: "IA",
+  telegram: "Telegram",
+  whatsapp: "WhatsApp",
+};
+
+function detectOrigin(tx: { source: string; notes: string | null }): string | null {
+  if (tx.notes) {
+    const m = tx.notes.match(/^\[origem:(ai_chat|telegram|whatsapp)\]/);
+    if (m) return m[1]!;
+  }
+  if (tx.source === "web") return null; // manual sem badge
+  if (tx.source === "whatsapp") return "whatsapp"; // legado
+  return tx.source;
 }
 
 export function TransactionRow({ tx }: { tx: TxRow }) {
@@ -31,6 +48,8 @@ export function TransactionRow({ tx }: { tx: TxRow }) {
   const isIncome = tx.type === "income";
   const isTransfer = tx.type === "transfer";
   const title = tx.description || tx.categories?.name || (isIncome ? "Receita" : "Despesa");
+  const origin = detectOrigin(tx);
+  const originLabel = origin ? ORIGIN_LABEL[origin] ?? origin : null;
 
   function handleDelete(e: React.MouseEvent) {
     e.preventDefault();
@@ -80,9 +99,9 @@ export function TransactionRow({ tx }: { tx: TxRow }) {
           size="sm"
           className="num font-medium"
         />
-        {tx.source !== "web" && (
+        {originLabel && (
           <Badge variant="accent" className="px-1.5 py-0 text-[10px] uppercase">
-            {tx.source}
+            {originLabel}
           </Badge>
         )}
       </div>

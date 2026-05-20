@@ -165,7 +165,8 @@ async function createTransactionFromParsed(
       payment_method_id: paymentMethodId,
       module_kind: (moduleRef?.kind as "obra" | "travel" | "car" | "gift" | "education" | "custom" | undefined) ?? null,
       module_id: moduleRef?.id ?? null,
-      source: "whatsapp", // unificamos com canal externo; usar "telegram" exigiria alterar enum/check
+      source: "whatsapp", // mantemos o source legado por causa do check do DB
+      notes: "[origem:telegram]",
       created_by: member.user_id,
     })
     .select("id")

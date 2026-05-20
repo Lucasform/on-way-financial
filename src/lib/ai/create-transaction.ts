@@ -6,11 +6,14 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 import type { ParsedIntent } from "@/lib/ai/parser";
 
+export type TxOrigin = "ai_chat" | "telegram" | "whatsapp";
+
 export async function createTransactionFromIntent(args: {
   householdId: string;
   userId: string;
   intent: ParsedIntent;
   moduleOverride?: { id: string; kind: string } | null;
+  origin?: TxOrigin;
 }): Promise<{ ok: true; reply: string } | { ok: false; reply: string }> {
   const { householdId, userId, intent } = args;
   if (intent.amount == null) return { ok: false, reply: "Não consegui identificar o valor." };
@@ -27,6 +30,11 @@ export async function createTransactionFromIntent(args: {
         ? await findActiveModule(householdId, intent.module_hint)
         : null;
 
+  // O DB tem CHECK constraint em source (so aceita web/whatsapp/import).
+  // Marcamos a origem real como prefixo no notes; UI parseia pra mostrar o badge correto.
+  const originTag = args.origin ? `[origem:${args.origin}]` : null;
+  const notes = originTag;
+
   const { error } = await admin.from("transactions").insert({
     household_id: householdId,
     type: intent.intent === "income" ? "income" : "expense",
@@ -37,6 +45,7 @@ export async function createTransactionFromIntent(args: {
     payment_method_id: paymentMethodId,
     module_kind: (moduleRef?.kind as "obra" | "travel" | "car" | "gift" | "education" | "custom" | undefined) ?? null,
     module_id: moduleRef?.id ?? null,
+    notes,
     source: "whatsapp",
     created_by: userId,
   });

@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
         userId: ctx.userId,
         intent: pending,
         moduleOverride: null,
+        origin: "ai_chat",
       });
       return NextResponse.json({ reply: r.reply });
     }
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
         userId: ctx.userId,
         intent: pending,
         moduleOverride: { id: matched.id, kind: matched.kind },
+        origin: "ai_chat",
       });
       return NextResponse.json({ reply: r.reply });
     }
@@ -95,6 +97,7 @@ export async function POST(req: NextRequest) {
             householdId: ctx.householdId,
             userId: ctx.userId,
             intent,
+            origin: "ai_chat",
           });
           return NextResponse.json({ reply: r.reply });
         }
@@ -112,6 +115,7 @@ export async function POST(req: NextRequest) {
           userId: ctx.userId,
           intent,
           moduleOverride: null,
+          origin: "ai_chat",
         });
         return NextResponse.json({ reply: r.reply });
       }

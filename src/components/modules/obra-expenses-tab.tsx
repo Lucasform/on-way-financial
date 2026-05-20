@@ -35,21 +35,29 @@ interface Props {
   canWrite: boolean;
 }
 
-// Extrai "Fornecedor: X" da primeira linha de notes (sintaxe usada pelo form).
-function parseSupplier(notes: string | null): { supplier: string | null; rest: string | null } {
-  if (!notes) return { supplier: null, rest: null };
-  const lines = notes.split("\n");
-  const first = lines[0]?.trim() ?? "";
-  const m = first.match(/^Fornecedor:\s*(.+)$/i);
-  if (m) {
-    const rest = lines.slice(1).join("\n").trim();
-    return { supplier: m[1]!.trim(), rest: rest || null };
+// Extrai metadados embutidos no notes: [origem:X] e Fornecedor: Y
+function parseNotes(notes: string | null): { origin: string | null; supplier: string | null; rest: string | null } {
+  if (!notes) return { origin: null, supplier: null, rest: null };
+  let working = notes;
+  let origin: string | null = null;
+  const om = working.match(/^\[origem:([a-z_]+)\]\s*\n?/i);
+  if (om) {
+    origin = om[1]!;
+    working = working.slice(om[0].length);
   }
-  return { supplier: null, rest: notes };
+  const lines = working.split("\n");
+  const first = lines[0]?.trim() ?? "";
+  const sm = first.match(/^Fornecedor:\s*(.+)$/i);
+  if (sm) {
+    const rest = lines.slice(1).join("\n").trim();
+    return { origin, supplier: sm[1]!.trim(), rest: rest || null };
+  }
+  return { origin, supplier: null, rest: working.trim() || null };
 }
 
-function buildNotes(supplier: string | null, rest: string | null): string | null {
+function buildNotes(origin: string | null, supplier: string | null, rest: string | null): string | null {
   const parts = [
+    origin ? `[origem:${origin}]` : null,
     supplier ? `Fornecedor: ${supplier}` : null,
     rest || null,
   ].filter(Boolean);
@@ -80,7 +88,7 @@ export function ObraExpensesTab({ transactions, canWrite }: Props) {
         <ul className="divide-y divide-border">
           {items.map((t) => {
             const isOpen = expandedId === t.id;
-            const { supplier } = parseSupplier(t.notes);
+            const { supplier } = parseNotes(t.notes);
             return (
               <li key={t.id}>
                 <button
@@ -133,7 +141,7 @@ function ExpenseDetails({
   onChange: (patch: Partial<ObraTx>) => void;
 }) {
   const supabase = createSupabaseBrowser();
-  const parsed = parseSupplier(tx.notes);
+  const parsed = parseNotes(tx.notes);
   const [editing, setEditing] = useState(false);
   const [supplier, setSupplier] = useState(parsed.supplier ?? "");
   const [restNotes, setRestNotes] = useState(parsed.rest ?? "");
@@ -141,7 +149,7 @@ function ExpenseDetails({
 
   function save() {
     if (!canWrite) return;
-    const newNotes = buildNotes(supplier.trim() || null, restNotes.trim() || null);
+    const newNotes = buildNotes(parsed.origin, supplier.trim() || null, restNotes.trim() || null);
     start(async () => {
       const { error } = await supabase
         .from("transactions")

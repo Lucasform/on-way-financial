@@ -38,17 +38,28 @@ const KIND_EMOJI: Record<string, string> = {
   custom: "✨",
 };
 
-function parseSupplierFromNotes(notes: string | null): { supplier: string; rest: string } {
-  if (!notes) return { supplier: "", rest: "" };
-  const lines = notes.split("\n");
+function parseSupplierFromNotes(notes: string | null): { origin: string | null; supplier: string; rest: string } {
+  if (!notes) return { origin: null, supplier: "", rest: "" };
+  let working = notes;
+  let origin: string | null = null;
+  const om = working.match(/^\[origem:([a-z_]+)\]\s*\n?/i);
+  if (om) {
+    origin = om[1]!;
+    working = working.slice(om[0].length);
+  }
+  const lines = working.split("\n");
   const first = lines[0]?.trim() ?? "";
   const m = first.match(/^Fornecedor:\s*(.+)$/i);
-  if (m) return { supplier: m[1]!.trim(), rest: lines.slice(1).join("\n").trim() };
-  return { supplier: "", rest: notes };
+  if (m) return { origin, supplier: m[1]!.trim(), rest: lines.slice(1).join("\n").trim() };
+  return { origin, supplier: "", rest: working };
 }
 
-function buildNotes(supplier: string, rest: string): string | null {
-  const parts = [supplier.trim() ? `Fornecedor: ${supplier.trim()}` : null, rest.trim() || null].filter(Boolean);
+function buildNotes(origin: string | null, supplier: string, rest: string): string | null {
+  const parts = [
+    origin ? `[origem:${origin}]` : null,
+    supplier.trim() ? `Fornecedor: ${supplier.trim()}` : null,
+    rest.trim() || null,
+  ].filter(Boolean);
   return parts.length ? parts.join("\n") : null;
 }
 
@@ -106,7 +117,7 @@ export function EditTransactionForm({ tx, categories, methods, modules }: Props)
     const moduleSelected = modules.find((m) => m.id === values.module_id);
     const supplierClean = moduleSelected && values.supplier?.trim() ? values.supplier.trim() : "";
     const restNotes = values.notes ?? "";
-    const notesCombined = buildNotes(supplierClean, restNotes);
+    const notesCombined = buildNotes(initialParsed.origin, supplierClean, restNotes);
 
     start(async () => {
       const { error } = await supabase

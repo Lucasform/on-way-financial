@@ -32,7 +32,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   let q = supabase
     .from("transactions")
     .select(
-      "id, type, amount, description, occurred_at, source, installment_number, installments_total, categories:categories(name,color,icon), payment_methods:payment_methods(name,kind)",
+      "id, type, amount, description, occurred_at, source, notes, installment_number, installments_total, categories:categories(name,color,icon), payment_methods:payment_methods(name,kind)",
       { count: "exact" },
     )
     .eq("household_id", ctx.householdId)
