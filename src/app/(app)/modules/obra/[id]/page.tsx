@@ -23,7 +23,9 @@ export default async function ObraPage({ params }: { params: { id: string } }) {
       supabase.from("obra_gallery").select("*").eq("module_id", params.id).order("taken_at", { ascending: false }),
       supabase
         .from("transactions")
-        .select("id, amount, description, occurred_at, category_id, categories:categories(name,color)")
+        .select(
+          "id, amount, description, occurred_at, category_id, supplier, notes, receipt_url, installment_number, installments_total, payment_method_id, source, categories:categories(name,color), payment_methods:payment_methods(name,kind)",
+        )
         .eq("household_id", ctx.householdId)
         .eq("module_id", params.id)
         .order("occurred_at", { ascending: false }),

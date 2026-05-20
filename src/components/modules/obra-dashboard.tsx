@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Camera, Hammer, MessageSquare, Plus, Send, Trash2 } from "lucide-react";
+import { Camera, MessageSquare, Plus, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -15,9 +15,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Empty } from "@/components/ui/empty";
 import { ObraDiaryTab, type DiaryEntry } from "@/components/modules/obra-diary-tab";
+import { ObraExpensesTab, type ObraTx } from "@/components/modules/obra-expenses-tab";
 import { ObraItemsTab, type ObraItem } from "@/components/modules/obra-items-tab";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
-import { fmtRelative } from "@/lib/dates";
 import { normalizePhone, sanitizeFilename } from "@/lib/utils";
 import { percent } from "@/lib/money";
 
@@ -55,20 +55,12 @@ interface GalleryItem {
   thumbnail_url?: string | null;
   duration_seconds?: number | null;
 }
-interface Tx {
-  id: string;
-  amount: number | string;
-  description: string | null;
-  occurred_at: string;
-  categories: { name: string; color: string | null } | null;
-}
-
 interface Props {
   module: Module;
   phases: Phase[];
   workers: Worker[];
   gallery: GalleryItem[];
-  transactions: Tx[];
+  transactions: ObraTx[];
   items: ObraItem[];
   diary: DiaryEntry[];
   householdId: string;
@@ -157,25 +149,7 @@ export function ObraDashboard({ module, phases, workers, gallery, transactions, 
           />
         </TabsContent>
         <TabsContent value="expenses">
-          {transactions.length === 0 ? (
-            <Empty icon={Hammer} title="Sem despesas" description="Adicione pela área de transações." />
-          ) : (
-            <Card>
-              <CardContent className="p-0">
-                <ul className="divide-y divide-border">
-                  {transactions.map((t) => (
-                    <li key={t.id} className="flex items-center justify-between px-4 py-3">
-                      <div>
-                        <p className="text-sm font-medium">{t.description ?? t.categories?.name ?? "—"}</p>
-                        <p className="text-xs text-text-muted">{fmtRelative(t.occurred_at)} · {t.categories?.name ?? "—"}</p>
-                      </div>
-                      <Money value={Number(t.amount)} />
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
+          <ObraExpensesTab transactions={transactions} canWrite={canWrite} />
         </TabsContent>
         <TabsContent value="gallery">
           <Gallery moduleId={module.id} householdId={householdId} initial={gallery} canWrite={canWrite} />

@@ -1,0 +1,255 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { ChevronDown, ChevronRight, ExternalLink, Hammer, Pencil, Save, X } from "lucide-react";
+import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Money } from "@/components/ui/money";
+import { Textarea } from "@/components/ui/textarea";
+import { Empty } from "@/components/ui/empty";
+import { createSupabaseBrowser } from "@/lib/supabase/client";
+import { fmtRelative } from "@/lib/dates";
+
+export interface ObraTx {
+  id: string;
+  amount: number | string;
+  description: string | null;
+  occurred_at: string;
+  supplier: string | null;
+  notes: string | null;
+  receipt_url: string | null;
+  installment_number: number | null;
+  installments_total: number | null;
+  source: string;
+  categories: { name: string; color: string | null } | null;
+  payment_methods: { name: string; kind: string } | null;
+}
+
+interface Props {
+  transactions: ObraTx[];
+  canWrite: boolean;
+}
+
+export function ObraExpensesTab({ transactions, canWrite }: Props) {
+  const [items, setItems] = useState(transactions);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  function applyPatch(id: string, patch: Partial<ObraTx>) {
+    setItems((s) => s.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }
+
+  if (items.length === 0) {
+    return (
+      <Empty
+        icon={Hammer}
+        title="Sem despesas"
+        description='Adicione pela área de transações ou diga "gastei X em Y" no chat da IA.'
+      />
+    );
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <ul className="divide-y divide-border">
+          {items.map((t) => {
+            const isOpen = expandedId === t.id;
+            return (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(isOpen ? null : t.id)}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-bg-elev-2/50"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    {isOpen ? (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {t.description ?? t.categories?.name ?? "—"}
+                      </p>
+                      <p className="truncate text-xs text-text-muted">
+                        {fmtRelative(t.occurred_at)}
+                        {t.supplier && ` · ${t.supplier}`}
+                        {t.categories?.name && ` · ${t.categories.name}`}
+                      </p>
+                    </div>
+                  </div>
+                  <Money value={Number(t.amount)} className="shrink-0" />
+                </button>
+                {isOpen && (
+                  <ExpenseDetails
+                    tx={t}
+                    canWrite={canWrite}
+                    onChange={(patch) => applyPatch(t.id, patch)}
+                  />
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ExpenseDetails({
+  tx,
+  canWrite,
+  onChange,
+}: {
+  tx: ObraTx;
+  canWrite: boolean;
+  onChange: (patch: Partial<ObraTx>) => void;
+}) {
+  const supabase = createSupabaseBrowser();
+  const [editing, setEditing] = useState(false);
+  const [supplier, setSupplier] = useState(tx.supplier ?? "");
+  const [notes, setNotes] = useState(tx.notes ?? "");
+  const [pending, start] = useTransition();
+
+  function save() {
+    if (!canWrite) return;
+    const patch = {
+      supplier: supplier.trim() || null,
+      notes: notes.trim() || null,
+    };
+    start(async () => {
+      const { error } = await supabase.from("transactions").update(patch).eq("id", tx.id);
+      if (error) {
+        toast.error("Falha ao salvar.");
+        return;
+      }
+      onChange(patch);
+      setEditing(false);
+      toast.success("Atualizado.");
+    });
+  }
+
+  function cancel() {
+    setSupplier(tx.supplier ?? "");
+    setNotes(tx.notes ?? "");
+    setEditing(false);
+  }
+
+  return (
+    <div className="border-t border-border bg-bg-elev-2/30 px-4 py-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Categoria">
+          {tx.categories?.name ? (
+            <Badge variant="secondary">{tx.categories.name}</Badge>
+          ) : (
+            <span className="text-text-muted">—</span>
+          )}
+        </Field>
+        <Field label="Método de pagamento">
+          {tx.payment_methods?.name ? (
+            <span>
+              {tx.payment_methods.name}{" "}
+              <span className="text-[10px] text-text-muted">({tx.payment_methods.kind})</span>
+            </span>
+          ) : (
+            <span className="text-text-muted">—</span>
+          )}
+        </Field>
+        {tx.installments_total && tx.installments_total > 1 && (
+          <Field label="Parcela">
+            <span>
+              {tx.installment_number ?? "—"} / {tx.installments_total}
+            </span>
+          </Field>
+        )}
+        <Field label="Origem">
+          <Badge variant="default" className="capitalize">
+            {tx.source}
+          </Badge>
+        </Field>
+        <Field label="Fornecedor" className="sm:col-span-2">
+          {editing ? (
+            <Input
+              value={supplier}
+              onChange={(e) => setSupplier(e.target.value)}
+              placeholder='Ex: "Leroy Merlin", "Casa do Construtor"...'
+            />
+          ) : tx.supplier ? (
+            <span>{tx.supplier}</span>
+          ) : (
+            <span className="text-text-muted">—</span>
+          )}
+        </Field>
+        <Field label="Notas" className="sm:col-span-2">
+          {editing ? (
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Detalhes, nº da nota fiscal, garantia..."
+            />
+          ) : tx.notes ? (
+            <p className="whitespace-pre-wrap text-sm">{tx.notes}</p>
+          ) : (
+            <span className="text-text-muted">—</span>
+          )}
+        </Field>
+        {tx.receipt_url && (
+          <Field label="Recibo" className="sm:col-span-2">
+            <a
+              href={tx.receipt_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-primary hover:underline"
+            >
+              Ver recibo <ExternalLink className="h-3 w-3" />
+            </a>
+          </Field>
+        )}
+      </div>
+
+      {canWrite && (
+        <div className="mt-3 flex justify-end gap-2">
+          {editing ? (
+            <>
+              <Button size="sm" variant="ghost" onClick={cancel} disabled={pending}>
+                <X className="h-4 w-4" /> Cancelar
+              </Button>
+              <Button size="sm" onClick={save} disabled={pending}>
+                <Save className="h-4 w-4" /> Salvar
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+              <Pencil className="h-4 w-4" /> Editar
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <Label className="text-[10px] font-medium uppercase tracking-wider text-text-muted">
+        {label}
+      </Label>
+      <div className="mt-1 text-sm">{children}</div>
+    </div>
+  );
+}
