@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bot, Send, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -15,143 +15,25 @@ interface Msg {
 
 const SUGGESTIONS = [
   "Quanto gastei em alimentação esse mês?",
+  "Gastei 50 no mercado hoje",
+  "Recebi 3000 de salário",
   "Em que posso economizar agora?",
-  "Compare meus gastos com o mês passado",
-  "Quais minhas 3 maiores despesas recentes?",
 ];
 
 const WELCOME: Msg = {
   role: "assistant",
   content: `Oi! 👋 Sou seu copiloto financeiro.
 
-Posso responder sobre seus gastos, sugerir economias e analisar tendências dos seus dados. Pergunta aí.`,
+Posso registrar despesas/receitas (ex: "gastei 50 no mercado") e responder perguntas sobre seus gastos.`,
 };
-
-const POSITION_KEY = "onway-fab-position";
-const FAB_SIZE = 56;
-const MARGIN = 8;
-const DRAG_THRESHOLD = 4; // pixels antes de considerar drag (e bloquear click)
-
-function clampToViewport(p: { x: number; y: number }): { x: number; y: number } {
-  if (typeof window === "undefined") return p;
-  const maxX = window.innerWidth - FAB_SIZE - MARGIN;
-  const maxY = window.innerHeight - FAB_SIZE - MARGIN;
-  return {
-    x: Math.max(MARGIN, Math.min(p.x, maxX)),
-    y: Math.max(MARGIN, Math.min(p.y, maxY)),
-  };
-}
 
 export function AssistantFab() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState<unknown>(null);
   const endRef = useRef<HTMLDivElement>(null);
-
-  // Posição do FAB (draggable + persistida)
-  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const dragRef = useRef<{
-    startX: number;
-    startY: number;
-    fabX: number;
-    fabY: number;
-    moved: boolean;
-    pointerId: number;
-  } | null>(null);
-
-  // Posição inicial: lê localStorage ou usa default (canto inferior direito acima do nav mobile)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const saved = localStorage.getItem(POSITION_KEY);
-      if (saved) {
-        const { x, y } = JSON.parse(saved);
-        setPosition(clampToViewport({ x, y }));
-        return;
-      }
-    } catch {
-      // ignora
-    }
-    // Default: canto inferior direito, acima do bottom nav no mobile
-    const isMobile = window.innerWidth < 768;
-    const defaultX = window.innerWidth - FAB_SIZE - MARGIN;
-    const defaultY = isMobile
-      ? window.innerHeight - FAB_SIZE - 160 // acima do nav + FAB nova transação
-      : window.innerHeight - FAB_SIZE - MARGIN - 8;
-    setPosition({ x: defaultX, y: defaultY });
-  }, []);
-
-  // Reposiciona se a janela mudar
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    function onResize() {
-      setPosition((p) => (p ? clampToViewport(p) : p));
-    }
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  const handlePointerDown = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (!position) return;
-      e.currentTarget.setPointerCapture(e.pointerId);
-      dragRef.current = {
-        startX: e.clientX,
-        startY: e.clientY,
-        fabX: position.x,
-        fabY: position.y,
-        moved: false,
-        pointerId: e.pointerId,
-      };
-    },
-    [position],
-  );
-
-  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
-    const d = dragRef.current;
-    if (!d || d.pointerId !== e.pointerId) return;
-    const dx = e.clientX - d.startX;
-    const dy = e.clientY - d.startY;
-    if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-    if (!d.moved) {
-      d.moved = true;
-      setDragging(true);
-    }
-    setPosition(clampToViewport({ x: d.fabX + dx, y: d.fabY + dy }));
-  }, []);
-
-  const handlePointerUp = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
-      const d = dragRef.current;
-      if (!d) return;
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        // ignora
-      }
-      if (d.moved) {
-        // Salva posição final no localStorage
-        try {
-          const final = clampToViewport({
-            x: d.fabX + (e.clientX - d.startX),
-            y: d.fabY + (e.clientY - d.startY),
-          });
-          localStorage.setItem(POSITION_KEY, JSON.stringify(final));
-        } catch {
-          // ignora
-        }
-        // Pequeno delay pra evitar que o click dispare logo após drag
-        setTimeout(() => setDragging(false), 50);
-      } else {
-        // Foi um click puro
-        setOpen(true);
-      }
-      dragRef.current = null;
-    },
-    [],
-  );
 
   useEffect(() => {
     if (open) endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -160,10 +42,9 @@ export function AssistantFab() {
   async function send(message: string) {
     const text = message.trim();
     if (!text || loading) return;
-    const next: Msg[] = [...messages.filter((m) => m !== WELCOME || messages.length > 1), { role: "user", content: text }];
-    // Keep welcome only when empty
-    const realMessages = next.filter((m) => m !== WELCOME);
-    setMessages([...realMessages]);
+    const realMessages = messages.filter((m) => m !== WELCOME);
+    const next: Msg[] = [...realMessages, { role: "user", content: text }];
+    setMessages(next);
     setInput("");
     setLoading(true);
 
@@ -171,13 +52,14 @@ export function AssistantFab() {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: realMessages }),
+        body: JSON.stringify({ messages: next, pending }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error === "no_household" ? "Você precisa de uma família ativa." : "Falha na IA.");
       }
-      const data = (await res.json()) as { reply: string };
+      const data = (await res.json()) as { reply: string; pending?: unknown };
+      setPending(data.pending ?? null);
       setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro";
@@ -195,34 +77,26 @@ export function AssistantFab() {
   function reset() {
     setMessages([WELCOME]);
     setInput("");
+    setPending(null);
   }
 
   return (
     <>
-      {/* Floating button — draggable */}
-      {position && (
-        <button
-          type="button"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          aria-label="Abrir assistente (arraste para mover)"
-          title="Toque para abrir · arraste para mover"
-          className={cn(
-            "fixed z-30 flex h-14 w-14 items-center justify-center rounded-full touch-none select-none",
-            "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-2xl",
-            dragging ? "scale-110 cursor-grabbing" : "cursor-grab transition-transform hover:scale-105 active:scale-95",
-          )}
-          style={{
-            left: position.x,
-            top: position.y,
-            boxShadow: "0 12px 40px -10px rgba(0,209,160,0.6)",
-          }}
-        >
-          <Sparkles className="h-6 w-6" />
-        </button>
-      )}
+      {/* Botão fixo: mobile acima do FAB de + (bottom-20); desktop canto inferior direito */}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Abrir assistente"
+        className={cn(
+          "fixed right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full",
+          "bottom-40 md:bottom-4",
+          "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-2xl",
+          "transition-transform hover:scale-105 active:scale-95",
+        )}
+        style={{ boxShadow: "0 12px 40px -10px rgba(0,209,160,0.6)" }}
+      >
+        <Sparkles className="h-6 w-6" />
+      </button>
 
       {/* Backdrop */}
       {open && (
@@ -306,7 +180,7 @@ export function AssistantFab() {
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Pergunte algo sobre suas finanças..."
+              placeholder='Ex: "gastei 50 no mercado" ou pergunte algo...'
               rows={1}
               className="min-h-[40px] resize-none"
               onKeyDown={(e) => {

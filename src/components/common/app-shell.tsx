@@ -144,8 +144,8 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
         </div>
       </header>
 
-      <main className="px-3 pb-28 pt-5 sm:px-4 sm:pt-6 md:pl-72 md:pr-6">
-        <div className="mx-auto w-full max-w-md sm:max-w-6xl">{children}</div>
+      <main className="px-4 pb-28 pt-5 sm:px-6 sm:pt-6 md:pl-[18rem] md:pr-8 lg:pl-[19rem]">
+        <div className="mx-auto w-full max-w-5xl">{children}</div>
       </main>
 
       {/* FAB mobile */}
