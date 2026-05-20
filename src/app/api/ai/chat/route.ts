@@ -18,7 +18,7 @@ const messageSchema = z.object({
 
 const bodySchema = z.object({
   messages: z.array(messageSchema).min(1).max(30),
-  pending: ParsedSchema.optional(),
+  pending: ParsedSchema.nullable().optional(),
 });
 
 let _client: Anthropic | null = null;

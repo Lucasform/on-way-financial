@@ -34,10 +34,18 @@ export function AssistantFab() {
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState<unknown>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (open) endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, open]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input]);
 
   async function send(message: string) {
     const text = message.trim();
@@ -178,11 +186,12 @@ export function AssistantFab() {
         <form onSubmit={handleSubmit} className="border-t border-border p-3">
           <div className="flex items-end gap-2">
             <Textarea
+              ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder='Ex: "gastei 50 no mercado" ou pergunte algo...'
               rows={1}
-              className="min-h-[40px] resize-none"
+              className="max-h-40 min-h-[40px] resize-none overflow-y-auto leading-snug"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
