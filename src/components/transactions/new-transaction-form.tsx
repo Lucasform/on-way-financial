@@ -29,6 +29,7 @@ const schema = z.object({
   module_id: z.string().uuid().nullable().optional().or(z.literal("")),
   installments_total: z.coerce.number().int().min(1).max(36).default(1),
   notes: z.string().max(500).optional(),
+  supplier: z.string().max(120).optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -72,11 +73,14 @@ export function NewTransactionForm({ userId, householdId, categories, methods, m
       module_id: "",
       installments_total: 1,
       notes: "",
+      supplier: "",
     },
   });
 
   const type = form.watch("type");
   const installments = form.watch("installments_total");
+  const selectedModuleId = form.watch("module_id");
+  const selectedModule = modules.find((m) => m.id === selectedModuleId);
   const filteredCategories = categories.filter((c) =>
     type === "income" ? c.type === "income" : c.type === "expense",
   );
@@ -124,6 +128,8 @@ export function NewTransactionForm({ userId, householdId, categories, methods, m
       const groupId = inst > 1 ? crypto.randomUUID() : null;
       const occurred = parseISO(values.occurred_at);
 
+      const supplierClean = moduleSelected && values.supplier?.trim() ? values.supplier.trim() : null;
+
       const payload = amounts.map((amt, i) => ({
         household_id: householdId,
         type: values.type,
@@ -138,6 +144,7 @@ export function NewTransactionForm({ userId, householdId, categories, methods, m
         installment_number: inst > 1 ? i + 1 : null,
         installments_group_id: groupId,
         receipt_url: receiptPath,
+        supplier: supplierClean,
         notes:
           [
             values.notes || null,
@@ -167,6 +174,7 @@ export function NewTransactionForm({ userId, householdId, categories, methods, m
           module_id: values.module_id ?? "",
           installments_total: 1,
           notes: "",
+          supplier: "",
         });
         setFiles([]);
       } else {
@@ -334,6 +342,32 @@ export function NewTransactionForm({ userId, householdId, categories, methods, m
             )}
           </div>
         </div>
+
+        {selectedModule && (
+          <div className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3">
+            <Label htmlFor="supplier" className="flex items-center gap-2">
+              <span>{KIND_EMOJI[selectedModule.kind] ?? "✨"}</span>
+              Fornecedor
+              <span className="text-[10px] font-normal text-text-muted">
+                ({selectedModule.name})
+              </span>
+            </Label>
+            <Input
+              id="supplier"
+              placeholder={
+                selectedModule.kind === "obra"
+                  ? 'Ex: "Leroy Merlin", "Eng. UBO", "Casa do Construtor"'
+                  : selectedModule.kind === "travel"
+                    ? 'Ex: "Booking", "Latam", "Hotel Copacabana"'
+                    : 'Ex: nome da loja, empresa, prestador...'
+              }
+              {...form.register("supplier")}
+            />
+            <p className="text-[10px] text-text-muted">
+              Vai aparecer na linha da despesa dentro do módulo, sem precisar expandir.
+            </p>
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="notes">Notas (opcional)</Label>
