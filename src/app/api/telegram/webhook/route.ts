@@ -22,9 +22,11 @@ export async function POST(req: NextRequest) {
     return new NextResponse("bad json", { status: 400 });
   }
 
-  // Responde 200 imediato; processa em background
-  void handleTelegramUpdate(payload as Parameters<typeof handleTelegramUpdate>[0]).catch((err) =>
-    console.error("Telegram handler error", err),
-  );
+  // Processa síncrono (serverless mata processos fire-and-forget após o response)
+  try {
+    await handleTelegramUpdate(payload as Parameters<typeof handleTelegramUpdate>[0]);
+  } catch (err) {
+    console.error("Telegram handler error", err);
+  }
   return new NextResponse("ok", { status: 200 });
 }
