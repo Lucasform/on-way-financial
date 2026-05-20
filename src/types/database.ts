@@ -1025,7 +1025,6 @@ export type Database = {
           payment_method_id: string | null
           receipt_url: string | null
           source: string
-          supplier: string | null
           type: Database["public"]["Enums"]["tx_type"]
           updated_at: string
         }
@@ -1047,7 +1046,6 @@ export type Database = {
           payment_method_id?: string | null
           receipt_url?: string | null
           source?: string
-          supplier?: string | null
           type: Database["public"]["Enums"]["tx_type"]
           updated_at?: string
         }
@@ -1069,7 +1067,6 @@ export type Database = {
           payment_method_id?: string | null
           receipt_url?: string | null
           source?: string
-          supplier?: string | null
           type?: Database["public"]["Enums"]["tx_type"]
           updated_at?: string
         }

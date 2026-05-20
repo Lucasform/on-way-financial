@@ -20,7 +20,6 @@ export interface ObraTx {
   amount: number | string;
   description: string | null;
   occurred_at: string;
-  supplier: string | null;
   notes: string | null;
   receipt_url: string | null;
   installment_number: number | null;
@@ -33,6 +32,27 @@ export interface ObraTx {
 interface Props {
   transactions: ObraTx[];
   canWrite: boolean;
+}
+
+// Extrai "Fornecedor: X" da primeira linha de notes (sintaxe usada pelo form).
+function parseSupplier(notes: string | null): { supplier: string | null; rest: string | null } {
+  if (!notes) return { supplier: null, rest: null };
+  const lines = notes.split("\n");
+  const first = lines[0]?.trim() ?? "";
+  const m = first.match(/^Fornecedor:\s*(.+)$/i);
+  if (m) {
+    const rest = lines.slice(1).join("\n").trim();
+    return { supplier: m[1]!.trim(), rest: rest || null };
+  }
+  return { supplier: null, rest: notes };
+}
+
+function buildNotes(supplier: string | null, rest: string | null): string | null {
+  const parts = [
+    supplier ? `Fornecedor: ${supplier}` : null,
+    rest || null,
+  ].filter(Boolean);
+  return parts.length ? parts.join("\n") : null;
 }
 
 export function ObraExpensesTab({ transactions, canWrite }: Props) {
@@ -59,6 +79,7 @@ export function ObraExpensesTab({ transactions, canWrite }: Props) {
         <ul className="divide-y divide-border">
           {items.map((t) => {
             const isOpen = expandedId === t.id;
+            const { supplier } = parseSupplier(t.notes);
             return (
               <li key={t.id}>
                 <button
@@ -78,7 +99,7 @@ export function ObraExpensesTab({ transactions, canWrite }: Props) {
                       </p>
                       <p className="truncate text-xs text-text-muted">
                         {fmtRelative(t.occurred_at)}
-                        {t.supplier && ` · ${t.supplier}`}
+                        {supplier && ` · ${supplier}`}
                         {t.categories?.name && ` · ${t.categories.name}`}
                       </p>
                     </div>
@@ -111,32 +132,33 @@ function ExpenseDetails({
   onChange: (patch: Partial<ObraTx>) => void;
 }) {
   const supabase = createSupabaseBrowser();
+  const parsed = parseSupplier(tx.notes);
   const [editing, setEditing] = useState(false);
-  const [supplier, setSupplier] = useState(tx.supplier ?? "");
-  const [notes, setNotes] = useState(tx.notes ?? "");
+  const [supplier, setSupplier] = useState(parsed.supplier ?? "");
+  const [restNotes, setRestNotes] = useState(parsed.rest ?? "");
   const [pending, start] = useTransition();
 
   function save() {
     if (!canWrite) return;
-    const patch = {
-      supplier: supplier.trim() || null,
-      notes: notes.trim() || null,
-    };
+    const newNotes = buildNotes(supplier.trim() || null, restNotes.trim() || null);
     start(async () => {
-      const { error } = await supabase.from("transactions").update(patch).eq("id", tx.id);
+      const { error } = await supabase
+        .from("transactions")
+        .update({ notes: newNotes })
+        .eq("id", tx.id);
       if (error) {
         toast.error("Falha ao salvar.");
         return;
       }
-      onChange(patch);
+      onChange({ notes: newNotes });
       setEditing(false);
       toast.success("Atualizado.");
     });
   }
 
   function cancel() {
-    setSupplier(tx.supplier ?? "");
-    setNotes(tx.notes ?? "");
+    setSupplier(parsed.supplier ?? "");
+    setRestNotes(parsed.rest ?? "");
     setEditing(false);
   }
 
@@ -179,8 +201,8 @@ function ExpenseDetails({
               onChange={(e) => setSupplier(e.target.value)}
               placeholder='Ex: "Leroy Merlin", "Casa do Construtor"...'
             />
-          ) : tx.supplier ? (
-            <span>{tx.supplier}</span>
+          ) : parsed.supplier ? (
+            <span>{parsed.supplier}</span>
           ) : (
             <span className="text-text-muted">—</span>
           )}
@@ -188,13 +210,13 @@ function ExpenseDetails({
         <Field label="Notas" className="sm:col-span-2">
           {editing ? (
             <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              value={restNotes}
+              onChange={(e) => setRestNotes(e.target.value)}
               rows={2}
               placeholder="Detalhes, nº da nota fiscal, garantia..."
             />
-          ) : tx.notes ? (
-            <p className="whitespace-pre-wrap text-sm">{tx.notes}</p>
+          ) : parsed.rest ? (
+            <p className="whitespace-pre-wrap text-sm">{parsed.rest}</p>
           ) : (
             <span className="text-text-muted">—</span>
           )}

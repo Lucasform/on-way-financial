@@ -129,6 +129,13 @@ export function NewTransactionForm({ userId, householdId, categories, methods, m
       const occurred = parseISO(values.occurred_at);
 
       const supplierClean = moduleSelected && values.supplier?.trim() ? values.supplier.trim() : null;
+      const notesCombined = [
+        supplierClean ? `Fornecedor: ${supplierClean}` : null,
+        values.notes || null,
+        uploaded.length > 1 ? `Anexos extras: ${uploaded.slice(1).join(", ")}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n") || null;
 
       const payload = amounts.map((amt, i) => ({
         household_id: householdId,
@@ -144,14 +151,7 @@ export function NewTransactionForm({ userId, householdId, categories, methods, m
         installment_number: inst > 1 ? i + 1 : null,
         installments_group_id: groupId,
         receipt_url: receiptPath,
-        supplier: supplierClean,
-        notes:
-          [
-            values.notes || null,
-            uploaded.length > 1 ? `Anexos extras: ${uploaded.slice(1).join(", ")}` : null,
-          ]
-            .filter(Boolean)
-            .join("\n") || null,
+        notes: notesCombined,
         source: "web" as const,
         created_by: userId,
       }));
