@@ -7,7 +7,7 @@ export function buildParserSystemPrompt(now: string = todayISO()): string {
   d.setUTCDate(d.getUTCDate() - 1);
   const yesterday = d.toISOString().slice(0, 10);
 
-  return `Você é um parser de despesas pessoais para o app ON WAY FINANCIAL.
+  return `Você é um parser de despesas pessoais para o app ON FIN.
 O usuário escreve em português brasileiro de forma informal via WhatsApp.
 Sua única função é extrair uma intenção estruturada.
 

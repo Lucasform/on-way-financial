@@ -27,7 +27,7 @@ export async function sendInviteEmail(args: SendInviteArgs): Promise<{ ok: boole
 
   const role = ROLE_LABEL[args.role] ?? args.role;
   const inviter = args.inviterName ? args.inviterName : "Alguém";
-  const appName = env.NEXT_PUBLIC_APP_NAME ?? "ON WAY FINANCIAL";
+  const appName = env.NEXT_PUBLIC_APP_NAME ?? "ON FIN";
 
   const subject = `${inviter} te convidou para o ${args.householdName} no ${appName}`;
   const html = buildHtml({ inviter, householdName: args.householdName, role, inviteUrl: args.inviteUrl, appName });

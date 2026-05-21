@@ -1,6 +1,6 @@
 {
-  "name": "ON WAY FINANCIAL",
-  "short_name": "ON WAY",
+  "name": "ON FIN",
+  "short_name": "ON FIN",
   "description": "Copiloto financeiro familiar com IA e Telegram",
   "start_url": "/overview",
   "display": "standalone",

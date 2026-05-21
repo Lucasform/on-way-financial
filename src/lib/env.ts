@@ -4,7 +4,7 @@ const publicSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(20),
   NEXT_PUBLIC_APP_URL: z.string().url(),
-  NEXT_PUBLIC_APP_NAME: z.string().default("ON WAY FINANCIAL"),
+  NEXT_PUBLIC_APP_NAME: z.string().default("ON FIN"),
 });
 
 const serverSchema = publicSchema.extend({

@@ -33,10 +33,10 @@ export default function LandingPage() {
 
       {/* Top nav */}
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-        <Link href="/" className="flex items-center gap-2" aria-label="ON WAY FINANCIAL">
+        <Link href="/" className="flex items-center gap-2" aria-label="ON FIN">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/icons/icon.svg" alt="" width={32} height={32} className="rounded-md" />
-          <span className="text-sm font-semibold tracking-wide">ON WAY FINANCIAL</span>
+          <span className="text-sm font-semibold tracking-wide">ON FIN</span>
         </Link>
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="sm">
@@ -237,7 +237,7 @@ export default function LandingPage() {
 
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-6 py-6 text-xs text-text-muted sm:flex-row">
-          <span>© {new Date().getFullYear()} ON WAY FINANCIAL · feito no Brasil</span>
+          <span>© {new Date().getFullYear()} ON FIN · feito no Brasil</span>
           <span>Login por email · dados em servidor brasileiro</span>
         </div>
       </footer>

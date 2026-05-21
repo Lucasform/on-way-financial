@@ -51,7 +51,7 @@ export async function categorizeBatch(input: CategorizeInput): Promise<Suggestio
     })),
   );
 
-  const system = `Você categoriza transações financeiras brasileiras pro app ON WAY FINANCIAL.
+  const system = `Você categoriza transações financeiras brasileiras pro app ON FIN.
 
 Categorias disponíveis (use EXATAMENTE estes nomes):
 ${catList}

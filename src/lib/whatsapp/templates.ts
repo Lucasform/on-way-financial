@@ -3,7 +3,7 @@ import { fmtRelative } from "@/lib/dates";
 
 export function helpMessage(): string {
   return [
-    "🤖 *ON WAY FINANCIAL*",
+    "🤖 *ON FIN*",
     "",
     "Comandos suportados:",
     "• `/despesa 50 mercado #Mercado @pix` ·registra uma despesa",
@@ -44,7 +44,7 @@ export function confirmTransaction(args: {
 
 export function notLinkedMessage(appUrl: string): string {
   return [
-    "👋 Olá! Este número ainda não está vinculado a nenhuma conta no ON WAY FINANCIAL.",
+    "👋 Olá! Este número ainda não está vinculado a nenhuma conta no ON FIN.",
     "",
     `Acesse ${appUrl}/settings e adicione este telefone no seu perfil para começar a usar o bot.`,
   ].join("\n");
