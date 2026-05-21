@@ -42,18 +42,28 @@ export function KpiCard({
   return (
     <FadeIn
       delay={animationDelay}
-      className={cn("surface-elevated relative overflow-hidden p-5 transition-transform hover:-translate-y-0.5", className)}
+      className={cn(
+        "surface-elevated relative min-w-0 overflow-hidden p-3 transition-transform hover:-translate-y-0.5 sm:p-5",
+        className,
+      )}
     >
-      <header className="flex items-center justify-between gap-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-text-muted">{label}</p>
+      <header className="flex items-center justify-between gap-2">
+        <p className="truncate text-[11px] font-medium uppercase tracking-wide text-text-muted sm:text-xs">
+          {label}
+        </p>
         {Icon ? (
-          <span className="rounded-full bg-bg-elev-2 p-1.5 text-text-muted">
+          <span className="shrink-0 rounded-full bg-bg-elev-2 p-1.5 text-text-muted">
             <Icon className="h-3.5 w-3.5" />
           </span>
         ) : null}
       </header>
-      <div className="mt-3">
-        <Money value={value} size="xl" tone={tone} className="num text-[28px] sm:text-3xl" />
+      <div className="mt-2 sm:mt-3">
+        <Money
+          value={value}
+          size="xl"
+          tone={tone}
+          className="num block truncate text-[18px] leading-tight sm:text-3xl"
+        />
       </div>
       {hasDelta && (
         <div className="mt-2 flex items-center gap-1.5 text-xs">

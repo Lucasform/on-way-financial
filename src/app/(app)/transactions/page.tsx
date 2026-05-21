@@ -107,7 +107,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
       </header>
 
       {/* Totais filtrados */}
-      <section className="grid grid-cols-3 gap-3 sm:max-w-xl">
+      <section className="grid grid-cols-3 gap-2 sm:max-w-xl sm:gap-3">
         <Total label="Entradas" value={incomeSum} tone="success" />
         <Total label="Saídas" value={expenseSum} tone="danger" />
         <Total label="Saldo" value={incomeSum - expenseSum} tone={incomeSum - expenseSum >= 0 ? "success" : "danger"} />
@@ -166,9 +166,13 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
 
 function Total({ label, value, tone }: { label: string; value: number; tone: "success" | "danger" }) {
   return (
-    <div className="surface p-3">
-      <p className="text-[10px] font-medium uppercase tracking-wider text-text-muted">{label}</p>
-      <Money value={value} tone={tone} className="num mt-1 block text-base font-medium" />
+    <div className="surface min-w-0 p-2 sm:p-3">
+      <p className="truncate text-[10px] font-medium uppercase tracking-wider text-text-muted">{label}</p>
+      <Money
+        value={value}
+        tone={tone}
+        className="num mt-1 block truncate text-[13px] font-medium leading-tight sm:text-base"
+      />
     </div>
   );
 }

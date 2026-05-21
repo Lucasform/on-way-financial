@@ -212,7 +212,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Sea
       <RealtimeRefresher table="transactions" filter={`household_id=eq.${ctx.householdId}`} />
       {/* Header */}
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+        <div className="text-center sm:text-left">
           <h1 className="text-2xl font-semibold sm:text-3xl">Visão geral</h1>
           <p className="text-sm text-text-muted">
             {isCurrentMonth ? "Este mês" : "Mês selecionado"} · {ctx.households.find((h) => h.id === ctx.householdId)?.name}
