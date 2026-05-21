@@ -21,6 +21,8 @@ const serverSchema = publicSchema.extend({
   TELEGRAM_BOT_TOKEN: z.string().min(20).optional(),
   TELEGRAM_BOT_USERNAME: z.string().min(3).optional(),
   TELEGRAM_WEBHOOK_SECRET: z.string().min(16).optional(),
+  RESEND_API_KEY: z.string().startsWith("re_").optional(),
+  INVITE_FROM_EMAIL: z.string().email().default("onboarding@resend.dev"),
 });
 
 export type ServerEnv = z.infer<typeof serverSchema>;

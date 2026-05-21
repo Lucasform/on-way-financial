@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
+import { sendInviteEmail } from "@/lib/email/resend";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import type { HouseholdRole } from "@/types/database";
@@ -65,39 +66,33 @@ export async function POST(req: NextRequest) {
       .single();
     if (error || !data) return NextResponse.json({ error: error?.message ?? "fail" }, { status: 500 });
 
-    // Envia email via Supabase Auth (usa SMTP já configurado — Resend)
+    // Envia email via Resend (servico transacional dedicado).
+    // Funciona para email novo ou existente. Sandbox da Resend so entrega
+    // pro email cadastrado na conta; com dominio proprio, entrega pra qualquer um.
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
     const inviteUrl = `${appUrl}/invite/${token}`;
-    let emailSent = false;
-    try {
-      const admin = createSupabaseAdmin();
-      const { error: mailErr } = await admin.auth.admin.inviteUserByEmail(email, {
-        redirectTo: inviteUrl,
-        data: {
-          invite_token: token,
-          household_id,
-          household_name: household?.name ?? "ON WAY FINANCIAL",
-          role,
-        },
-      });
-      if (!mailErr) {
-        emailSent = true;
-      } else {
-        // Se já existe um usuário com esse email, inviteUserByEmail falha;
-        // nesse caso usa generateLink (magiclink) que manda o mesmo SMTP
-        const { error: linkErr } = await admin.auth.admin.generateLink({
-          type: "magiclink",
-          email,
-          options: { redirectTo: inviteUrl },
-        });
-        if (!linkErr) emailSent = true;
-        else console.error("invite email failed:", mailErr.message, linkErr.message);
-      }
-    } catch (err) {
-      console.error("invite email exception:", err);
-    }
 
-    return NextResponse.json({ ...data, email_sent: emailSent, invite_url: inviteUrl });
+    const { data: inviter } = await supabase
+      .from("household_members")
+      .select("display_name, users:users(raw_user_meta_data)")
+      .eq("household_id", household_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    const inviterName =
+      (inviter as { display_name?: string | null } | null)?.display_name ??
+      user.email?.split("@")[0] ??
+      null;
+
+    const sendRes = await sendInviteEmail({
+      to: email,
+      inviterName,
+      householdName: household?.name ?? "ON WAY FINANCIAL",
+      inviteUrl,
+      role,
+    });
+    if (!sendRes.ok) console.error("invite email failed:", sendRes.error);
+
+    return NextResponse.json({ ...data, email_sent: sendRes.ok, invite_url: inviteUrl });
   }
 
   // accept
