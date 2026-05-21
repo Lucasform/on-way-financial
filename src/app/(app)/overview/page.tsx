@@ -18,7 +18,6 @@ import { BalanceHero } from "@/components/common/balance-hero";
 import { CategoryIcon } from "@/components/common/category-icon";
 import { KpiCard } from "@/components/common/kpi-card";
 import { MonthPicker } from "@/components/common/month-picker";
-import { QuickActions } from "@/components/common/quick-actions";
 import { RealtimeRefresher } from "@/components/common/realtime-refresher";
 import { GroupedTransactionList } from "@/components/transactions/grouped-list";
 import { Button } from "@/components/ui/button";
@@ -32,12 +31,14 @@ export const dynamic = "force-dynamic";
 
 interface SearchParams {
   month?: string;
+  view?: "all" | "month";
 }
 
 export default async function OverviewPage({ searchParams }: { searchParams: SearchParams }) {
   const ctx = (await loadActiveContext())!;
   const supabase = createSupabaseServer();
 
+  const isAllTime = searchParams.view === "all";
   const today = new Date(todayISO());
   const monthRef = searchParams.month ? parseISO(searchParams.month) : today;
   const monthStart = new Date(monthRef.getFullYear(), monthRef.getMonth(), 1);
@@ -50,6 +51,11 @@ export default async function OverviewPage({ searchParams }: { searchParams: Sea
   const prevStartStr = format(prevStart, "yyyy-MM-dd");
   const prevEndStr = format(prevEnd, "yyyy-MM-dd");
 
+  // Geral usa um range amplo (10 anos pra tras ate hoje)
+  const allStartStr = format(new Date(today.getFullYear() - 10, 0, 1), "yyyy-MM-dd");
+  const filterStartStr = isAllTime ? allStartStr : monthStartStr;
+  const filterEndStr = isAllTime ? format(today, "yyyy-MM-dd") : monthEndStr;
+
   // 90 dias atrás pra sparklines
   const sparkFromStr = format(addMonths(monthStart, -3), "yyyy-MM-dd");
 
@@ -60,8 +66,8 @@ export default async function OverviewPage({ searchParams }: { searchParams: Sea
         "id, type, amount, occurred_at, description, category_id, payment_method_id, source, notes, installment_number, installments_total, categories:categories(name,color,icon), payment_methods:payment_methods(name,kind)",
       )
       .eq("household_id", ctx.householdId)
-      .gte("occurred_at", monthStartStr)
-      .lte("occurred_at", monthEndStr)
+      .gte("occurred_at", filterStartStr)
+      .lte("occurred_at", filterEndStr)
       .order("occurred_at", { ascending: false }),
     supabase
       .from("transactions")
@@ -215,18 +221,37 @@ export default async function OverviewPage({ searchParams }: { searchParams: Sea
         <div className="text-center sm:text-left">
           <h1 className="text-2xl font-semibold sm:text-3xl">Visão geral</h1>
           <p className="text-sm text-text-muted">
-            {isCurrentMonth ? "Este mês" : "Mês selecionado"} · {ctx.households.find((h) => h.id === ctx.householdId)?.name}
+            {isAllTime ? "Total geral" : isCurrentMonth ? "Este mês" : "Mês selecionado"} ·{" "}
+            {ctx.households.find((h) => h.id === ctx.householdId)?.name}
           </p>
         </div>
-        <MonthPicker value={format(monthStart, "yyyy-MM-01")} />
+        <div className="flex flex-col items-center gap-2 sm:flex-row sm:items-end">
+          <div className="inline-flex rounded-md border border-border bg-bg-elev p-0.5 text-xs">
+            <Link
+              href={`/overview?view=month${searchParams.month ? `&month=${searchParams.month}` : ""}`}
+              className={`rounded-sm px-3 py-1.5 font-medium transition-colors ${
+                !isAllTime ? "bg-bg-elev-2 text-text" : "text-text-muted hover:text-text"
+              }`}
+            >
+              Mês
+            </Link>
+            <Link
+              href="/overview?view=all"
+              className={`rounded-sm px-3 py-1.5 font-medium transition-colors ${
+                isAllTime ? "bg-bg-elev-2 text-text" : "text-text-muted hover:text-text"
+              }`}
+            >
+              Geral
+            </Link>
+          </div>
+          {!isAllTime && <MonthPicker value={format(monthStart, "yyyy-MM-01")} />}
+        </div>
       </header>
 
       {/* Balance hero */}
       <BalanceHero balance={balance} income={income} expense={expense} spark={sparkBalance} />
 
       {/* Quick actions */}
-      <QuickActions />
-
       {/* KPIs */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiCard
