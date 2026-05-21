@@ -318,7 +318,9 @@ export default async function OverviewPage({ searchParams }: { searchParams: Sea
             </Link>
           </header>
           {byCategoryArr.length === 0 ? (
-            <Empty title="Sem dados" description="Sem despesas neste mês." className="border-0 p-4" />
+            <div className="flex h-64 items-center justify-center">
+              <Empty title="Sem dados" description="Sem despesas neste mês." className="border-0 p-4" />
+            </div>
           ) : (
             <>
               <div className="h-40">
