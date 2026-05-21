@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { HouseholdSwitcher } from "@/components/common/household-switcher";
+import { KeyboardShortcuts } from "@/components/common/keyboard-shortcuts";
 import { ThemeToggle } from "@/components/common/theme-toggle";
 import { UserMenu } from "@/components/common/user-menu";
 import { Button } from "@/components/ui/button";
@@ -143,6 +144,7 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
           <UserMenu />
         </div>
       </header>
+      <KeyboardShortcuts />
 
       <main className="px-4 pb-28 pt-5 sm:px-6 sm:pt-6 md:pl-[18rem] md:pr-8 lg:pl-[19rem]">
         <div className="mx-auto w-full max-w-5xl">{children}</div>

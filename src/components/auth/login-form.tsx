@@ -21,6 +21,7 @@ export function LoginForm({ next }: { next: string }) {
   // magic
   const [sent, setSent] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [signupConfirm, setSignupConfirm] = useState(false);
 
   // password
   const [password, setPassword] = useState("");
@@ -95,7 +96,7 @@ export function LoginForm({ next }: { next: string }) {
     }
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -103,11 +104,9 @@ export function LoginForm({ next }: { next: string }) {
         },
       });
       if (error) throw error;
-      // Se o Supabase exige confirmação de email, sessão não vem direto.
-      // Tentamos signIn — se exigir confirmação, devolve erro.
-      const { error: signErr } = await supabase.auth.signInWithPassword({ email, password });
-      if (signErr) {
-        toast.success("Conta criada! Confirme o email pra entrar (ou desative 'Confirm email' no Supabase).");
+      if (!data.session) {
+        // Confirm email ligado: sem sessão imediata.
+        setSignupConfirm(true);
         return;
       }
       toast.success("Conta criada! Entrando...");
@@ -129,6 +128,21 @@ export function LoginForm({ next }: { next: string }) {
           Mandamos um link para <strong>{email}</strong>. Abra no celular ou aqui mesmo.
         </p>
         <Button variant="ghost" size="sm" className="mt-4" onClick={() => setSent(false)}>
+          Voltar
+        </Button>
+      </div>
+    );
+  }
+
+  if (signupConfirm) {
+    return (
+      <div className="surface p-6 text-center">
+        <h2 className="text-lg font-semibold">📩 Confirme seu email</h2>
+        <p className="mt-2 text-sm text-text-muted">
+          Enviamos um link de confirmação para <strong>{email}</strong>. Abra o email e clique para
+          ativar a conta. Pode demorar 1-2 min.
+        </p>
+        <Button variant="ghost" size="sm" className="mt-4" onClick={() => setSignupConfirm(false)}>
           Voltar
         </Button>
       </div>
