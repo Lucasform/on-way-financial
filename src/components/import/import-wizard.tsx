@@ -175,6 +175,60 @@ export function ImportWizard({ canWrite, categories, methods }: Props) {
           />
         </div>
 
+        <details className="surface-elevated overflow-hidden">
+          <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium select-none">
+            <FileSpreadsheet className="h-4 w-4 text-success" />
+            Modelo de planilha aceito (Excel / CSV)
+          </summary>
+          <div className="space-y-3 border-t border-border px-4 py-4 text-sm">
+            <p className="text-text-muted">
+              A <strong>linha 1</strong> precisa ser o cabeçalho. Colunas extras (Tipo, Categoria, Saldo, etc) são ignoradas.
+            </p>
+            <div className="overflow-x-auto rounded-md border border-border">
+              <table className="w-full text-xs">
+                <thead className="bg-bg-elev-2 text-text-muted">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">Data</th>
+                    <th className="px-3 py-2 text-left font-semibold">Descrição</th>
+                    <th className="px-3 py-2 text-right font-semibold">Valor</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border font-mono">
+                  <tr>
+                    <td className="px-3 py-2">2026-02-02</td>
+                    <td className="px-3 py-2">JULIANA MENDES</td>
+                    <td className="px-3 py-2 text-right text-danger">-65,00</td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-2">2026-02-04</td>
+                    <td className="px-3 py-2">EVERCOL INDUSTRIA</td>
+                    <td className="px-3 py-2 text-right text-success">8007,31</td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-2">02/02/2026</td>
+                    <td className="px-3 py-2">DROGAL FARMACEUTICA</td>
+                    <td className="px-3 py-2 text-right text-danger">-73,05</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <ul className="space-y-1 text-xs text-text-muted">
+              <li>
+                <strong className="text-text">Data:</strong> <code>2026-02-02</code> ou <code>02/02/2026</code>
+              </li>
+              <li>
+                <strong className="text-text">Valor:</strong> negativo (<code>-65,00</code>) vira despesa, positivo (<code>8007,31</code>) vira receita. Use vírgula como decimal.
+              </li>
+              <li>
+                <strong className="text-text">Cabeçalho aceito:</strong> <code>Data</code>, <code>Descrição</code>, <code>Histórico</code>, <code>Valor</code>, <code>Amount</code>, etc.
+              </li>
+              <li>
+                <strong className="text-text">Sem coluna Valor?</strong> Pode usar duas colunas separadas: <code>Débito</code> e <code>Crédito</code>.
+              </li>
+            </ul>
+          </div>
+        </details>
+
         {loading === "parse" && (
           <div className="surface flex items-center gap-3 p-4 text-sm text-text-muted">
             <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
