@@ -20,9 +20,31 @@ export function LoginForm({ next }: { next: string }) {
 
   // magic
   const [sent, setSent] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   // password
   const [password, setPassword] = useState("");
+
+  async function sendPasswordReset() {
+    if (!email) {
+      toast.error("Digite seu email primeiro.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
+      });
+      if (error) throw error;
+      setResetSent(true);
+      toast.success("Email de redefinição enviado!");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido";
+      toast.error(`Falha ao enviar: ${msg}`);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function sendMagicLink(e: React.FormEvent) {
     e.preventDefault();
@@ -113,6 +135,20 @@ export function LoginForm({ next }: { next: string }) {
     );
   }
 
+  if (resetSent) {
+    return (
+      <div className="surface p-6 text-center">
+        <h2 className="text-lg font-semibold">🔑 Verifique seu email</h2>
+        <p className="mt-2 text-sm text-text-muted">
+          Enviamos um link para <strong>{email}</strong> redefinir sua senha. Pode demorar 1-2 min.
+        </p>
+        <Button variant="ghost" size="sm" className="mt-4" onClick={() => setResetSent(false)}>
+          Voltar
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <Tabs defaultValue="password" className="w-full">
       <TabsList className="grid w-full grid-cols-3">
@@ -150,6 +186,14 @@ export function LoginForm({ next }: { next: string }) {
           <Button type="submit" disabled={loading} className="w-full">
             {loading ? "Entrando..." : "Entrar"}
           </Button>
+          <button
+            type="button"
+            onClick={sendPasswordReset}
+            disabled={loading}
+            className="block w-full text-center text-xs text-text-muted underline-offset-2 hover:text-primary hover:underline disabled:opacity-50"
+          >
+            Esqueci a senha
+          </button>
         </form>
       </TabsContent>
 

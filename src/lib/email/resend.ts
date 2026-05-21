@@ -28,6 +28,8 @@ export async function sendInviteEmail(args: SendInviteArgs): Promise<{ ok: boole
   const role = ROLE_LABEL[args.role] ?? args.role;
   const inviter = args.inviterName ? args.inviterName : "Alguém";
   const appName = env.NEXT_PUBLIC_APP_NAME ?? "ON FIN";
+  const from = `${appName} <${env.INVITE_FROM_EMAIL}>`;
+  const replyTo = env.INVITE_REPLY_TO ?? undefined;
 
   const subject = `${inviter} te convidou para o ${args.householdName} no ${appName}`;
   const html = buildHtml({ inviter, householdName: args.householdName, role, inviteUrl: args.inviteUrl, appName });
@@ -41,11 +43,12 @@ export async function sendInviteEmail(args: SendInviteArgs): Promise<{ ok: boole
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: env.INVITE_FROM_EMAIL,
+        from,
         to: [args.to],
         subject,
         html,
         text,
+        ...(replyTo ? { reply_to: replyTo } : {}),
       }),
     });
     if (!res.ok) {

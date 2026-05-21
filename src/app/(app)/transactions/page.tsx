@@ -45,7 +45,22 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   if (searchParams.payment) q = q.eq("payment_method_id", searchParams.payment);
   if (searchParams.source) q = q.eq("source", searchParams.source);
   if (searchParams.module) q = q.eq("module_kind", searchParams.module);
-  if (searchParams.q) q = q.ilike("description", `%${searchParams.q}%`);
+  if (searchParams.q) {
+    const raw = searchParams.q.trim();
+    const safe = raw.replace(/[%,()]/g, " ");
+    const parts: string[] = [`description.ilike.%${safe}%`, `notes.ilike.%${safe}%`];
+    const numeric = Number(raw.replace(",", "."));
+    if (!Number.isNaN(numeric) && raw.length > 0) parts.push(`amount.eq.${numeric}`);
+    // categorias que casam pelo nome
+    const { data: catMatches } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("household_id", ctx.householdId)
+      .ilike("name", `%${safe}%`);
+    const catIds = (catMatches ?? []).map((c) => c.id);
+    if (catIds.length > 0) parts.push(`category_id.in.(${catIds.join(",")})`);
+    q = q.or(parts.join(","));
+  }
 
   const [{ data: rows, count }, { data: categories }, { data: methods }] = await Promise.all([
     q,

@@ -36,7 +36,7 @@ export function TransactionFilters({ categories, methods }: FiltersProps) {
     <form action={update} className="grid gap-3 sm:grid-cols-2 md:grid-cols-6">
       <div className="md:col-span-2">
         <Label htmlFor="q">Buscar</Label>
-        <Input id="q" name="q" defaultValue={params?.get("q") ?? ""} placeholder="descrição..." />
+        <Input id="q" name="q" defaultValue={params?.get("q") ?? ""} placeholder="descrição, nota, categoria ou valor..." />
       </div>
       <div>
         <Label htmlFor="from">De</Label>
