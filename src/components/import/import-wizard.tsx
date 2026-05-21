@@ -175,7 +175,7 @@ export function ImportWizard({ canWrite, categories, methods }: Props) {
           />
         </div>
 
-        <details className="surface-elevated overflow-hidden">
+        <details className="surface-elevated overflow-hidden" open>
           <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium select-none">
             <FileSpreadsheet className="h-4 w-4 text-success" />
             Modelo de planilha aceito (Excel / CSV)
@@ -225,6 +225,35 @@ export function ImportWizard({ canWrite, categories, methods }: Props) {
               <li>
                 <strong className="text-text">Sem coluna Valor?</strong> Pode usar duas colunas separadas: <code>Débito</code> e <code>Crédito</code>.
               </li>
+            </ul>
+          </div>
+        </details>
+
+        <details className="surface-elevated overflow-hidden">
+          <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium select-none">
+            <FileText className="h-4 w-4 text-danger" />
+            Modelo de PDF aceito (extrato bancário)
+          </summary>
+          <div className="space-y-3 border-t border-border px-4 py-4 text-sm">
+            <p className="text-text-muted">
+              O PDF precisa ser <strong className="text-text">digital</strong> (não escaneado). A IA lê o texto bruto e extrai cada transação.
+            </p>
+            <div className="overflow-x-auto rounded-md border border-border bg-bg-elev-2 p-3 font-mono text-xs">
+              <pre className="whitespace-pre text-text-muted">{`EXTRATO BANCÁRIO — Banco XYZ
+Período: 01/02/2026 a 28/02/2026
+
+Data        Descrição                       Valor
+02/02/2026  PIX ENVIADO JULIANA MENDES     -65,00
+02/02/2026  COMPRA LUMA STORE LTDA          -5,99
+04/02/2026  TED RECEBIDA EVERCOL          8.007,31
+09/02/2026  PAG. BOLETO ESC FELIZ IDADE  -1.308,00
+11/02/2026  COMPRA DROGAL FARMACEUTICA     -73,05`}</pre>
+            </div>
+            <ul className="space-y-1 text-xs text-text-muted">
+              <li>✅ <strong className="text-text">Funciona com:</strong> extratos digitais de Itaú, Nubank, Bradesco, Inter, Caixa, Santander, BB, C6, etc.</li>
+              <li>❌ <strong className="text-text">Não funciona:</strong> PDF escaneado (foto/imagem de papel) — precisa de OCR.</li>
+              <li>📝 Cada linha precisa ter <strong className="text-text">data + descrição + valor</strong>. Cabeçalhos, totais e saldos são ignorados automaticamente.</li>
+              <li>📦 Limite: até <strong className="text-text">5 MB</strong> por arquivo.</li>
             </ul>
           </div>
         </details>
