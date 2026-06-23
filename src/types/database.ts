@@ -1006,6 +1006,94 @@ export type Database = {
           },
         ]
       }
+      recurring_transactions: {
+        Row: {
+          active: boolean
+          amount: number
+          category_id: string | null
+          created_at: string
+          created_by: string
+          day_of_month: number | null
+          day_of_week: number | null
+          description: string
+          end_date: string | null
+          frequency: Database["public"]["Enums"]["recurring_frequency"]
+          household_id: string
+          id: string
+          last_run: string | null
+          next_run: string
+          notes: string | null
+          payment_method_id: string | null
+          start_date: string
+          type: Database["public"]["Enums"]["tx_type"]
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          amount: number
+          category_id?: string | null
+          created_at?: string
+          created_by: string
+          day_of_month?: number | null
+          day_of_week?: number | null
+          description: string
+          end_date?: string | null
+          frequency: Database["public"]["Enums"]["recurring_frequency"]
+          household_id: string
+          id?: string
+          last_run?: string | null
+          next_run: string
+          notes?: string | null
+          payment_method_id?: string | null
+          start_date?: string
+          type: Database["public"]["Enums"]["tx_type"]
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          amount?: number
+          category_id?: string | null
+          created_at?: string
+          created_by?: string
+          day_of_month?: number | null
+          day_of_week?: number | null
+          description?: string
+          end_date?: string | null
+          frequency?: Database["public"]["Enums"]["recurring_frequency"]
+          household_id?: string
+          id?: string
+          last_run?: string | null
+          next_run?: string
+          notes?: string | null
+          payment_method_id?: string | null
+          start_date?: string
+          type?: Database["public"]["Enums"]["tx_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_transactions_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recurring_transactions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recurring_transactions_payment_method_id_fkey"
+            columns: ["payment_method_id"]
+            isOneToOne: false
+            referencedRelation: "payment_methods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transactions: {
         Row: {
           amount: number
@@ -1471,6 +1559,7 @@ export type Database = {
         | "boleto"
         | "meal_voucher"
         | "other"
+      recurring_frequency: "daily" | "weekly" | "monthly" | "yearly"
       tx_type: "expense" | "income" | "transfer"
     }
     CompositeTypes: {
@@ -2075,6 +2164,7 @@ export const Constants = {
         "meal_voucher",
         "other",
       ],
+      recurring_frequency: ["daily", "weekly", "monthly", "yearly"],
       tx_type: ["expense", "income", "transfer"],
     },
   },

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 const ROUTES: Record<string, string> = {
   h: "/overview",
   t: "/transactions",
+  e: "/recurring",
   i: "/import",
   r: "/reports",
   m: "/modules",

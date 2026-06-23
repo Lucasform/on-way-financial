@@ -5,6 +5,8 @@ import { z } from "zod";
 import { ASSISTANT_SYSTEM, buildFinancialContext } from "@/lib/ai/context";
 import { createTransactionFromIntent } from "@/lib/ai/create-transaction";
 import { ParsedSchema, parseCommand, parseFreeText, type ParsedIntent } from "@/lib/ai/parser";
+import { extractTransactionsFromText } from "@/lib/import/ai-extract";
+import { formatBRL } from "@/lib/money";
 import { getServerEnv } from "@/lib/env";
 import { loadActiveContext } from "@/lib/household";
 
@@ -70,6 +72,51 @@ export async function POST(req: NextRequest) {
         .join(", ")} — ou responda "não" para criar sem vincular.`,
       pending,
     });
+  }
+
+  // Fase 0: detectar lote de transacoes (mensagem multilinha)
+  if (last && last.role === "user" && looksLikeBatch(last.content)) {
+    try {
+      const { rows } = await extractTransactionsFromText(last.content);
+      if (rows.length >= 2) {
+        const moduleHint = detectBatchModule(last.content, ctx.activeModules);
+        let created = 0;
+        let total = 0;
+        const failures: string[] = [];
+        for (const r of rows) {
+          const intent: ParsedIntent = {
+            intent: r.type === "income" ? "income" : "expense",
+            amount: r.amount,
+            description: r.description,
+            category_hint: r.category_hint ?? null,
+            payment_hint: (r.payment_hint === "other" ? null : r.payment_hint) ?? null,
+            occurred_at: r.occurred_at,
+            module_hint: null,
+            confidence: 1,
+          };
+          const res = await createTransactionFromIntent({
+            householdId: ctx.householdId,
+            userId: ctx.userId,
+            intent,
+            moduleOverride: moduleHint ? { id: moduleHint.id, kind: moduleHint.kind } : null,
+            origin: "ai_chat",
+          });
+          if (res.ok) {
+            created++;
+            total += r.amount;
+          } else {
+            failures.push(r.description);
+          }
+        }
+        const moduleLabel = moduleHint ? ` no módulo ${moduleHint.name}` : "";
+        const reply =
+          `✅ ${created} transação${created === 1 ? "" : "ões"} registrada${created === 1 ? "" : "s"}${moduleLabel}. Total: ${formatBRL(total)}.` +
+          (failures.length > 0 ? `\n\n⚠️ ${failures.length} não foi(ram) salvas: ${failures.slice(0, 3).join(", ")}` : "");
+        return NextResponse.json({ reply });
+      }
+    } catch (e) {
+      console.error("ai chat batch", e);
+    }
   }
 
   // Fase 1: detectar nova transação
@@ -142,6 +189,42 @@ export async function POST(req: NextRequest) {
     console.error("ai chat", err);
     return NextResponse.json({ error: "ai_failed" }, { status: 502 });
   }
+}
+
+function looksLikeBatch(text: string): boolean {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+  if (lines.length < 2) return false;
+  // Conta linhas com numero (provavel valor)
+  const withNumber = lines.filter((l) => /\d/.test(l)).length;
+  return withNumber >= 2;
+}
+
+function detectBatchModule(
+  text: string,
+  mods: { id: string; kind: string; name: string }[],
+): { id: string; kind: string; name: string } | null {
+  if (mods.length === 0) return null;
+  const t = text.toLowerCase();
+  // Tenta casar pelo nome do modulo
+  for (const m of mods) {
+    if (t.includes(m.name.toLowerCase())) return m;
+  }
+  // Tenta casar pelo kind
+  const kindKw: Record<string, string> = {
+    obra: "obra",
+    viagem: "travel",
+    carro: "car",
+    presente: "gift",
+    educação: "education",
+    educacao: "education",
+  };
+  for (const [kw, kind] of Object.entries(kindKw)) {
+    if (t.includes(kw)) {
+      const found = mods.find((x) => x.kind === kind);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 function looksLikeTransaction(text: string): boolean {

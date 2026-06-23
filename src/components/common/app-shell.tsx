@@ -13,6 +13,7 @@ import {
   LineChart,
   MoreHorizontal,
   Plus,
+  Repeat,
   Settings,
   Users,
   Wallet,
@@ -30,6 +31,7 @@ import type { ActiveContext } from "@/lib/household";
 const NAV = [
   { href: "/overview", label: "Visão geral", icon: Home },
   { href: "/transactions", label: "Transações", icon: Wallet },
+  { href: "/recurring", label: "Recorrências", icon: Repeat },
   { href: "/import", label: "Importar extrato", icon: FileUp },
   { href: "/reports", label: "Relatórios", icon: LineChart },
   { href: "/modules", label: "Módulos", icon: Boxes },
