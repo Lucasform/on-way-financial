@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 150 30% 98%;
+  --surface: 0 0% 100%;
+  --surface-2: 150 28% 95%;
+  --border: 150 18% 87%;
+  --muted: 150 10% 42%;
+  --fg: 155 35% 11%;
+  --fg-soft: 152 16% 28%;
+  --brand: 152 62% 30%;
+  --brand-soft: 150 48% 93%;
+  --success: 152 62% 34%;
+  --warning: 38 92% 45%;
+  --danger: 0 70% 47%;
+  --shadow: 155 40% 15%;
+}
+
+.dark {
+  --bg: 156 32% 6%;
+  --surface: 156 26% 9%;
+  --surface-2: 155 22% 13%;
+  --border: 153 18% 18%;
+  --muted: 150 12% 60%;
+  --fg: 150 28% 96%;
+  --fg-soft: 150 16% 76%;
+  --brand: 152 60% 46%;
+  --brand-soft: 153 38% 15%;
+  --success: 152 58% 50%;
+  --warning: 38 90% 56%;
+  --danger: 0 72% 60%;
+  --shadow: 0 0% 0%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: hsl(var(--bg));
+  color: hsl(var(--fg));
+  font-feature-settings: "cv11", "ss01";
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: hsl(var(--brand) / 0.25);
+}
+
+@layer utilities {
+  .glass {
+    background: hsl(var(--surface) / 0.7);
+    backdrop-filter: blur(12px) saturate(140%);
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted));
+  background-clip: content-box;
+}
