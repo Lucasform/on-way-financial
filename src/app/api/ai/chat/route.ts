@@ -107,6 +107,14 @@ export async function POST(req: NextRequest) {
       const cmd = parseCommand(last.content);
       if (cmd && "intent" in cmd && (cmd.intent === "expense" || cmd.intent === "income")) {
         intent = cmd;
+      } else if (looksLikeTransaction(last.content) && looksLikeQuote(last.content)) {
+        // Ambíguo: tem cara de preço mas também de cotação recebida (não pago ainda).
+        // Não lança nada sozinho — pergunta antes.
+        return NextResponse.json({
+          reply:
+            "Isso é uma despesa que você já pagou, ou uma cotação/orçamento que te passaram (ainda não pago)? " +
+            "Me confirma que eu registro certinho.",
+        });
       } else if (looksLikeTransaction(last.content)) {
         const free = await parseFreeText(last.content);
         if (
@@ -224,4 +232,16 @@ function looksLikeTransaction(text: string): boolean {
     "r$", "reais", "real",
   ];
   return verbs.some((v) => t.includes(v));
+}
+
+function looksLikeQuote(text: string): boolean {
+  const t = text.toLowerCase();
+  const phrases = [
+    "cotou", "cotação", "cotacao", "orçou", "orçamento", "orcamento",
+    "passou o preço", "passou preço", "passou o preco", "passou preco",
+    "vai cobrar", "vai custar", "cobra", "cobram",
+    "informou o preço", "informou preço", "informou o preco", "informou preco",
+    "disse que custa", "falou que custa", "preço de", "preco de",
+  ];
+  return phrases.some((p) => t.includes(p));
 }

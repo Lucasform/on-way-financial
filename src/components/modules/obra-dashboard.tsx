@@ -27,7 +27,6 @@ import { Money } from "@/components/ui/money";
 import { Empty } from "@/components/ui/empty";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { normalizePhone, sanitizeFilename, waLink } from "@/lib/utils";
-import { percent } from "@/lib/money";
 
 export interface Module {
   id: string;
@@ -95,7 +94,6 @@ function statusLabel(s: string): string {
 
 export function ObraDashboard({ module, transactions, canWrite }: Props) {
   const total = transactions.reduce((s, t) => s + Number(t.amount), 0);
-  const pct = module.budget ? percent(total, Number(module.budget)) : 0;
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-3">
@@ -109,29 +107,13 @@ export function ObraDashboard({ module, transactions, canWrite }: Props) {
         <Badge variant={module.status === "active" ? "success" : "secondary"}>{statusLabel(module.status)}</Badge>
       </header>
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+      <section>
         <Link href="/transactions">
-          <Card className="h-full transition-colors hover:border-primary/50 hover:bg-bg-elev-2">
+          <Card className="transition-colors hover:border-primary/50 hover:bg-bg-elev-2">
             <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Realizado</CardTitle></CardHeader>
             <CardContent className="pt-0"><Money value={total} size="xl" /></CardContent>
           </Card>
         </Link>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Orçamento</CardTitle></CardHeader>
-          <CardContent className="pt-0"><Money value={module.budget} size="xl" tone="muted" /></CardContent>
-        </Card>
-        <Card className="sm:col-span-2">
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">% Orçamento usado</CardTitle></CardHeader>
-          <CardContent className="pt-0 space-y-2">
-            <p className="font-mono text-2xl">{pct.toFixed(1)}%</p>
-            <div className="h-2 overflow-hidden rounded-full bg-bg-elev-2">
-              <div
-                className={`h-full ${pct >= 100 ? "bg-danger" : pct >= 80 ? "bg-warning" : "bg-primary"}`}
-                style={{ width: `${Math.min(100, pct)}%` }}
-              />
-            </div>
-          </CardContent>
-        </Card>
       </section>
 
       <section className="grid grid-cols-4 gap-2 sm:grid-cols-8">
