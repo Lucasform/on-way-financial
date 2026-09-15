@@ -59,6 +59,93 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [dropActive, setDropActive] = useState(false);
+  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
+  const [quoteDraft, setQuoteDraft] = useState<Partial<QuoteRow>>({});
+  const [savingQuote, setSavingQuote] = useState(false);
+  const [editingPurchaseId, setEditingPurchaseId] = useState<string | null>(null);
+  const [purchaseDraft, setPurchaseDraft] = useState<Partial<PurchaseRow>>({});
+  const [savingPurchase, setSavingPurchase] = useState(false);
+
+  function openQuote(q: QuoteRow) {
+    if (!canWrite) return;
+    if (editingQuoteId === q.id) {
+      setEditingQuoteId(null);
+      return;
+    }
+    setQuoteDraft(q);
+    setEditingQuoteId(q.id);
+  }
+
+  async function saveQuote(id: string) {
+    setSavingQuote(true);
+    try {
+      const { error } = await supabase
+        .from("price_quotes")
+        .update({
+          item_name: quoteDraft.item_name?.trim(),
+          unit: quoteDraft.unit,
+          unit_price: quoteDraft.unit_price,
+          quoted_at: quoteDraft.quoted_at,
+        })
+        .eq("id", id);
+      if (error) {
+        toast.error("Falha ao salvar cotação.");
+        return;
+      }
+      setQuotes((s) => s.map((q) => (q.id === id ? { ...q, ...quoteDraft } as QuoteRow : q)));
+      setEditingQuoteId(null);
+      toast.success("Cotação atualizada.");
+    } finally {
+      setSavingQuote(false);
+    }
+  }
+
+  async function reopenQuote(id: string) {
+    if (!canWrite) return;
+    if (!confirm("Voltar essa cotação pro estado aberta? Isso não apaga a compra/despesa se ela ainda existir — pra isso, apague em Realizado.")) return;
+    const { error } = await supabase.from("price_quotes").update({ accepted_at: null }).eq("id", id);
+    if (error) {
+      toast.error("Falha ao reabrir.");
+      return;
+    }
+    setQuotes((s) => s.map((q) => (q.id === id ? { ...q, accepted_at: null } : q)));
+    toast.success("Cotação reaberta.");
+  }
+
+  function openPurchase(p: PurchaseRow) {
+    if (!canWrite) return;
+    if (editingPurchaseId === p.id) {
+      setEditingPurchaseId(null);
+      return;
+    }
+    setPurchaseDraft(p);
+    setEditingPurchaseId(p.id);
+  }
+
+  async function savePurchase(id: string) {
+    setSavingPurchase(true);
+    try {
+      const { error } = await supabase
+        .from("obra_items")
+        .update({
+          name: purchaseDraft.name?.trim(),
+          quantity: purchaseDraft.quantity,
+          unit: purchaseDraft.unit,
+          actual_unit_price: purchaseDraft.actual_unit_price,
+          bought_at: purchaseDraft.bought_at,
+        })
+        .eq("id", id);
+      if (error) {
+        toast.error("Falha ao salvar item.");
+        return;
+      }
+      setPurchases((s) => s.map((p) => (p.id === id ? { ...p, ...purchaseDraft } as PurchaseRow : p)));
+      setEditingPurchaseId(null);
+      toast.success("Item atualizado.");
+    } finally {
+      setSavingPurchase(false);
+    }
+  }
 
   async function acceptQuote(quote: QuoteRow) {
     if (!canWrite || acceptingId || quote.accepted_at) return;
@@ -313,32 +400,85 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
           <Card className="divide-y divide-border">
             {quotes.map((q) => {
               const draggableNow = canWrite && !q.accepted_at;
+              const isEditing = editingQuoteId === q.id;
               return (
-              <div
-                key={q.id}
-                draggable={draggableNow}
-                onDragStart={(e) => draggableNow && e.dataTransfer.setData("text/quote-id", q.id)}
-                className={`flex items-center justify-between gap-3 p-3 text-sm ${draggableNow ? "cursor-grab active:cursor-grabbing" : ""} ${q.accepted_at ? "opacity-60" : ""}`}
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{q.item_name}</p>
-                  <p className="text-xs text-text-muted">{fmtDate(q.quoted_at, "dd/MM/yyyy")} · {q.unit}</p>
-                </div>
-                <Money value={q.unit_price} size="sm" className="shrink-0" />
-                {q.accepted_at && <Badge variant="secondary">aceita</Badge>}
-                {canWrite && !q.accepted_at && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-7 w-7 shrink-0"
-                    disabled={acceptingId === q.id}
-                    onClick={() => acceptQuote(q)}
-                    aria-label="Aceitar cotação"
+                <div key={q.id}>
+                  <div
+                    draggable={draggableNow}
+                    onDragStart={(e) => draggableNow && e.dataTransfer.setData("text/quote-id", q.id)}
+                    onClick={() => openQuote(q)}
+                    className={`flex items-center justify-between gap-3 p-3 text-sm ${canWrite ? "cursor-pointer hover:bg-bg-elev-2" : ""} ${draggableNow ? "active:cursor-grabbing" : ""} ${q.accepted_at ? "opacity-60" : ""}`}
                   >
-                    <Check className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{q.item_name}</p>
+                      <p className="text-xs text-text-muted">{fmtDate(q.quoted_at, "dd/MM/yyyy")} · {q.unit}</p>
+                    </div>
+                    <Money value={q.unit_price} size="sm" className="shrink-0" />
+                    {q.accepted_at &&
+                      (canWrite ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            reopenQuote(q.id);
+                          }}
+                          className="shrink-0"
+                          aria-label="Reabrir cotação"
+                        >
+                          <Badge variant="secondary">aceita · reabrir</Badge>
+                        </button>
+                      ) : (
+                        <Badge variant="secondary">aceita</Badge>
+                      ))}
+                    {canWrite && !q.accepted_at && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7 shrink-0"
+                        disabled={acceptingId === q.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          acceptQuote(q);
+                        }}
+                        aria-label="Aceitar cotação"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                  {isEditing && (
+                    <div className="grid gap-2 border-t border-border bg-bg-elev-2 p-3 sm:grid-cols-4">
+                      <Input
+                        value={quoteDraft.item_name ?? ""}
+                        onChange={(e) => setQuoteDraft({ ...quoteDraft, item_name: e.target.value })}
+                        placeholder="Item"
+                        className="sm:col-span-2"
+                      />
+                      <Input
+                        value={quoteDraft.unit ?? ""}
+                        onChange={(e) => setQuoteDraft({ ...quoteDraft, unit: e.target.value })}
+                        placeholder="Unidade"
+                      />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={quoteDraft.unit_price ?? ""}
+                        onChange={(e) => setQuoteDraft({ ...quoteDraft, unit_price: Number(e.target.value) })}
+                        placeholder="Preço"
+                      />
+                      <Input
+                        type="date"
+                        value={quoteDraft.quoted_at ?? ""}
+                        onChange={(e) => setQuoteDraft({ ...quoteDraft, quoted_at: e.target.value })}
+                        className="sm:col-span-2"
+                      />
+                      <div className="flex gap-2 sm:col-span-2 sm:justify-end">
+                        <Button variant="ghost" size="sm" onClick={() => setEditingQuoteId(null)}>Cancelar</Button>
+                        <Button size="sm" disabled={savingQuote} onClick={() => saveQuote(q.id)}>Salvar</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </Card>
@@ -371,8 +511,13 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
           <Card className="divide-y divide-border">
             {purchases.map((p) => {
               const total = Number(p.quantity) * Number(p.actual_unit_price ?? p.unit_price ?? 0);
+              const isEditing = editingPurchaseId === p.id;
               return (
-                <div key={p.id} className="flex items-center justify-between gap-3 p-3 text-sm">
+                <div key={p.id}>
+                <div
+                  onClick={() => openPurchase(p)}
+                  className={`flex items-center justify-between gap-3 p-3 text-sm ${canWrite ? "cursor-pointer hover:bg-bg-elev-2" : ""}`}
+                >
                   <div className="min-w-0">
                     <p className="truncate font-medium">{p.name}</p>
                     <p className="text-xs text-text-muted">
@@ -387,12 +532,54 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
                       size="icon"
                       className="h-7 w-7 shrink-0"
                       disabled={removingId === p.id}
-                      onClick={() => removePurchase(p.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removePurchase(p.id);
+                      }}
                       aria-label="Apagar"
                     >
                       <Trash2 className="h-3.5 w-3.5 text-danger" />
                     </Button>
                   )}
+                </div>
+                {isEditing && (
+                  <div className="grid gap-2 border-t border-border bg-bg-elev-2 p-3 sm:grid-cols-4">
+                    <Input
+                      value={purchaseDraft.name ?? ""}
+                      onChange={(e) => setPurchaseDraft({ ...purchaseDraft, name: e.target.value })}
+                      placeholder="Item"
+                      className="sm:col-span-2"
+                    />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={purchaseDraft.quantity ?? ""}
+                      onChange={(e) => setPurchaseDraft({ ...purchaseDraft, quantity: Number(e.target.value) })}
+                      placeholder="Quantidade"
+                    />
+                    <Input
+                      value={purchaseDraft.unit ?? ""}
+                      onChange={(e) => setPurchaseDraft({ ...purchaseDraft, unit: e.target.value })}
+                      placeholder="Unidade"
+                    />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={purchaseDraft.actual_unit_price ?? ""}
+                      onChange={(e) => setPurchaseDraft({ ...purchaseDraft, actual_unit_price: Number(e.target.value) })}
+                      placeholder="Preço pago"
+                    />
+                    <Input
+                      type="date"
+                      value={purchaseDraft.bought_at ?? ""}
+                      onChange={(e) => setPurchaseDraft({ ...purchaseDraft, bought_at: e.target.value })}
+                    />
+                    <div className="flex gap-2 sm:col-span-2 sm:justify-end">
+                      <Button variant="ghost" size="sm" onClick={() => setEditingPurchaseId(null)}>Cancelar</Button>
+                      <Button size="sm" disabled={savingPurchase} onClick={() => savePurchase(p.id)}>Salvar</Button>
+                    </div>
+                  </div>
+                )}
                 </div>
               );
             })}
