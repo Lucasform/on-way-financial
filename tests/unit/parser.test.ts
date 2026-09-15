@@ -20,11 +20,12 @@ describe("parseCommand", () => {
     expect(r.amount).toBe(5000);
   });
 
-  it("comando /obra vincula a módulo", () => {
+  it("comando desconhecido (ex: /obra) não é tratado como lançamento", () => {
+    // App é obra-only: não existe mais múltiplos módulos pra vincular via comando.
     const r = parseCommand("/obra 230 cimento");
-    if (!r || !("intent" in r)) throw new Error();
-    expect(r.module_hint).toBe("obra");
-    expect(r.amount).toBe(230);
+    if (!r || !("command" in r)) throw new Error();
+    expect(r.command).toBe("obra");
+    expect(r.rest).toBe("230 cimento");
   });
 
   it("comando /ajuda retorna objeto não-intent", () => {

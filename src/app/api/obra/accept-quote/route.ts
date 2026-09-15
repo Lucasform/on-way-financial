@@ -26,13 +26,29 @@ export async function POST(req: NextRequest) {
   const mod = await getObraModule(ctx.householdId);
   if (!mod) return NextResponse.json({ error: "no_module" }, { status: 400 });
 
-  const { data: quote } = await supabase
+  // Update atômico: só "reivindica" a cotação se ainda não tiver sido aceita, evitando
+  // aceitar 2x (clique duplo, ou 2 abas) virar 2 compras + 2 despesas.
+  const { data: quote, error: claimErr } = await supabase
     .from("price_quotes")
-    .select("*")
+    .update({ accepted_at: new Date().toISOString() })
     .eq("id", quote_id)
     .eq("household_id", ctx.householdId)
+    .is("accepted_at", null)
+    .select("*")
     .maybeSingle();
-  if (!quote) return NextResponse.json({ error: "quote_not_found" }, { status: 404 });
+  if (claimErr) return NextResponse.json({ error: claimErr.message }, { status: 500 });
+  if (!quote) {
+    const { data: existing } = await supabase
+      .from("price_quotes")
+      .select("id")
+      .eq("id", quote_id)
+      .eq("household_id", ctx.householdId)
+      .maybeSingle();
+    return NextResponse.json(
+      { error: existing ? "already_accepted" : "quote_not_found" },
+      { status: existing ? 409 : 404 },
+    );
+  }
 
   const { data: supplier } = await supabase
     .from("suppliers")

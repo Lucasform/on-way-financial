@@ -25,7 +25,7 @@ export default async function SupplierDetailPage({ params }: { params: { id: str
   const [{ data: quotes }, { data: purchases }] = await Promise.all([
     supabase
       .from("price_quotes")
-      .select("id, item_name, unit, unit_price, quoted_at")
+      .select("id, item_name, unit, unit_price, quoted_at, accepted_at")
       .eq("household_id", ctx.householdId)
       .eq("supplier_id", params.id)
       .order("quoted_at", { ascending: false }),

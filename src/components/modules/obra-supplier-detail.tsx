@@ -24,6 +24,7 @@ export interface QuoteRow {
   unit: string;
   unit_price: number;
   quoted_at: string;
+  accepted_at: string | null;
 }
 
 export interface PurchaseRow {
@@ -53,13 +54,13 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(initial);
   const [pending, start] = useTransition();
-  const [quotes] = useState(initialQuotes);
+  const [quotes, setQuotes] = useState(initialQuotes);
   const [purchases, setPurchases] = useState(initialPurchases);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [dropActive, setDropActive] = useState(false);
 
   async function acceptQuote(quote: QuoteRow) {
-    if (!canWrite || acceptingId) return;
+    if (!canWrite || acceptingId || quote.accepted_at) return;
     const raw = prompt(`Quantidade de "${quote.item_name}" (${quote.unit}):`, "1");
     if (raw === null) return;
     const quantity = Number(raw.replace(",", "."));
@@ -74,11 +75,17 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ quote_id: quote.id, quantity }),
       });
-      const data = await res.json();
+      if (res.status === 409) {
+        toast.warning("Essa cotação já tinha sido aceita.");
+        setQuotes((s) => s.map((x) => (x.id === quote.id ? { ...x, accepted_at: x.accepted_at ?? new Date().toISOString() } : x)));
+        return;
+      }
       if (!res.ok) {
         toast.error("Falha ao aceitar cotação.");
         return;
       }
+      const data = await res.json();
+      setQuotes((s) => s.map((x) => (x.id === quote.id ? { ...x, accepted_at: new Date().toISOString() } : x)));
       setPurchases((s) => [
         {
           id: data.item.id,
@@ -278,19 +285,22 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
           <Empty icon={Receipt} title="Sem cotações" description="Registre o preço que esse fornecedor passou." />
         ) : (
           <Card className="divide-y divide-border">
-            {quotes.map((q) => (
+            {quotes.map((q) => {
+              const draggableNow = canWrite && !q.accepted_at;
+              return (
               <div
                 key={q.id}
-                draggable={canWrite}
-                onDragStart={(e) => canWrite && e.dataTransfer.setData("text/quote-id", q.id)}
-                className={`flex items-center justify-between gap-3 p-3 text-sm ${canWrite ? "cursor-grab active:cursor-grabbing" : ""}`}
+                draggable={draggableNow}
+                onDragStart={(e) => draggableNow && e.dataTransfer.setData("text/quote-id", q.id)}
+                className={`flex items-center justify-between gap-3 p-3 text-sm ${draggableNow ? "cursor-grab active:cursor-grabbing" : ""} ${q.accepted_at ? "opacity-60" : ""}`}
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{q.item_name}</p>
                   <p className="text-xs text-text-muted">{fmtDate(q.quoted_at, "dd/MM/yyyy")} · {q.unit}</p>
                 </div>
                 <Money value={q.unit_price} size="sm" className="shrink-0" />
-                {canWrite && (
+                {q.accepted_at && <Badge variant="secondary">aceita</Badge>}
+                {canWrite && !q.accepted_at && (
                   <Button
                     variant="outline"
                     size="icon"
@@ -303,7 +313,8 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
                   </Button>
                 )}
               </div>
-            ))}
+              );
+            })}
           </Card>
         )}
       </section>

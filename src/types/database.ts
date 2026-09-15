@@ -557,6 +557,7 @@ export interface Database {
           quoted_at: string;
           valid_until: string | null;
           notes: string | null;
+          accepted_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -570,6 +571,7 @@ export interface Database {
           quoted_at?: string;
           valid_until?: string | null;
           notes?: string | null;
+          accepted_at?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["price_quotes"]["Insert"]>;

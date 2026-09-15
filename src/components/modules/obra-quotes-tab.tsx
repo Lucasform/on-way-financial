@@ -24,6 +24,7 @@ export interface Quote {
   quoted_at: string;
   valid_until: string | null;
   notes: string | null;
+  accepted_at: string | null;
 }
 
 const UNITS = ["un", "m", "m2", "m3", "kg", "saco", "litro", "rolo", "barra", "caixa", "hora", "diária"];
@@ -96,7 +97,7 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
   }
 
   async function accept(q: Quote) {
-    if (!canWrite || acceptingId) return;
+    if (!canWrite || acceptingId || q.accepted_at) return;
     const raw = prompt(`Quantidade de "${q.item_name}" (${q.unit}):`, "1");
     if (raw === null) return;
     const quantity = Number(raw.replace(",", "."));
@@ -111,10 +112,16 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ quote_id: q.id, quantity }),
       });
+      if (res.status === 409) {
+        toast.warning("Essa cotação já tinha sido aceita.");
+        setQuotes((s) => s.map((x) => (x.id === q.id ? { ...x, accepted_at: x.accepted_at ?? new Date().toISOString() } : x)));
+        return;
+      }
       if (!res.ok) {
         toast.error("Falha ao aceitar cotação.");
         return;
       }
+      setQuotes((s) => s.map((x) => (x.id === q.id ? { ...x, accepted_at: new Date().toISOString() } : x)));
       toast.success("Cotação aceita: virou compra e despesa. Veja em Materiais/Despesas.");
     } finally {
       setAcceptingId(null);
@@ -227,11 +234,12 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
                         </p>
                       </div>
                       {idx === 0 && g.list.length > 1 && <Badge variant="success">melhor preço</Badge>}
+                      {q.accepted_at && <Badge variant="secondary">aceita</Badge>}
                     </div>
                     <div className="flex items-center gap-2">
                       <Money value={Number(q.unit_price)} size="sm" className="num font-medium" />
                       <span className="text-xs text-text-muted">/{q.unit}</span>
-                      {canWrite && (
+                      {canWrite && !q.accepted_at && (
                         <Button
                           variant="outline"
                           size="icon"
