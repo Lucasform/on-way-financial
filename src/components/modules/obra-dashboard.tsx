@@ -1,7 +1,21 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Camera, MessageSquare, Plus, Send, Trash2 } from "lucide-react";
+import {
+  Activity,
+  Camera,
+  Images,
+  KanbanSquare,
+  MessageSquare,
+  Package,
+  Plus,
+  Receipt,
+  Send,
+  Trash2,
+  TrendingUp,
+  Truck,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +87,17 @@ interface Props {
 
 const KANBAN = ["todo", "doing", "done", "blocked"] as const;
 
+const SECTIONS = [
+  { value: "forecast", label: "Previsão", icon: TrendingUp },
+  { value: "phases", label: "Fases", icon: KanbanSquare },
+  { value: "items", label: "Materiais", icon: Package },
+  { value: "suppliers", label: "Fornecedores", icon: Truck },
+  { value: "quotes", label: "Cotações", icon: Receipt },
+  { value: "diary", label: "Andamento", icon: Activity },
+  { value: "gallery", label: "Galeria", icon: Images },
+  { value: "workers", label: "Equipe", icon: Users },
+] as const;
+
 function statusLabel(s: string): string {
   switch (s) {
     case "active": return "ativo";
@@ -135,15 +160,19 @@ export function ObraDashboard({
       </section>
 
       <Tabs defaultValue="forecast">
-        <TabsList>
-          <TabsTrigger value="forecast">Previsão</TabsTrigger>
-          <TabsTrigger value="phases">Fases</TabsTrigger>
-          <TabsTrigger value="items">Materiais</TabsTrigger>
-          <TabsTrigger value="suppliers">Fornecedores</TabsTrigger>
-          <TabsTrigger value="quotes">Cotações</TabsTrigger>
-          <TabsTrigger value="diary">Andamento</TabsTrigger>
-          <TabsTrigger value="gallery">Galeria</TabsTrigger>
-          <TabsTrigger value="workers">Equipe</TabsTrigger>
+        <TabsList className="grid h-auto grid-cols-4 gap-2 bg-transparent p-0 sm:grid-cols-8">
+          {SECTIONS.map(({ value, label, icon: Icon }) => (
+            <TabsTrigger
+              key={value}
+              value={value}
+              className="group flex h-auto flex-col items-center gap-2 rounded-2xl border border-border bg-bg-elev px-2 py-3 text-text-muted data-[state=active]:bg-bg-elev-2 data-[state=active]:text-text data-[state=active]:border-primary/50"
+            >
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-bg-elev-2 text-text-muted transition-colors group-data-[state=active]:bg-gradient-primary group-data-[state=active]:text-primary-foreground">
+                <Icon className="h-5 w-5" />
+              </span>
+              <span className="text-[11px] font-medium leading-tight">{label}</span>
+            </TabsTrigger>
+          ))}
         </TabsList>
         <TabsContent value="forecast">
           <ObraForecastTab budget={module.budget} spent={total} items={items} phases={phases} />

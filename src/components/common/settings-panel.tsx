@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Download, Send, Unlink } from "lucide-react";
+import { Download } from "lucide-react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,62 +15,15 @@ interface Props {
   memberId: string;
   displayName: string;
   whatsappPhone: string;
-  telegramChatId: number | null;
-  telegramUsername: string | null;
   householdId: string;
 }
 
-export function SettingsPanel({
-  memberId,
-  displayName,
-  whatsappPhone,
-  telegramChatId: initialChatId,
-  telegramUsername: initialUsername,
-  householdId,
-}: Props) {
+export function SettingsPanel({ memberId, displayName, whatsappPhone, householdId }: Props) {
   const supabase = createSupabaseBrowser();
   const [name, setName] = useState(displayName);
   const [phone, setPhone] = useState(whatsappPhone);
   const [pending, start] = useTransition();
   const [theme, setTheme] = useState<"dark" | "light">("dark");
-  const [tgChatId, setTgChatId] = useState<number | null>(initialChatId);
-  const [tgUsername, setTgUsername] = useState<string | null>(initialUsername);
-  const [tgLink, setTgLink] = useState<string | null>(null);
-  const [tgLinking, setTgLinking] = useState(false);
-
-  async function connectTelegram() {
-    setTgLinking(true);
-    try {
-      const res = await fetch("/api/telegram/link", { method: "POST" });
-      if (!res.ok) {
-        toast.error("Falha ao gerar link do Telegram.");
-        return;
-      }
-      const { deep_link } = (await res.json()) as { deep_link: string };
-      setTgLink(deep_link);
-      window.open(deep_link, "_blank", "noopener");
-      toast.success("Abra o Telegram e clique em START.");
-    } finally {
-      setTgLinking(false);
-    }
-  }
-
-  async function disconnectTelegram() {
-    if (!confirm("Desvincular sua conta do Telegram?")) return;
-    start(async () => {
-      const { error } = await supabase
-        .from("household_members")
-        .update({ telegram_chat_id: null, telegram_username: null })
-        .eq("id", memberId);
-      if (error) {
-        toast.error("Falha ao desvincular.");
-        return;
-      }
-      setTgChatId(null);
-      setTgUsername(null);
-      toast.success("Desvinculado.");
-    });
-  }
 
   function saveProfile() {
     start(async () => {
@@ -147,45 +99,6 @@ export function SettingsPanel({
             <Button onClick={saveProfile} disabled={pending}>Salvar</Button>
           </div>
         </div>
-      </Card>
-
-      <Card className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold">Telegram</h2>
-          {tgChatId ? <Badge variant="success">vinculado</Badge> : <Badge variant="secondary">desvinculado</Badge>}
-        </div>
-        {tgChatId ? (
-          <div className="space-y-3 text-sm">
-            <p className="text-text-muted">
-              Conectado como{" "}
-              <strong className="text-text">
-                {tgUsername ? `@${tgUsername}` : `chat ${tgChatId}`}
-              </strong>
-              . Envie mensagens para o bot direto pelo Telegram.
-            </p>
-            <Button variant="outline" onClick={disconnectTelegram} disabled={pending}>
-              <Unlink className="h-4 w-4" /> Desvincular
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3 text-sm">
-            <p className="text-text-muted">
-              Conecte sua conta do Telegram para registrar despesas direto pelo bot.
-            </p>
-            <Button onClick={connectTelegram} disabled={tgLinking}>
-              <Send className="h-4 w-4" /> {tgLinking ? "Gerando link..." : "Conectar Telegram"}
-            </Button>
-            {tgLink && (
-              <p className="text-xs text-text-muted">
-                Se não abriu automaticamente:{" "}
-                <a href={tgLink} target="_blank" rel="noreferrer" className="text-primary underline">
-                  abrir no Telegram
-                </a>{" "}
-                (link expira em 15 min)
-              </p>
-            )}
-          </div>
-        )}
       </Card>
 
       <Card className="p-4">
