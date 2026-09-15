@@ -120,6 +120,9 @@ REGRAS:
   no resumo do contexto, USE a ferramenta search_transactions em vez de dizer que não sabe.
 - Se o usuário pedir pra cadastrar/adicionar um fornecedor (nome, telefone, CNPJ, endereço, tipo),
   USE a ferramenta add_supplier. Peça só o nome se faltar; o resto é opcional.
+- Se o usuário mencionar um preço que um fornecedor cotou, USE a ferramenta add_quote.
+- Se o usuário pedir pra adicionar/planejar um material, mão de obra, equipamento ou serviço,
+  USE a ferramenta add_material_item.
 - Pra perguntas gerais (conceitos, comparações, produtos do mercado), use seu conhecimento.
 - Se faltar dado, peça pro usuário especificar.
 - Sugira ações claras e curtas, em bullet points quando ajudar.
@@ -240,6 +243,137 @@ export const ADD_SUPPLIER_TOOL = {
       cnpj: { type: "string", description: "CNPJ, se mencionado." },
       address: { type: "string", description: "Endereço, se mencionado." },
       notes: { type: "string", description: "Observações livres, se houver." },
+    },
+    required: ["name"],
+  },
+};
+
+export interface AddQuoteArgs {
+  supplier_name: string;
+  item_name: string;
+  unit_price: number;
+  unit?: string | null;
+  notes?: string | null;
+}
+
+/** Cadastra uma cotação (preço de um item de um fornecedor) via IA. */
+export async function addQuote(householdId: string, args: AddQuoteArgs): Promise<string> {
+  if (!args.supplier_name?.trim() || !args.item_name?.trim() || !(args.unit_price > 0)) {
+    return "Preciso do fornecedor, do item e do preço pra registrar a cotação.";
+  }
+  const admin = createSupabaseAdmin();
+  const { data: supplier } = await admin
+    .from("suppliers")
+    .select("id, name")
+    .eq("household_id", householdId)
+    .ilike("name", `%${args.supplier_name.trim()}%`)
+    .limit(1)
+    .maybeSingle();
+  if (!supplier) return `Não encontrei o fornecedor "${args.supplier_name}". Cadastre ele primeiro.`;
+
+  const { error } = await admin.from("price_quotes").insert({
+    household_id: householdId,
+    supplier_id: supplier.id,
+    item_name: args.item_name.trim(),
+    unit: args.unit ?? "un",
+    unit_price: args.unit_price,
+    quoted_at: new Date().toISOString().slice(0, 10),
+    notes: args.notes ?? null,
+  });
+  if (error) return `Erro ao registrar cotação: ${error.message}`;
+  return `Cotação registrada: ${args.item_name} de ${supplier.name} por ${formatBRL(args.unit_price)}/${args.unit ?? "un"}.`;
+}
+
+export const ADD_QUOTE_TOOL = {
+  name: "add_quote",
+  description:
+    "Registra uma cotação: o preço que um fornecedor já cadastrado passou por um item/material/serviço. " +
+    'Use quando o usuário disser algo como "a Leroy cotou o cimento a 35 reais o saco".',
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      supplier_name: { type: "string", description: "Nome (ou parte) do fornecedor, já cadastrado." },
+      item_name: { type: "string", description: "Nome do item/material/serviço cotado." },
+      unit_price: { type: "number", description: "Preço unitário cotado." },
+      unit: { type: "string", description: "Unidade (un, saco, m2, m3, kg, hora...). Padrão: un." },
+      notes: { type: "string", description: "Observações, se houver." },
+    },
+    required: ["supplier_name", "item_name", "unit_price"],
+  },
+};
+
+export interface AddMaterialArgs {
+  name: string;
+  category?: string | null;
+  unit?: string | null;
+  quantity?: number | null;
+  unit_price?: number | null;
+  supplier_name?: string | null;
+  notes?: string | null;
+}
+
+/** Adiciona um item planejado (material/mão de obra/equipamento/serviço) à obra via IA. */
+export async function addMaterialItem(householdId: string, args: AddMaterialArgs): Promise<string> {
+  if (!args.name?.trim()) return "Preciso pelo menos do nome do item.";
+  const admin = createSupabaseAdmin();
+  const { data: mod } = await admin
+    .from("modules")
+    .select("id")
+    .eq("household_id", householdId)
+    .eq("kind", "obra")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!mod) return "Não encontrei a obra ativa.";
+
+  let supplierId: string | null = null;
+  let supplierName: string | null = null;
+  if (args.supplier_name?.trim()) {
+    const { data: supplier } = await admin
+      .from("suppliers")
+      .select("id, name")
+      .eq("household_id", householdId)
+      .ilike("name", `%${args.supplier_name.trim()}%`)
+      .limit(1)
+      .maybeSingle();
+    if (supplier) {
+      supplierId = supplier.id;
+      supplierName = supplier.name;
+    }
+  }
+
+  const { error } = await admin.from("obra_items").insert({
+    module_id: mod.id,
+    category: args.category ?? "material",
+    name: args.name.trim(),
+    unit: args.unit ?? "un",
+    quantity: args.quantity ?? 1,
+    unit_price: args.unit_price ?? null,
+    supplier: supplierName,
+    supplier_id: supplierId,
+    status: "planned",
+    notes: args.notes ?? null,
+  });
+  if (error) return `Erro ao adicionar material: ${error.message}`;
+  return `Item "${args.name}" adicionado como planejado.`;
+}
+
+export const ADD_MATERIAL_TOOL = {
+  name: "add_material_item",
+  description:
+    "Adiciona um item planejado (material, mão de obra, equipamento ou serviço) na lista de " +
+    'materiais da obra. Use quando o usuário pedir pra "adicionar", "planejar" ou "incluir" um ' +
+    "item, com quantidade/preço/fornecedor se mencionados.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      name: { type: "string", description: "Nome do item." },
+      category: { type: "string", enum: ["material", "mão-de-obra", "equipamento", "serviço"], description: "Padrão: material." },
+      unit: { type: "string", description: "Unidade (un, saco, m2, m3, kg, hora...). Padrão: un." },
+      quantity: { type: "number", description: "Quantidade. Padrão: 1." },
+      unit_price: { type: "number", description: "Preço unitário estimado, se mencionado." },
+      supplier_name: { type: "string", description: "Nome do fornecedor, se mencionado." },
+      notes: { type: "string", description: "Observações, se houver." },
     },
     required: ["name"],
   },

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronUp, MessageCircle, Phone, Plus, Star, Trash2, Truck } from "lucide-react";
+import { ChevronDown, ChevronUp, MessageCircle, Phone, Plus, Star, Store, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -178,7 +178,7 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
       )}
 
       {suppliers.length === 0 ? (
-        <Empty icon={Truck} title="Sem fornecedores" description="Cadastre lojas e prestadores pra comparar preço e histórico." />
+        <Empty icon={Store} title="Sem fornecedores" description="Cadastre lojas e prestadores pra comparar preço e histórico." />
       ) : (
         <ul className="space-y-2">
           {suppliers.map((s) => (

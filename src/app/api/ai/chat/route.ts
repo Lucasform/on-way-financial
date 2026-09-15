@@ -3,7 +3,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
 import {
+  ADD_MATERIAL_TOOL,
+  ADD_QUOTE_TOOL,
   ADD_SUPPLIER_TOOL,
+  addMaterialItem,
+  addQuote,
   addSupplier,
   ASSISTANT_SYSTEM,
   buildFinancialContext,
@@ -150,7 +154,7 @@ export async function POST(req: NextRequest) {
       content: m.content,
     }));
 
-    const tools = [SEARCH_TRANSACTIONS_TOOL, ADD_SUPPLIER_TOOL];
+    const tools = [SEARCH_TRANSACTIONS_TOOL, ADD_SUPPLIER_TOOL, ADD_QUOTE_TOOL, ADD_MATERIAL_TOOL];
 
     let res = await client().messages.create({
       model: env.ANTHROPIC_MODEL,
@@ -171,6 +175,10 @@ export async function POST(req: NextRequest) {
         result = await searchTransactions(ctx.householdId, toolUse.input as Record<string, string>);
       } else if (toolUse.name === "add_supplier") {
         result = await addSupplier(ctx.householdId, toolUse.input as { name: string });
+      } else if (toolUse.name === "add_quote") {
+        result = await addQuote(ctx.householdId, toolUse.input as { supplier_name: string; item_name: string; unit_price: number });
+      } else if (toolUse.name === "add_material_item") {
+        result = await addMaterialItem(ctx.householdId, toolUse.input as { name: string });
       } else {
         result = "Ferramenta desconhecida.";
       }

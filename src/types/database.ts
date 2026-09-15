@@ -519,6 +519,32 @@ export interface Database {
           { foreignKeyName: "material_types_household_id_fkey"; columns: ["household_id"]; referencedRelation: "households"; referencedColumns: ["id"] },
         ];
       };
+      obra_documents: {
+        Row: {
+          id: string;
+          module_id: string;
+          name: string;
+          file_url: string;
+          file_type: string | null;
+          size_bytes: number | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          module_id: string;
+          name: string;
+          file_url: string;
+          file_type?: string | null;
+          size_bytes?: number | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["obra_documents"]["Insert"]>;
+        Relationships: [
+          { foreignKeyName: "obra_documents_module_id_fkey"; columns: ["module_id"]; referencedRelation: "modules"; referencedColumns: ["id"] },
+        ];
+      };
       price_quotes: {
         Row: {
           id: string;

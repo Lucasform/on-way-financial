@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import {
   Camera,
+  FolderOpen,
   Images,
   KanbanSquare,
   MessageSquare,
@@ -11,9 +12,9 @@ import {
   Plus,
   Receipt,
   Send,
+  Store,
   Target,
   Trash2,
-  Truck,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -76,9 +77,10 @@ const SECTIONS = [
   { href: "/overview/previsao", label: "Previsão", icon: Target },
   { href: "/overview/fases", label: "Fases", icon: KanbanSquare },
   { href: "/overview/materiais", label: "Materiais", icon: Package },
-  { href: "/overview/fornecedores", label: "Fornecedores", icon: Truck },
+  { href: "/overview/fornecedores", label: "Fornecedores", icon: Store },
   { href: "/overview/cotacoes", label: "Cotações", icon: Receipt },
   { href: "/overview/andamento", label: "Andamento", icon: Camera },
+  { href: "/overview/documentos", label: "Documentos", icon: FolderOpen },
   { href: "/overview/galeria", label: "Galeria", icon: Images },
   { href: "/overview/equipe", label: "Equipe", icon: Users },
 ] as const;

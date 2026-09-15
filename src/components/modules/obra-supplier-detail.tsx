@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, ChevronDown, ChevronUp, MapPin, MessageCircle, Plus, Receipt, ShoppingBag, Star, Trash2 } from "lucide-react";
+import { Building2, Check, ChevronDown, ChevronUp, MapPin, MessageCircle, Plus, Receipt, ShoppingBag, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -46,13 +46,65 @@ interface Props {
 
 const CATEGORIES = ["material", "mão-de-obra", "equipamento", "serviço", "outro"];
 
-export function ObraSupplierDetail({ supplier: initial, quotes, purchases, canWrite }: Props) {
+export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, purchases: initialPurchases, canWrite }: Props) {
   const supabase = createSupabaseBrowser();
   const router = useRouter();
   const [supplier, setSupplier] = useState(initial);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(initial);
   const [pending, start] = useTransition();
+  const [quotes] = useState(initialQuotes);
+  const [purchases, setPurchases] = useState(initialPurchases);
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [dropActive, setDropActive] = useState(false);
+
+  async function acceptQuote(quote: QuoteRow) {
+    if (!canWrite || acceptingId) return;
+    const raw = prompt(`Quantidade de "${quote.item_name}" (${quote.unit}):`, "1");
+    if (raw === null) return;
+    const quantity = Number(raw.replace(",", "."));
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      toast.error("Quantidade inválida.");
+      return;
+    }
+    setAcceptingId(quote.id);
+    try {
+      const res = await fetch("/api/obra/accept-quote", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ quote_id: quote.id, quantity }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error("Falha ao aceitar cotação.");
+        return;
+      }
+      setPurchases((s) => [
+        {
+          id: data.item.id,
+          name: data.item.name,
+          quantity: data.item.quantity,
+          unit: data.item.unit,
+          unit_price: data.item.unit_price,
+          actual_unit_price: data.item.actual_unit_price,
+          status: data.item.status,
+          bought_at: data.item.bought_at,
+        },
+        ...s,
+      ]);
+      toast.success("Cotação aceita: virou compra e despesa.");
+    } finally {
+      setAcceptingId(null);
+    }
+  }
+
+  function onDropQuote(e: React.DragEvent) {
+    e.preventDefault();
+    setDropActive(false);
+    const id = e.dataTransfer.getData("text/quote-id");
+    const quote = quotes.find((q) => q.id === id);
+    if (quote) void acceptQuote(quote);
+  }
 
   function rate(rating: number) {
     if (!canWrite) return;
@@ -217,24 +269,55 @@ export function ObraSupplierDetail({ supplier: initial, quotes, purchases, canWr
             <Link href="/overview/cotacoes"><Plus className="h-3.5 w-3.5" /> Nova cotação</Link>
           </Button>
         </div>
+        {canWrite && quotes.length > 0 && (
+          <p className="mb-2 text-[11px] text-text-muted">
+            Clique em <Check className="inline h-3 w-3" /> pra aceitar (vira compra + despesa), ou arraste pra &quot;Já compramos&quot;.
+          </p>
+        )}
         {quotes.length === 0 ? (
           <Empty icon={Receipt} title="Sem cotações" description="Registre o preço que esse fornecedor passou." />
         ) : (
           <Card className="divide-y divide-border">
             {quotes.map((q) => (
-              <div key={q.id} className="flex items-center justify-between gap-3 p-3 text-sm">
-                <div className="min-w-0">
+              <div
+                key={q.id}
+                draggable={canWrite}
+                onDragStart={(e) => canWrite && e.dataTransfer.setData("text/quote-id", q.id)}
+                className={`flex items-center justify-between gap-3 p-3 text-sm ${canWrite ? "cursor-grab active:cursor-grabbing" : ""}`}
+              >
+                <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{q.item_name}</p>
                   <p className="text-xs text-text-muted">{fmtDate(q.quoted_at, "dd/MM/yyyy")} · {q.unit}</p>
                 </div>
                 <Money value={q.unit_price} size="sm" className="shrink-0" />
+                {canWrite && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    disabled={acceptingId === q.id}
+                    onClick={() => acceptQuote(q)}
+                    aria-label="Aceitar cotação"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
             ))}
           </Card>
         )}
       </section>
 
-      <section>
+      <section
+        onDragOver={(e) => {
+          if (!canWrite) return;
+          e.preventDefault();
+          setDropActive(true);
+        }}
+        onDragLeave={() => setDropActive(false)}
+        onDrop={onDropQuote}
+        className={dropActive ? "rounded-lg ring-2 ring-primary/60 transition-shadow" : ""}
+      >
         <div className="mb-2 flex items-center justify-between">
           <h3 className="flex items-center gap-1.5 text-sm font-semibold">
             <ShoppingBag className="h-4 w-4" /> Já compramos
@@ -242,7 +325,11 @@ export function ObraSupplierDetail({ supplier: initial, quotes, purchases, canWr
           {purchases.length > 0 && <Money value={purchaseTotal} size="sm" tone="muted" />}
         </div>
         {purchases.length === 0 ? (
-          <Empty icon={ShoppingBag} title="Nada comprado ainda" description="Itens marcados como comprados aparecem aqui." />
+          <Empty
+            icon={ShoppingBag}
+            title="Nada comprado ainda"
+            description={canWrite ? "Aceite uma cotação acima ou arraste ela pra cá." : "Itens comprados aparecem aqui."}
+          />
         ) : (
           <Card className="divide-y divide-border">
             {purchases.map((p) => {

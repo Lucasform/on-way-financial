@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ObraSectionHeader } from "@/components/modules/obra-section-header";
 import { ObraForecastTab } from "@/components/modules/obra-forecast-tab";
 import { ObraForecastEditor } from "@/components/modules/obra-forecast-editor";
+import { ObraForecastImport } from "@/components/modules/obra-forecast-import";
 import { getObraModule } from "@/lib/obra";
 import { loadActiveContext } from "@/lib/household";
 import { createSupabaseServer } from "@/lib/supabase/server";
@@ -32,6 +33,7 @@ export default async function PrevisaoPage() {
     <div>
       <ObraSectionHeader title="Previsão" subtitle="Orçamento planejado x realizado" />
       <div className="space-y-4">
+        {canWrite && <ObraForecastImport moduleId={mod.id} />}
         <ObraForecastEditor initial={phases ?? []} canWrite={canWrite} />
         <ObraForecastTab budget={mod.budget} spent={spent} items={(items ?? []) as never} phases={(phases ?? []) as never} />
       </div>

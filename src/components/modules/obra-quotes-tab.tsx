@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Plus, Receipt, Trash2, Trophy } from "lucide-react";
+import { Check, Plus, Receipt, Trash2, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +39,7 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
   const supabase = createSupabaseBrowser();
   const [quotes, setQuotes] = useState(initial);
   const [pending, start] = useTransition();
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<Quote>>({
     supplier_id: suppliers[0]?.id,
     unit: "un",
@@ -92,6 +93,32 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
       setDraft({ supplier_id: suppliers[0]?.id, unit: "un", quoted_at: todayISO() });
       toast.success("Cotação registrada.");
     });
+  }
+
+  async function accept(q: Quote) {
+    if (!canWrite || acceptingId) return;
+    const raw = prompt(`Quantidade de "${q.item_name}" (${q.unit}):`, "1");
+    if (raw === null) return;
+    const quantity = Number(raw.replace(",", "."));
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      toast.error("Quantidade inválida.");
+      return;
+    }
+    setAcceptingId(q.id);
+    try {
+      const res = await fetch("/api/obra/accept-quote", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ quote_id: q.id, quantity }),
+      });
+      if (!res.ok) {
+        toast.error("Falha ao aceitar cotação.");
+        return;
+      }
+      toast.success("Cotação aceita: virou compra e despesa. Veja em Materiais/Despesas.");
+    } finally {
+      setAcceptingId(null);
+    }
   }
 
   function remove(id: string) {
@@ -204,6 +231,18 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
                     <div className="flex items-center gap-2">
                       <Money value={Number(q.unit_price)} size="sm" className="num font-medium" />
                       <span className="text-xs text-text-muted">/{q.unit}</span>
+                      {canWrite && (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7"
+                          disabled={acceptingId === q.id}
+                          onClick={() => accept(q)}
+                          aria-label="Aceitar cotação"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                       {canWrite && (
                         <Button variant="ghost" size="icon" onClick={() => remove(q.id)}>
                           <Trash2 className="h-4 w-4 text-danger" />
