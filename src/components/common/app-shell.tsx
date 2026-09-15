@@ -49,7 +49,7 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
   const pathname = usePathname() ?? "";
   const router = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
-  const fab = useDraggableFab("quick-add");
+  const fab = useDraggableFab<HTMLButtonElement>("quick-add");
 
   return (
     <div className="min-h-dvh bg-bg">
@@ -110,13 +110,14 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
 
       {/* FAB mobile (arrastável) */}
       <Button
-        className="fixed bottom-20 right-4 z-30 h-14 w-14 touch-none rounded-full shadow-2xl md:hidden"
+        ref={fab.ref}
+        className="fixed bottom-20 right-4 z-30 h-14 w-14 touch-none rounded-full shadow-2xl will-change-transform md:hidden"
         onClick={() => {
           if (fab.consumeDrag()) return;
           router.push("/transactions/new");
         }}
         aria-label="Nova transação (arraste pra mover)"
-        style={{ boxShadow: "0 10px 30px -10px rgba(0,209,160,0.6)", ...fab.style }}
+        style={{ boxShadow: "0 10px 30px -10px rgba(0,209,160,0.6)" }}
         {...fab.handlers}
       >
         <Plus className="h-6 w-6" />

@@ -1,6 +1,8 @@
+import { cache } from "react";
+
 import { createSupabaseServer } from "@/lib/supabase/server";
 
-export async function getObraModule(householdId: string) {
+export const getObraModule = cache(async (householdId: string) => {
   const supabase = createSupabaseServer();
   const { data } = await supabase
     .from("modules")
@@ -11,4 +13,4 @@ export async function getObraModule(householdId: string) {
     .limit(1)
     .maybeSingle();
   return data;
-}
+});

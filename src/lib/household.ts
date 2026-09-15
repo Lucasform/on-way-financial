@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 
 import { createSupabaseServer } from "@/lib/supabase/server";
@@ -18,8 +19,12 @@ export interface ActiveContext {
 /**
  * Carrega usuário, household ativa (cookie) e a lista de households do usuário.
  * Retorna null se não estiver autenticado. Se autenticado sem nenhuma household, householdId="".
+ *
+ * Envolvido em `cache()`: layout e página chamam isso no mesmo request (App Router não
+ * compartilha dados entre eles por padrão), então sem isso cada navegação batia 2x no Supabase
+ * (auth + household_members + modules, cada um em série) — cache() dedupe pra 1x por request.
  */
-export async function loadActiveContext(): Promise<ActiveContext | null> {
+export const loadActiveContext = cache(async (): Promise<ActiveContext | null> => {
   const supabase = createSupabaseServer();
   const {
     data: { user },
@@ -62,7 +67,7 @@ export async function loadActiveContext(): Promise<ActiveContext | null> {
     households,
     activeModules: (mods ?? []) as { id: string; kind: string; name: string }[],
   };
-}
+});
 
 export function canWrite(role: HouseholdRole): boolean {
   return role === "owner" || role === "admin";
