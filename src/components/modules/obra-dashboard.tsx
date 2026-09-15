@@ -7,11 +7,10 @@ import {
   FolderOpen,
   Images,
   KanbanSquare,
-  MessageSquare,
+  MessageCircle,
   Package,
   Plus,
   Receipt,
-  Send,
   Store,
   Target,
   Trash2,
@@ -25,10 +24,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Money } from "@/components/ui/money";
-import { Textarea } from "@/components/ui/textarea";
 import { Empty } from "@/components/ui/empty";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
-import { normalizePhone, sanitizeFilename } from "@/lib/utils";
+import { normalizePhone, sanitizeFilename, waLink } from "@/lib/utils";
 import { percent } from "@/lib/money";
 
 export interface Module {
@@ -508,7 +506,6 @@ export function WorkersPanel({ moduleId, initial, canWrite }: { moduleId: string
   const supabase = createSupabaseBrowser();
   const [workers, setWorkers] = useState(initial);
   const [draft, setDraft] = useState<Partial<Worker>>({ name: "", role: "", whatsapp_phone: "" });
-  const [composer, setComposer] = useState<{ workerId: string; body: string } | null>(null);
   const [pending, start] = useTransition();
 
   function addWorker() {
@@ -530,20 +527,17 @@ export function WorkersPanel({ moduleId, initial, canWrite }: { moduleId: string
     });
   }
 
-  async function sendMessage(workerId: string, body: string) {
-    const w = workers.find((x) => x.id === workerId);
-    if (!w?.whatsapp_phone) return;
-    const res = await fetch("/api/whatsapp/send", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ to: w.whatsapp_phone, body, module_id: moduleId, worker_id: workerId }),
+  function remove(id: string) {
+    if (!canWrite) return;
+    if (!confirm("Remover essa pessoa da equipe?")) return;
+    start(async () => {
+      const { error } = await supabase.from("obra_workers").delete().eq("id", id);
+      if (error) {
+        toast.error("Falha ao remover.");
+        return;
+      }
+      setWorkers((s) => s.filter((w) => w.id !== id));
     });
-    if (!res.ok) {
-      toast.error("Falha ao enviar.");
-      return;
-    }
-    toast.success("Mensagem enviada.");
-    setComposer(null);
   }
 
   return (
@@ -567,22 +561,22 @@ export function WorkersPanel({ moduleId, initial, canWrite }: { moduleId: string
                 <p className="text-xs text-text-muted">{w.role ?? "—"} · {w.whatsapp_phone ?? "Sem WhatsApp"}</p>
               </div>
               {w.whatsapp_phone && (
-                <Button variant="outline" size="sm" onClick={() => setComposer({ workerId: w.id, body: "" })}>
-                  <MessageSquare className="h-4 w-4" /> Mensagem
+                <a
+                  href={waLink(w.whatsapp_phone)}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Abrir WhatsApp"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-success/15 text-success hover:bg-success/25"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                </a>
+              )}
+              {canWrite && (
+                <Button variant="ghost" size="icon" onClick={() => remove(w.id)} aria-label="Remover">
+                  <Trash2 className="h-4 w-4 text-danger" />
                 </Button>
               )}
             </Card>
-            {composer?.workerId === w.id && (
-              <Card className="mt-2 p-4">
-                <Textarea value={composer.body} onChange={(e) => setComposer({ ...composer, body: e.target.value })} placeholder="Olá! Pode passar amanhã às 9h?" />
-                <div className="mt-2 flex justify-end gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => setComposer(null)}>Cancelar</Button>
-                  <Button size="sm" disabled={!composer.body.trim()} onClick={() => sendMessage(w.id, composer.body)}>
-                    <Send className="h-4 w-4" /> Enviar
-                  </Button>
-                </div>
-              </Card>
-            )}
           </li>
         ))}
       </ul>
