@@ -1,40 +1,49 @@
 import "server-only";
 
 import { cache } from "react";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 import { createSupabaseServer } from "@/lib/supabase/server";
 import type { HouseholdRole } from "@/types/database";
 
 export const HOUSEHOLD_COOKIE = "current_household_id";
+export const USER_ID_HEADER = "x-uid";
 
 export interface ActiveContext {
   userId: string;
   householdId: string;
   role: HouseholdRole;
   households: { id: string; name: string; role: HouseholdRole }[];
-  activeModules: { id: string; kind: string; name: string }[];
 }
 
 /**
  * Carrega usuário, household ativa (cookie) e a lista de households do usuário.
  * Retorna null se não estiver autenticado. Se autenticado sem nenhuma household, householdId="".
  *
- * Envolvido em `cache()`: layout e página chamam isso no mesmo request (App Router não
- * compartilha dados entre eles por padrão), então sem isso cada navegação batia 2x no Supabase
- * (auth + household_members + modules, cada um em série) — cache() dedupe pra 1x por request.
+ * Duas otimizações que importam MUITO aqui porque essa função roda (ao menos 1x, via cache())
+ * em toda navegação:
+ * 1. `cache()`: layout e página chamam isso no mesmo request — sem isso cada navegação batia
+ *    2x no Supabase (auth + household_members) em série.
+ * 2. Não chama supabase.auth.getUser() de novo se o middleware já validou o usuário nesse
+ *    mesmo request (repassa o id via header x-uid, ver middleware.ts) — evita um round-trip
+ *    inteiro pro Auth server que seria só uma repetição do que o middleware já fez.
  */
 export const loadActiveContext = cache(async (): Promise<ActiveContext | null> => {
   const supabase = createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+
+  let userId = headers().get(USER_ID_HEADER);
+  if (!userId) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return null;
+    userId = user.id;
+  }
 
   const { data: members } = await supabase
     .from("household_members")
     .select("household_id, role, households:households(id,name)")
-    .eq("user_id", user.id);
+    .eq("user_id", userId);
 
   const households =
     (members ?? [])
@@ -46,26 +55,18 @@ export const loadActiveContext = cache(async (): Promise<ActiveContext | null> =
       .filter((x): x is { id: string; name: string; role: HouseholdRole } => x !== null) ?? [];
 
   if (households.length === 0) {
-    return { userId: user.id, householdId: "", role: "viewer", households: [], activeModules: [] };
+    return { userId, householdId: "", role: "viewer", households: [] };
   }
 
   const cookieStore = cookies();
   const fromCookie = cookieStore.get(HOUSEHOLD_COOKIE)?.value;
   const active = households.find((h) => h.id === fromCookie) ?? households[0]!;
 
-  const { data: mods } = await supabase
-    .from("modules")
-    .select("id, kind, name")
-    .eq("household_id", active.id)
-    .eq("status", "active")
-    .order("created_at", { ascending: false });
-
   return {
-    userId: user.id,
+    userId,
     householdId: active.id,
     role: active.role,
     households,
-    activeModules: (mods ?? []) as { id: string; kind: string; name: string }[],
   };
 });
 

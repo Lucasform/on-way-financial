@@ -1,8 +1,15 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+const USER_ID_HEADER = "x-uid";
+
 export async function middleware(request: NextRequest) {
-  const response = NextResponse.next({ request: { headers: request.headers } });
+  // Remove qualquer valor que o cliente tenha mandado nesse header antes de decidirmos o real
+  // (nunca confiar em header vindo do request original pra essa finalidade).
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete(USER_ID_HEADER);
+
+  let response = NextResponse.next({ request: { headers: requestHeaders } });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -46,6 +53,15 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/overview";
     return NextResponse.redirect(url);
+  }
+
+  // Repassa o id do usuário já validado pra dentro (via header do request), pra loadActiveContext()
+  // não precisar chamar auth.getUser() de novo lá — some com um round-trip inteiro por navegação.
+  if (user) {
+    requestHeaders.set(USER_ID_HEADER, user.id);
+    const withHeader = NextResponse.next({ request: { headers: requestHeaders } });
+    response.cookies.getAll().forEach((c) => withHeader.cookies.set(c));
+    response = withHeader;
   }
 
   return response;

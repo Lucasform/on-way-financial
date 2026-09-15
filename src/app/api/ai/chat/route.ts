@@ -20,6 +20,7 @@ import { extractTransactionsFromText } from "@/lib/import/ai-extract";
 import { formatBRL } from "@/lib/money";
 import { getServerEnv } from "@/lib/env";
 import { loadActiveContext } from "@/lib/household";
+import { getObraModule } from "@/lib/obra";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest) {
   const parsed = bodySchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
+  const obraModule = await getObraModule(ctx.householdId);
   const env = getServerEnv();
   const last = parsed.data.messages[parsed.data.messages.length - 1];
   const userText = last?.role === "user" ? last.content.trim() : "";
@@ -58,7 +60,7 @@ export async function POST(req: NextRequest) {
     try {
       const { rows } = await extractTransactionsFromText(last.content);
       if (rows.length >= 2) {
-        const moduleHint = ctx.activeModules[0] ?? null;
+        const moduleHint = obraModule ?? null;
         let created = 0;
         let total = 0;
         const failures: string[] = [];
@@ -132,9 +134,7 @@ export async function POST(req: NextRequest) {
           householdId: ctx.householdId,
           userId: ctx.userId,
           intent,
-          moduleOverride: ctx.activeModules[0]
-            ? { id: ctx.activeModules[0].id, kind: ctx.activeModules[0].kind }
-            : null,
+          moduleOverride: obraModule ? { id: obraModule.id, kind: obraModule.kind } : null,
           origin: "ai_chat",
         });
         return NextResponse.json({ reply: r.reply });
