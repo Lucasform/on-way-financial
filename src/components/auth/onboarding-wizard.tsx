@@ -88,10 +88,10 @@ export function OnboardingWizard({ userId }: { userId: string }) {
 
       {step === 1 && (
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold">1. Nome da família</h2>
+          <h2 className="text-lg font-semibold">1. Nome da obra</h2>
           <div className="space-y-2">
             <Label htmlFor="hh">Como vai chamar?</Label>
-            <Input id="hh" value={householdName} onChange={(e) => setHouseholdName(e.target.value)} />
+            <Input id="hh" placeholder='Ex: "Reforma da Casa", "Obra Vila Mariana"' value={householdName} onChange={(e) => setHouseholdName(e.target.value)} />
           </div>
           <Button onClick={createHousehold} disabled={loading || !householdName.trim()}>
             Continuar
@@ -103,7 +103,7 @@ export function OnboardingWizard({ userId }: { userId: string }) {
         <div className="space-y-4">
           <h2 className="text-lg font-semibold">2. Seu perfil</h2>
           <div className="space-y-2">
-            <Label htmlFor="dn">Seu nome (como aparece para a família)</Label>
+            <Label htmlFor="dn">Seu nome</Label>
             <Input id="dn" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
           </div>
           <div className="space-y-2">
@@ -128,8 +128,8 @@ export function OnboardingWizard({ userId }: { userId: string }) {
         <div className="space-y-4">
           <h2 className="text-lg font-semibold">3. Tudo pronto 🎉</h2>
           <p className="text-sm text-text-muted">
-            Sua família foi criada com categorias e métodos de pagamento padrão. Você pode convidar membros depois na
-            aba <strong>Família</strong>.
+            Sua obra foi criada com categorias e métodos de pagamento padrão. Você pode convidar quem mais acompanha
+            depois na aba <strong>Família</strong>.
           </p>
           <Button onClick={finish}>Ir para o painel</Button>
         </div>

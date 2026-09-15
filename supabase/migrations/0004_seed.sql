@@ -8,47 +8,36 @@ language plpgsql security definer
 set search_path = public
 as $$
 declare
-  cat_food uuid; cat_market uuid; cat_transport uuid; cat_home uuid;
-  cat_health uuid; cat_leisure uuid; cat_edu uuid; cat_subs uuid;
-  cat_clothes uuid; cat_pets uuid; cat_taxes uuid;
-  cat_salary uuid; cat_invest uuid; cat_other uuid;
+  cat_material uuid; cat_labor uuid; cat_equip uuid; cat_service uuid;
+  cat_transport uuid; cat_project uuid; cat_docs uuid; cat_other uuid;
+  cat_aporte uuid;
 begin
   -- Criador entra como owner
   insert into household_members (household_id, user_id, role, display_name)
   values (new.id, new.created_by, 'owner', null)
   on conflict (household_id, user_id) do nothing;
 
-  -- Categorias (expense)
+  -- Categorias (expense, focadas em obra)
   insert into categories (household_id, name, type, icon, color, is_system, position) values
-    (new.id, 'Alimentação', 'expense', 'utensils-crossed', '#F59E0B', true, 10) returning id into cat_food;
+    (new.id, 'Material', 'expense', 'brick-wall', '#F59E0B', true, 10) returning id into cat_material;
   insert into categories (household_id, name, type, icon, color, is_system, position) values
-    (new.id, 'Mercado', 'expense', 'shopping-cart', '#22C55E', true, 20) returning id into cat_market;
+    (new.id, 'Mão de obra', 'expense', 'hard-hat', '#3B82F6', true, 20) returning id into cat_labor;
   insert into categories (household_id, name, type, icon, color, is_system, position) values
-    (new.id, 'Transporte', 'expense', 'car', '#3B82F6', true, 30) returning id into cat_transport;
+    (new.id, 'Equipamento', 'expense', 'wrench', '#8B5CF6', true, 30) returning id into cat_equip;
   insert into categories (household_id, name, type, icon, color, is_system, position) values
-    (new.id, 'Moradia', 'expense', 'home', '#8B5CF6', true, 40) returning id into cat_home;
+    (new.id, 'Serviço', 'expense', 'clipboard-list', '#EC4899', true, 40) returning id into cat_service;
   insert into categories (household_id, name, type, icon, color, is_system, position) values
-    (new.id, 'Saúde', 'expense', 'heart-pulse', '#EF4444', true, 50) returning id into cat_health;
+    (new.id, 'Transporte de material', 'expense', 'truck', '#0EA5E9', true, 50) returning id into cat_transport;
   insert into categories (household_id, name, type, icon, color, is_system, position) values
-    (new.id, 'Lazer', 'expense', 'party-popper', '#EC4899', true, 60) returning id into cat_leisure;
+    (new.id, 'Projeto/Arquitetura', 'expense', 'ruler', '#6366F1', true, 60) returning id into cat_project;
   insert into categories (household_id, name, type, icon, color, is_system, position) values
-    (new.id, 'Educação', 'expense', 'graduation-cap', '#6366F1', true, 70) returning id into cat_edu;
-  insert into categories (household_id, name, type, icon, color, is_system, position) values
-    (new.id, 'Assinaturas', 'expense', 'repeat', '#0EA5E9', true, 80) returning id into cat_subs;
-  insert into categories (household_id, name, type, icon, color, is_system, position) values
-    (new.id, 'Vestuário', 'expense', 'shirt', '#A855F7', true, 90) returning id into cat_clothes;
-  insert into categories (household_id, name, type, icon, color, is_system, position) values
-    (new.id, 'Pets', 'expense', 'paw-print', '#14B8A6', true, 100) returning id into cat_pets;
-  insert into categories (household_id, name, type, icon, color, is_system, position) values
-    (new.id, 'Impostos', 'expense', 'landmark', '#F97316', true, 110) returning id into cat_taxes;
+    (new.id, 'Documentação/Taxas', 'expense', 'landmark', '#F97316', true, 70) returning id into cat_docs;
   insert into categories (household_id, name, type, icon, color, is_system, position) values
     (new.id, 'Outros', 'expense', 'circle-ellipsis', '#9CA3AF', true, 999) returning id into cat_other;
 
   -- Categorias (income)
   insert into categories (household_id, name, type, icon, color, is_system, position) values
-    (new.id, 'Salário', 'income', 'wallet', '#22C55E', true, 10) returning id into cat_salary;
-  insert into categories (household_id, name, type, icon, color, is_system, position) values
-    (new.id, 'Investimentos', 'income', 'trending-up', '#00D1A0', true, 20) returning id into cat_invest;
+    (new.id, 'Aporte para obra', 'income', 'wallet', '#22C55E', true, 10) returning id into cat_aporte;
 
   -- Métodos de pagamento padrão
   insert into payment_methods (household_id, name, kind, is_default) values

@@ -32,9 +32,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/categories") ||
     pathname.startsWith("/payment-methods") ||
     pathname.startsWith("/family") ||
-    pathname.startsWith("/alerts") ||
     pathname.startsWith("/settings") ||
-    pathname.startsWith("/modules") ||
     pathname.startsWith("/onboarding");
 
   if (isAppArea && !user) {

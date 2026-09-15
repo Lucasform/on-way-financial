@@ -7,11 +7,8 @@ import { toast } from "sonner";
 const ROUTES: Record<string, string> = {
   h: "/overview",
   t: "/transactions",
-  i: "/import",
-  r: "/reports",
-  m: "/modules",
   c: "/categories",
-  a: "/alerts",
+  p: "/payment-methods",
   f: "/family",
   s: "/settings",
 };
@@ -76,7 +73,7 @@ export function KeyboardShortcuts() {
         e.preventDefault();
         toast.message("Atalhos", {
           description:
-            "n: nova transação · /: buscar · g+h: visão · g+t: transações · g+i: importar · g+r: relatórios · g+m: módulos · g+c: categorias · g+a: alertas · g+f: grupo · g+s: configurações",
+            "n: nova despesa · /: buscar · g+h: obra · g+t: despesas · g+c: categorias · g+p: métodos · g+f: grupo · g+s: configurações",
           duration: 6000,
         });
       }

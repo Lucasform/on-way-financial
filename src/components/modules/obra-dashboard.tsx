@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Camera, MessageSquare, Plus, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -15,8 +14,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Empty } from "@/components/ui/empty";
 import { ObraDiaryTab, type DiaryEntry } from "@/components/modules/obra-diary-tab";
-import { ObraExpensesTab, type ObraTx } from "@/components/modules/obra-expenses-tab";
+import { ObraForecastTab } from "@/components/modules/obra-forecast-tab";
 import { ObraItemsTab, type ObraItem } from "@/components/modules/obra-items-tab";
+import { ObraQuotesTab, type Quote } from "@/components/modules/obra-quotes-tab";
+import { ObraSuppliersTab, type Supplier } from "@/components/modules/obra-suppliers-tab";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { normalizePhone, sanitizeFilename } from "@/lib/utils";
 import { percent } from "@/lib/money";
@@ -60,9 +61,11 @@ interface Props {
   phases: Phase[];
   workers: Worker[];
   gallery: GalleryItem[];
-  transactions: ObraTx[];
+  transactions: { amount: number | string }[];
   items: ObraItem[];
   diary: DiaryEntry[];
+  suppliers: Supplier[];
+  quotes: Quote[];
   householdId: string;
   userId: string;
   canWrite: boolean;
@@ -80,15 +83,26 @@ function statusLabel(s: string): string {
   }
 }
 
-export function ObraDashboard({ module, phases, workers, gallery, transactions, items, diary, householdId, canWrite }: Props) {
+export function ObraDashboard({
+  module,
+  phases,
+  workers,
+  gallery,
+  transactions,
+  items,
+  diary,
+  suppliers,
+  quotes,
+  householdId,
+  canWrite,
+}: Props) {
   const total = transactions.reduce((s, t) => s + Number(t.amount), 0);
   const pct = module.budget ? percent(total, Number(module.budget)) : 0;
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <Link href="/modules" className="text-xs text-text-muted hover:text-text">← Módulos</Link>
-          <h1 className="mt-1 text-2xl font-semibold">🧱 {module.name}</h1>
+          <h1 className="text-2xl font-semibold">🧱 {module.name}</h1>
           <p className="text-sm text-text-muted">
             {module.start_date && <>Início {module.start_date}</>}{" "}
             {module.end_date && <>· Previsão {module.end_date}</>}
@@ -120,15 +134,20 @@ export function ObraDashboard({ module, phases, workers, gallery, transactions, 
         </Card>
       </section>
 
-      <Tabs defaultValue="phases">
+      <Tabs defaultValue="forecast">
         <TabsList>
+          <TabsTrigger value="forecast">Previsão</TabsTrigger>
           <TabsTrigger value="phases">Fases</TabsTrigger>
           <TabsTrigger value="items">Materiais</TabsTrigger>
-          <TabsTrigger value="diary">Diário</TabsTrigger>
-          <TabsTrigger value="expenses">Despesas</TabsTrigger>
+          <TabsTrigger value="suppliers">Fornecedores</TabsTrigger>
+          <TabsTrigger value="quotes">Cotações</TabsTrigger>
+          <TabsTrigger value="diary">Andamento</TabsTrigger>
           <TabsTrigger value="gallery">Galeria</TabsTrigger>
           <TabsTrigger value="workers">Equipe</TabsTrigger>
         </TabsList>
+        <TabsContent value="forecast">
+          <ObraForecastTab budget={module.budget} spent={total} items={items} phases={phases} />
+        </TabsContent>
         <TabsContent value="phases">
           <PhasesKanban moduleId={module.id} phases={phases} canWrite={canWrite} />
         </TabsContent>
@@ -137,19 +156,24 @@ export function ObraDashboard({ module, phases, workers, gallery, transactions, 
             moduleId={module.id}
             initial={items}
             phases={phases.map((p) => ({ id: p.id, name: p.name }))}
+            suppliers={suppliers.map((s) => ({ id: s.id, name: s.name }))}
             canWrite={canWrite}
           />
+        </TabsContent>
+        <TabsContent value="suppliers">
+          <ObraSuppliersTab householdId={householdId} initial={suppliers} canWrite={canWrite} />
+        </TabsContent>
+        <TabsContent value="quotes">
+          <ObraQuotesTab householdId={householdId} suppliers={suppliers} initial={quotes} canWrite={canWrite} />
         </TabsContent>
         <TabsContent value="diary">
           <ObraDiaryTab
             moduleId={module.id}
+            householdId={householdId}
             initial={diary}
             phases={phases.map((p) => ({ id: p.id, name: p.name }))}
             canWrite={canWrite}
           />
-        </TabsContent>
-        <TabsContent value="expenses">
-          <ObraExpensesTab transactions={transactions} canWrite={canWrite} />
         </TabsContent>
         <TabsContent value="gallery">
           <Gallery moduleId={module.id} householdId={householdId} initial={gallery} canWrite={canWrite} />

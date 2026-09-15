@@ -73,20 +73,20 @@ function buildHtml(args: {
 <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0a;color:#e5e5e5">
   <div style="max-width:520px;margin:0 auto;padding:40px 24px">
     <div style="text-align:center;margin-bottom:32px">
-      <div style="display:inline-block;width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#00d1a0,#22d3ee);line-height:48px;font-size:24px">💸</div>
+      <div style="display:inline-block;width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#d3540f,#8a2f08);line-height:48px;font-size:24px">🧱</div>
       <h1 style="font-size:18px;margin:16px 0 4px;color:#fff;font-weight:600">${args.appName}</h1>
     </div>
     <div style="background:#171717;border:1px solid #262626;border-radius:12px;padding:32px 24px">
       <h2 style="margin:0 0 16px;font-size:20px;color:#fff">Você foi convidado!</h2>
       <p style="margin:0 0 12px;font-size:15px;line-height:1.5;color:#d4d4d4">
-        <strong style="color:#00d1a0">${args.inviter}</strong> te convidou para participar do grupo
+        <strong style="color:#e0703a">${args.inviter}</strong> te convidou para participar da obra
         <strong style="color:#fff">"${args.householdName}"</strong> como <strong>${args.role}</strong>.
       </p>
       <p style="margin:0 0 24px;font-size:14px;color:#a3a3a3">
-        Com esse acesso você vai poder lançar despesas, acompanhar o orçamento e usar o assistente de IA junto com a equipe.
+        Com esse acesso você vai poder lançar despesas, acompanhar fornecedores e orçamento, e usar o assistente de IA junto com a equipe.
       </p>
       <div style="text-align:center;margin:24px 0">
-        <a href="${args.inviteUrl}" style="display:inline-block;background:#00d1a0;color:#0a0a0a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">
+        <a href="${args.inviteUrl}" style="display:inline-block;background:#c1440e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">
           Aceitar convite
         </a>
       </div>

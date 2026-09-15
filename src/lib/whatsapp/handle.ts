@@ -140,9 +140,7 @@ async function createTransactionFromParsed(
 
   const categoryId = await resolveCategory(member.household_id, parsed.category_hint, parsed.intent);
   const paymentMethodId = await resolvePaymentMethod(member.household_id, parsed.payment_hint);
-  const moduleRef = parsed.module_hint
-    ? await findActiveModule(member.household_id, parsed.module_hint)
-    : null;
+  const moduleRef = await findActiveModule(member.household_id);
 
   const { data: tx, error } = await admin
     .from("transactions")
@@ -154,7 +152,7 @@ async function createTransactionFromParsed(
       occurred_at: occurredAt,
       category_id: categoryId,
       payment_method_id: paymentMethodId,
-      module_kind: (moduleRef?.kind as "obra" | "travel" | "car" | "gift" | "education" | "custom" | undefined) ?? null,
+      module_kind: (moduleRef?.kind as "obra" | undefined) ?? null,
       module_id: moduleRef?.id ?? null,
       source: "whatsapp",
       created_by: member.user_id,
@@ -392,14 +390,13 @@ async function resolvePaymentMethod(
 
 async function findActiveModule(
   householdId: string,
-  kind: NonNullable<ParsedIntent["module_hint"]>,
 ): Promise<{ id: string; kind: string } | null> {
   const admin = createSupabaseAdmin();
   const { data } = await admin
     .from("modules")
     .select("id, kind")
     .eq("household_id", householdId)
-    .eq("kind", kind)
+    .eq("kind", "obra")
     .in("status", ["planning", "active"])
     .order("created_at", { ascending: false })
     .limit(1)

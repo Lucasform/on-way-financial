@@ -31,11 +31,6 @@ type FormValues = z.infer<typeof schema>;
 
 const KIND_EMOJI: Record<string, string> = {
   obra: "🧱",
-  travel: "✈️",
-  car: "🚗",
-  gift: "🎁",
-  education: "🎓",
-  custom: "✨",
 };
 
 function parseSupplierFromNotes(notes: string | null): { origin: string | null; supplier: string; rest: string } {
@@ -129,7 +124,7 @@ export function EditTransactionForm({ tx, categories, methods, modules }: Props)
           occurred_at: values.occurred_at,
           category_id: values.category_id || null,
           payment_method_id: values.payment_method_id || null,
-          module_kind: (moduleSelected?.kind as "obra" | "travel" | "car" | "gift" | "education" | "custom" | undefined) ?? null,
+          module_kind: (moduleSelected?.kind as "obra" | undefined) ?? null,
           module_id: moduleSelected?.id ?? null,
           notes: notesCombined,
         })
@@ -233,47 +228,21 @@ export function EditTransactionForm({ tx, categories, methods, modules }: Props)
           </div>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="module_id">Vincular a módulo</Label>
-          {modules.length === 0 ? (
-            <div className="surface flex items-center justify-between gap-2 p-2 text-xs text-text-muted">
-              <span>Nenhum módulo ativo</span>
-              <Link href="/modules" className="text-primary hover:underline">criar →</Link>
-            </div>
-          ) : (
-            <select
-              id="module_id"
-              {...form.register("module_id")}
-              className="flex h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
-            >
-              <option value="">Nenhum</option>
-              {modules.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {KIND_EMOJI[m.kind] ?? "✨"} {m.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+        {modules.length === 0 && (
+          <div className="surface flex items-center justify-between gap-2 p-2 text-xs text-text-muted">
+            <span>Nenhuma obra ativa</span>
+            <Link href="/overview" className="text-primary hover:underline">criar →</Link>
+          </div>
+        )}
+        <input type="hidden" {...form.register("module_id")} />
 
         {selectedModule && (
           <div className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3">
             <Label htmlFor="supplier" className="flex items-center gap-2">
-              <span>{KIND_EMOJI[selectedModule.kind] ?? "✨"}</span>
+              <span>{KIND_EMOJI[selectedModule.kind] ?? "🧱"}</span>
               Fornecedor
-              <span className="text-[10px] font-normal text-text-muted">({selectedModule.name})</span>
             </Label>
-            <Input
-              id="supplier"
-              placeholder={
-                selectedModule.kind === "obra"
-                  ? 'Ex: "Leroy Merlin", "Eng. UBO"'
-                  : selectedModule.kind === "travel"
-                    ? 'Ex: "Booking", "Latam"'
-                    : "Nome do fornecedor"
-              }
-              {...form.register("supplier")}
-            />
+            <Input id="supplier" placeholder='Ex: "Leroy Merlin", "Eng. UBO"' {...form.register("supplier")} />
           </div>
         )}
 

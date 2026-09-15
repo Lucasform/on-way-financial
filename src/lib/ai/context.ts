@@ -110,11 +110,14 @@ export async function buildFinancialContext(opts: ContextOptions): Promise<strin
   return lines.join("\n");
 }
 
-export const ASSISTANT_SYSTEM = `Você é o ON AI, assistente do app ON FIN.
+export const ASSISTANT_SYSTEM = `Você é o ON AI, assistente do app ON FIN (finanças da obra).
 Fala português brasileiro coloquial, direto, conciso. Sem floreios.
 
 REGRAS:
-- Pra perguntas sobre os números do usuário, use APENAS os dados do "FINANCIAL CONTEXT". Não invente números.
+- Pra perguntas sobre os números do usuário, use APENAS os dados do "FINANCIAL CONTEXT" ou o
+  resultado da ferramenta search_transactions. Não invente números.
+- Se o usuário pedir um gasto específico (fornecedor, material, categoria, período) que não está
+  no resumo do contexto, USE a ferramenta search_transactions em vez de dizer que não sabe.
 - Pra perguntas gerais (conceitos, comparações, produtos do mercado), use seu conhecimento.
 - Se faltar dado, peça pro usuário especificar.
 - Sugira ações claras e curtas, em bullet points quando ajudar.
@@ -122,3 +125,82 @@ REGRAS:
 - Máximo ~6 frases por resposta, exceto quando o usuário pedir detalhe.
 - Não repita o contexto na resposta — ele já viu.
 - NUNCA use markdown: nada de ** _ \`\` # ou tabelas. Escreva texto puro. Pra ênfase use MAIÚSCULAS curtas. Pra listas, use "- " no início da linha.`;
+
+export interface SearchTransactionsArgs {
+  query?: string | null;
+  category?: string | null;
+  date_from?: string | null;
+  date_to?: string | null;
+  type?: "expense" | "income" | null;
+}
+
+/**
+ * Busca transações por critério livre (fornecedor/descrição/notas, categoria, período). Usada
+ * pela IA como ferramenta (tool use) quando o usuário pede um gasto específico que não está no
+ * resumo fixo do contexto.
+ */
+export async function searchTransactions(
+  householdId: string,
+  args: SearchTransactionsArgs,
+): Promise<string> {
+  const admin = createSupabaseAdmin();
+  let q = admin
+    .from("transactions")
+    .select("amount, description, supplier, occurred_at, categories:categories(name)")
+    .eq("household_id", householdId)
+    .eq("type", args.type ?? "expense")
+    .order("occurred_at", { ascending: false })
+    .limit(50);
+
+  if (args.date_from) q = q.gte("occurred_at", args.date_from);
+  if (args.date_to) q = q.lte("occurred_at", args.date_to);
+  if (args.query?.trim()) {
+    const term = args.query.trim();
+    q = q.or(`description.ilike.%${term}%,supplier.ilike.%${term}%,notes.ilike.%${term}%`);
+  }
+
+  const { data, error } = await q;
+  if (error) return `Erro ao buscar: ${error.message}`;
+
+  let rows = (data ?? []) as Array<{
+    amount: number | string;
+    description: string | null;
+    supplier: string | null;
+    occurred_at: string;
+    categories: { name: string } | null;
+  }>;
+
+  if (args.category?.trim()) {
+    const cat = args.category.trim().toLowerCase();
+    rows = rows.filter((r) => (r.categories?.name ?? "").toLowerCase().includes(cat));
+  }
+
+  if (rows.length === 0) return "Nenhuma transação encontrada com esses critérios.";
+
+  const total = rows.reduce((s, r) => s + Number(r.amount), 0);
+  const lines = [`${rows.length} transação(ões), total ${formatBRL(total)}:`];
+  for (const r of rows.slice(0, 30)) {
+    const desc = r.description || r.supplier || r.categories?.name || "sem descrição";
+    lines.push(`- ${r.occurred_at} ${formatBRL(Number(r.amount))} ${desc}${r.supplier ? ` (${r.supplier})` : ""}`);
+  }
+  if (rows.length > 30) lines.push(`... e mais ${rows.length - 30} transação(ões).`);
+  return lines.join("\n");
+}
+
+export const SEARCH_TRANSACTIONS_TOOL = {
+  name: "search_transactions",
+  description:
+    "Busca despesas/receitas da obra por fornecedor, descrição, categoria ou período. Use sempre " +
+    "que o usuário perguntar por um gasto específico que não está no resumo do contexto (ex.: " +
+    '"quanto gastei com cimento", "o que comprei da Leroy Merlin", "gastos de mão de obra em julho").',
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      query: { type: "string", description: "Termo livre pra buscar em descrição/fornecedor/notas (ex.: 'cimento', 'Leroy Merlin')." },
+      category: { type: "string", description: "Nome (ou parte) da categoria (ex.: 'Material', 'Mão de obra')." },
+      date_from: { type: "string", description: "Data inicial ISO (YYYY-MM-DD), se o usuário mencionar período." },
+      date_to: { type: "string", description: "Data final ISO (YYYY-MM-DD), se o usuário mencionar período." },
+      type: { type: "string", enum: ["expense", "income"], description: "Padrão: expense." },
+    },
+  },
+};

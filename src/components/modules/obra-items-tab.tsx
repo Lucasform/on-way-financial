@@ -21,6 +21,7 @@ export interface ObraItem {
   name: string;
   brand: string | null;
   supplier: string | null;
+  supplier_id?: string | null;
   unit: string;
   quantity: number;
   unit_price: number | null;
@@ -28,6 +29,11 @@ export interface ObraItem {
   status: string;
   bought_at: string | null;
   notes: string | null;
+}
+
+export interface SupplierRef {
+  id: string;
+  name: string;
 }
 
 export interface PhaseRef {
@@ -49,10 +55,11 @@ interface Props {
   moduleId: string;
   initial: ObraItem[];
   phases: PhaseRef[];
+  suppliers: SupplierRef[];
   canWrite: boolean;
 }
 
-export function ObraItemsTab({ moduleId, initial, phases, canWrite }: Props) {
+export function ObraItemsTab({ moduleId, initial, phases, suppliers, canWrite }: Props) {
   const supabase = createSupabaseBrowser();
   const [items, setItems] = useState(initial);
   const [pending, start] = useTransition();
@@ -96,7 +103,8 @@ export function ObraItemsTab({ moduleId, initial, phases, canWrite }: Props) {
           category: draft.category ?? "material",
           name: draft.name!.trim(),
           brand: draft.brand ?? null,
-          supplier: draft.supplier ?? null,
+          supplier: suppliers.find((s) => s.id === draft.supplier_id)?.name ?? null,
+          supplier_id: draft.supplier_id ?? null,
           unit: draft.unit ?? "un",
           quantity: Number(draft.quantity ?? 1),
           unit_price: draft.unit_price ?? null,
@@ -297,11 +305,18 @@ export function ObraItemsTab({ moduleId, initial, phases, canWrite }: Props) {
                   value={draft.brand ?? ""}
                   onChange={(e) => setDraft({ ...draft, brand: e.target.value })}
                 />
-                <Input
-                  placeholder="Fornecedor"
-                  value={draft.supplier ?? ""}
-                  onChange={(e) => setDraft({ ...draft, supplier: e.target.value })}
-                />
+                <select
+                  value={draft.supplier_id ?? ""}
+                  onChange={(e) => setDraft({ ...draft, supplier_id: e.target.value || undefined })}
+                  className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
+                >
+                  <option value="">Fornecedor...</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             <div className="flex items-end sm:col-span-2">

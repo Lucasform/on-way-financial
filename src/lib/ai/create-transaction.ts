@@ -43,7 +43,7 @@ export async function createTransactionFromIntent(args: {
     occurred_at: occurredAt,
     category_id: categoryId,
     payment_method_id: paymentMethodId,
-    module_kind: (moduleRef?.kind as "obra" | "travel" | "car" | "gift" | "education" | "custom" | undefined) ?? null,
+    module_kind: (moduleRef?.kind as "obra" | undefined) ?? null,
     module_id: moduleRef?.id ?? null,
     notes,
     source: "whatsapp",

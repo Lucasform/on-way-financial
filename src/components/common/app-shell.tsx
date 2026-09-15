@@ -2,15 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
-  Bell,
-  Boxes,
   CreditCard,
-  FileUp,
   Folders,
   Home,
-  LineChart,
   MoreHorizontal,
   Plus,
   Settings,
@@ -28,43 +24,22 @@ import { cn } from "@/lib/utils";
 import type { ActiveContext } from "@/lib/household";
 
 const NAV = [
-  { href: "/overview", label: "Visão geral", icon: Home },
-  { href: "/transactions", label: "Transações", icon: Wallet },
-  { href: "/import", label: "Importar extrato", icon: FileUp },
-  { href: "/reports", label: "Relatórios", icon: LineChart },
-  { href: "/modules", label: "Módulos", icon: Boxes },
+  { href: "/overview", label: "Minha obra", icon: Home },
+  { href: "/transactions", label: "Despesas", icon: Wallet },
   { href: "/categories", label: "Categorias", icon: Folders },
   { href: "/payment-methods", label: "Métodos", icon: CreditCard },
-  { href: "/alerts", label: "Alertas", icon: Bell },
   { href: "/family", label: "Grupo", icon: Users },
   { href: "/settings", label: "Configurações", icon: Settings },
 ];
 
 const MOBILE_NAV = [
-  { href: "/overview", label: "Início", icon: Home },
-  { href: "/transactions", label: "Extrato", icon: Wallet },
-  { href: "/reports", label: "Relatórios", icon: LineChart },
+  { href: "/overview", label: "Obra", icon: Home },
+  { href: "/transactions", label: "Despesas", icon: Wallet },
 ];
 
-const MODULE_EMOJI: Record<string, string> = {
-  obra: "🧱",
-  travel: "✈️",
-  car: "🚗",
-  gift: "🎁",
-  education: "🎓",
-  custom: "✨",
-};
-
-function moduleHref(kind: string, id: string): string {
-  return `/modules/${kind}/${id}`;
-}
-
 const MORE_NAV = [
-  { href: "/modules", label: "Módulos", icon: Boxes },
-  { href: "/import", label: "Importar extrato", icon: FileUp },
   { href: "/categories", label: "Categorias", icon: Folders },
   { href: "/payment-methods", label: "Métodos", icon: CreditCard },
-  { href: "/alerts", label: "Alertas", icon: Bell },
   { href: "/family", label: "Grupo", icon: Users },
   { href: "/settings", label: "Configurações", icon: Settings },
 ];
@@ -74,25 +49,6 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
   const router = useRouter();
   const [moreOpen, setMoreOpen] = useState(false);
 
-  // Módulo destacado: lê do localStorage (gravado pelo FeaturedModule no overview)
-  const [featuredId, setFeaturedId] = useState<string | null>(null);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    function readPin() {
-      try {
-        const saved = localStorage.getItem("onway-featured-module");
-        setFeaturedId(saved && ctx.activeModules.some((m) => m.id === saved) ? saved : null);
-      } catch {
-        setFeaturedId(null);
-      }
-    }
-    readPin();
-    window.addEventListener("storage", readPin);
-    return () => window.removeEventListener("storage", readPin);
-  }, [ctx.activeModules]);
-
-  const featuredModule =
-    ctx.activeModules.find((m) => m.id === featuredId) ?? ctx.activeModules[0] ?? null;
   return (
     <div className="min-h-dvh bg-bg">
       {/* Sidebar desktop */}
@@ -102,7 +58,7 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
           <img src="/icons/icon.svg" alt="" width={32} height={32} className="rounded-lg" />
           <div className="leading-tight">
             <p className="text-sm font-semibold tracking-wide text-text">ON FIN</p>
-            <p className="text-[10px] uppercase tracking-wider text-text-muted">Financeiro</p>
+            <p className="text-[10px] uppercase tracking-wider text-text-muted">Obra</p>
           </div>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-4">
@@ -162,10 +118,7 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
 
       {/* Bottom nav mobile */}
       <nav
-        className={cn(
-          "glass fixed inset-x-0 bottom-0 z-20 grid border-t border-border md:hidden",
-          featuredModule ? "grid-cols-5" : "grid-cols-4",
-        )}
+        className="glass fixed inset-x-0 bottom-0 z-20 grid grid-cols-3 border-t border-border md:hidden"
       >
         {MOBILE_NAV.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
@@ -184,23 +137,6 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
             </Link>
           );
         })}
-        {featuredModule && (
-          <Link
-            href={moduleHref(featuredModule.kind, featuredModule.id)}
-            className={cn(
-              "flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
-              pathname.startsWith(`/modules/${featuredModule.kind}/${featuredModule.id}`)
-                ? "text-primary"
-                : "text-text-muted",
-            )}
-            title={featuredModule.name}
-          >
-            <span className="text-lg leading-5">
-              {MODULE_EMOJI[featuredModule.kind] ?? "✨"}
-            </span>
-            <span className="max-w-[60px] truncate">{featuredModule.name}</span>
-          </Link>
-        )}
         <button
           type="button"
           onClick={() => setMoreOpen(true)}

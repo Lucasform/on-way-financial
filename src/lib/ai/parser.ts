@@ -18,7 +18,7 @@ export const ParsedSchema = z.object({
     .enum(["cash", "pix", "debit_card", "credit_card", "bank_transfer", "boleto", "meal_voucher"])
     .nullable(),
   occurred_at: z.string().nullable(),
-  module_hint: z.enum(["obra", "travel", "car", "gift", "education"]).nullable(),
+  module_hint: z.null(),
   confidence: z.number().min(0).max(1),
 });
 export type ParsedIntent = z.infer<typeof ParsedSchema>;
@@ -42,7 +42,7 @@ export function parseCommand(text: string): ParsedIntent | { command: string; re
   const restStr = rest.join(" ");
   if (!command) return null;
 
-  if (["despesa", "receita", "obra", "viagem"].includes(command)) {
+  if (["despesa", "receita"].includes(command)) {
     return parseTxCommand(command, restStr);
   }
 
@@ -87,7 +87,7 @@ function parseTxCommand(command: string, rest: string): ParsedIntent {
     category_hint: category,
     payment_hint: paymentHint,
     occurred_at: dateHint ?? todayISO(),
-    module_hint: command === "obra" ? "obra" : command === "viagem" ? "travel" : null,
+    module_hint: null,
     confidence: 1,
   };
 }

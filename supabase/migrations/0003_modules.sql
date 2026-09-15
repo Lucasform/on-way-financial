@@ -1,9 +1,9 @@
 -- =========================
 -- 0003_modules.sql
--- Módulos fixos (Obra, Viagem, Carro, Presente, Educação) + Personalizados
+-- App 100% focado em obra: módulo único (kind='obra' por household).
 -- =========================
 
-create type module_kind as enum ('obra','travel','car','gift','education','custom');
+create type module_kind as enum ('obra');
 create type module_status as enum ('planning','active','paused','completed','archived');
 
 create table modules (
@@ -87,82 +87,6 @@ create table obra_messages (
 );
 create index on obra_messages (worker_id, sent_at desc);
 
--- ===== VIAGEM =====
-create table travel_items (
-  id uuid primary key default gen_random_uuid(),
-  module_id uuid not null references modules(id) on delete cascade,
-  kind text not null check (kind in ('flight','hotel','transport','food','tour','other')),
-  title text not null,
-  planned_amount numeric(12,2),
-  actual_amount numeric(12,2),
-  start_date date,
-  end_date date,
-  booking_ref text,
-  notes text,
-  created_at timestamptz not null default now()
-);
-create index on travel_items (module_id);
-
--- ===== CARRO =====
-create table car_options (
-  id uuid primary key default gen_random_uuid(),
-  module_id uuid not null references modules(id) on delete cascade,
-  model text not null,
-  year smallint,
-  price numeric(12,2) not null,
-  down_payment numeric(12,2),
-  installments smallint,
-  interest_rate numeric(6,3),
-  pros text,
-  cons text,
-  created_at timestamptz not null default now()
-);
-create index on car_options (module_id);
-
--- ===== PRESENTES =====
-create table gift_items (
-  id uuid primary key default gen_random_uuid(),
-  module_id uuid not null references modules(id) on delete cascade,
-  recipient text not null,
-  occasion text,
-  occasion_date date,
-  idea text,
-  budget numeric(12,2),
-  bought boolean not null default false,
-  notes text,
-  created_at timestamptz not null default now()
-);
-create index on gift_items (module_id);
-
--- ===== EDUCAÇÃO =====
-create table education_items (
-  id uuid primary key default gen_random_uuid(),
-  module_id uuid not null references modules(id) on delete cascade,
-  title text not null,
-  provider text,
-  student text,
-  monthly_cost numeric(12,2),
-  start_date date,
-  end_date date,
-  notes text,
-  created_at timestamptz not null default now()
-);
-create index on education_items (module_id);
-
--- ===== CUSTOM =====
-create table custom_items (
-  id uuid primary key default gen_random_uuid(),
-  module_id uuid not null references modules(id) on delete cascade,
-  title text not null,
-  amount numeric(12,2),
-  due_date date,
-  status text not null default 'todo',
-  position smallint not null default 0,
-  data jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
-);
-create index on custom_items (module_id, position);
-
 -- ===== RLS dos módulos =====
 alter table modules enable row level security;
 create policy "members read modules" on modules
@@ -176,8 +100,7 @@ do $$
 declare t text;
 begin
   for t in
-    select unnest(array['obra_phases','obra_workers','obra_gallery','obra_messages',
-                        'travel_items','car_options','gift_items','education_items','custom_items'])
+    select unnest(array['obra_phases','obra_workers','obra_gallery','obra_messages'])
   loop
     execute format('alter table %I enable row level security;', t);
     execute format($f$

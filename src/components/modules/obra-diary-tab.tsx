@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { BookOpen, CloudRain, Cloud, Plus, Sun, Trash2, Zap } from "lucide-react";
+import { BookOpen, Camera, ChevronDown, ChevronUp, Loader2, Plus, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { fmtDate, todayISO } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
+import { sanitizeFilename } from "@/lib/utils";
 
 export interface DiaryEntry {
   id: string;
@@ -21,35 +23,56 @@ export interface DiaryEntry {
   body: string;
   workers_count: number | null;
   hours_worked: number | null;
+  photo_urls: string[] | null;
 }
-
-const WEATHER_ICON: Record<string, React.ReactNode> = {
-  sunny: <Sun className="h-3.5 w-3.5 text-warning" />,
-  cloudy: <Cloud className="h-3.5 w-3.5 text-text-muted" />,
-  rain: <CloudRain className="h-3.5 w-3.5 text-accent" />,
-  storm: <Zap className="h-3.5 w-3.5 text-danger" />,
-};
 
 interface Props {
   moduleId: string;
+  householdId: string;
   initial: DiaryEntry[];
   phases: { id: string; name: string }[];
   canWrite: boolean;
 }
 
-export function ObraDiaryTab({ moduleId, initial, phases, canWrite }: Props) {
+export function ObraDiaryTab({ moduleId, householdId, initial, phases, canWrite }: Props) {
   const supabase = createSupabaseBrowser();
   const [entries, setEntries] = useState(initial);
   const [pending, start] = useTransition();
-  const [draft, setDraft] = useState<Partial<DiaryEntry>>({
-    entry_date: todayISO(),
-    weather: "sunny",
-  });
+  const [uploading, setUploading] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [draft, setDraft] = useState<Partial<DiaryEntry>>({ entry_date: todayISO() });
+  const [pendingPhotos, setPendingPhotos] = useState<{ file: File; preview: string }[]>([]);
 
-  function add() {
+  function addPhotos(files: FileList | null) {
+    if (!files) return;
+    const next = Array.from(files).map((file) => ({ file, preview: URL.createObjectURL(file) }));
+    setPendingPhotos((s) => [...s, ...next]);
+  }
+
+  function removePendingPhoto(idx: number) {
+    setPendingPhotos((s) => s.filter((_, i) => i !== idx));
+  }
+
+  async function add() {
     if (!canWrite || !draft.body?.trim()) return;
-    start(async () => {
-      const { data } = await supabase
+    setUploading(true);
+    try {
+      const photoUrls: string[] = [];
+      for (const p of pendingPhotos) {
+        const safe = sanitizeFilename(p.file.name);
+        const path = `${householdId}/${moduleId}/${crypto.randomUUID()}-${safe}`;
+        const { error } = await supabase.storage
+          .from("obra-gallery")
+          .upload(path, p.file, { cacheControl: "3600", contentType: p.file.type || undefined });
+        if (error) {
+          toast.error(`Falha ao subir foto: ${error.message}`);
+          continue;
+        }
+        const { data: pub } = supabase.storage.from("obra-gallery").getPublicUrl(path);
+        photoUrls.push(pub.publicUrl);
+      }
+
+      const { data, error } = await supabase
         .from("obra_diary")
         .insert({
           module_id: moduleId,
@@ -59,13 +82,23 @@ export function ObraDiaryTab({ moduleId, initial, phases, canWrite }: Props) {
           body: draft.body!.trim(),
           workers_count: draft.workers_count ?? null,
           hours_worked: draft.hours_worked ?? null,
+          photo_urls: photoUrls,
         })
         .select("*")
         .single();
-      if (!data) return;
+      if (error || !data) {
+        toast.error("Falha ao salvar.");
+        return;
+      }
       setEntries((s) => [data as DiaryEntry, ...s]);
-      setDraft({ entry_date: todayISO(), weather: "sunny" });
-    });
+      setDraft({ entry_date: todayISO() });
+      pendingPhotos.forEach((p) => URL.revokeObjectURL(p.preview));
+      setPendingPhotos([]);
+      setMoreOpen(false);
+      toast.success("Andamento registrado.");
+    } finally {
+      setUploading(false);
+    }
   }
 
   function remove(id: string) {
@@ -80,87 +113,116 @@ export function ObraDiaryTab({ moduleId, initial, phases, canWrite }: Props) {
     <div className="space-y-4">
       {canWrite && (
         <Card className="p-4">
-          <p className="mb-3 text-sm font-semibold">Registrar dia</p>
-          <div className="grid gap-2 sm:grid-cols-6">
-            <div className="space-y-1">
-              <Label htmlFor="ddate">Data</Label>
-              <Input
-                id="ddate"
-                type="date"
-                value={draft.entry_date}
-                onChange={(e) => setDraft({ ...draft, entry_date: e.target.value })}
-              />
+          <p className="mb-3 text-sm font-semibold">O que foi feito?</p>
+          <Textarea
+            value={draft.body ?? ""}
+            onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+            placeholder='Ex: "Terminamos o chapisco da sala. Comprei mais 20 sacos de cimento na Leroy."'
+            rows={3}
+            autoFocus
+          />
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Label htmlFor="dphotos" className="cursor-pointer">
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-elev px-3 py-1.5 text-xs font-medium hover:bg-bg-elev-2">
+                <Camera className="h-3.5 w-3.5" /> Adicionar fotos
+              </span>
+            </Label>
+            <Input
+              id="dphotos"
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => addPhotos(e.target.files)}
+            />
+            <button
+              type="button"
+              onClick={() => setMoreOpen((s) => !s)}
+              className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-text"
+            >
+              {moreOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              Mais detalhes (fase, data, equipe)
+            </button>
+          </div>
+
+          {pendingPhotos.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {pendingPhotos.map((p, i) => (
+                <div key={i} className="relative h-16 w-16 overflow-hidden rounded-md border border-border">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.preview} alt="" className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removePendingPhoto(i)}
+                    aria-label="Remover foto"
+                    className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="dweather">Clima</Label>
-              <select
-                id="dweather"
-                value={draft.weather ?? "sunny"}
-                onChange={(e) => setDraft({ ...draft, weather: e.target.value })}
-                className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
-              >
-                <option value="sunny">☀️ Ensolarado</option>
-                <option value="cloudy">☁️ Nublado</option>
-                <option value="rain">🌧️ Chuva</option>
-                <option value="storm">⛈️ Tempestade</option>
-              </select>
+          )}
+
+          {moreOpen && (
+            <div className="mt-3 grid gap-2 border-t border-border pt-3 sm:grid-cols-4">
+              <div className="space-y-1">
+                <Label htmlFor="ddate">Data</Label>
+                <Input
+                  id="ddate"
+                  type="date"
+                  value={draft.entry_date}
+                  onChange={(e) => setDraft({ ...draft, entry_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="dphase">Fase</Label>
+                <select
+                  id="dphase"
+                  value={draft.phase_id ?? ""}
+                  onChange={(e) => setDraft({ ...draft, phase_id: e.target.value || null })}
+                  className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
+                >
+                  <option value="">—</option>
+                  {phases.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="dwc">Pessoas na obra</Label>
+                <Input
+                  id="dwc"
+                  type="number"
+                  min={0}
+                  value={draft.workers_count ?? ""}
+                  onChange={(e) =>
+                    setDraft({ ...draft, workers_count: e.target.value === "" ? null : Number(e.target.value) })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="dhw">Horas trabalhadas</Label>
+                <Input
+                  id="dhw"
+                  type="number"
+                  step="0.5"
+                  min={0}
+                  value={draft.hours_worked ?? ""}
+                  onChange={(e) =>
+                    setDraft({ ...draft, hours_worked: e.target.value === "" ? null : Number(e.target.value) })
+                  }
+                />
+              </div>
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="dphase">Fase</Label>
-              <select
-                id="dphase"
-                value={draft.phase_id ?? ""}
-                onChange={(e) => setDraft({ ...draft, phase_id: e.target.value || null })}
-                className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
-              >
-                <option value="">—</option>
-                {phases.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="dwc">Pessoas</Label>
-              <Input
-                id="dwc"
-                type="number"
-                min={0}
-                value={draft.workers_count ?? ""}
-                onChange={(e) =>
-                  setDraft({ ...draft, workers_count: e.target.value === "" ? null : Number(e.target.value) })
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="dhw">Horas</Label>
-              <Input
-                id="dhw"
-                type="number"
-                step="0.5"
-                min={0}
-                value={draft.hours_worked ?? ""}
-                onChange={(e) =>
-                  setDraft({ ...draft, hours_worked: e.target.value === "" ? null : Number(e.target.value) })
-                }
-              />
-            </div>
-            <div className="sm:col-span-6 space-y-1">
-              <Label htmlFor="dbody">Como foi o dia?</Label>
-              <Textarea
-                id="dbody"
-                value={draft.body ?? ""}
-                onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-                placeholder='Ex: "Hoje terminamos o chapisco da sala. Pedro chegou atrasado por causa da chuva. Comprei mais 20 sacos de cimento na Leroy."'
-                rows={3}
-              />
-            </div>
-            <div className="sm:col-span-6 flex justify-end">
-              <Button onClick={add} disabled={pending || !draft.body?.trim()}>
-                <Plus className="h-4 w-4" /> Salvar entrada
-              </Button>
-            </div>
+          )}
+
+          <div className="mt-3 flex justify-end">
+            <Button onClick={add} disabled={uploading || pending || !draft.body?.trim()}>
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Registrar
+            </Button>
           </div>
         </Card>
       )}
@@ -168,21 +230,22 @@ export function ObraDiaryTab({ moduleId, initial, phases, canWrite }: Props) {
       {entries.length === 0 ? (
         <Empty
           icon={BookOpen}
-          title="Diário vazio"
-          description="Comece a registrar cada dia da obra. O sonho merece ser documentado 📔"
+          title="Nada registrado ainda"
+          description="Registre o andamento com uma foto. O progresso merece ficar documentado 🧱"
         />
       ) : (
         <ol className="relative space-y-3 border-l border-border pl-6">
           {entries.map((e) => {
             const phase = phases.find((p) => p.id === e.phase_id);
+            const photos = e.photo_urls ?? [];
             return (
               <li key={e.id} className="relative">
-                <span className="absolute -left-[31px] flex h-5 w-5 items-center justify-center rounded-full border border-border bg-bg-elev">
-                  {(e.weather && WEATHER_ICON[e.weather]) ?? <Sun className="h-3 w-3 text-text-muted" />}
+                <span className="absolute -left-[31px] flex h-5 w-5 items-center justify-center rounded-full border border-border bg-primary/15 text-[10px]">
+                  🧱
                 </span>
                 <Card className="p-4">
                   <header className="mb-2 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs text-text-muted">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
                       <span className="font-semibold text-text">{fmtDate(e.entry_date, "EEEE, dd 'de' MMMM")}</span>
                       {phase && <span>· {phase.name}</span>}
                       {e.workers_count != null && (
@@ -197,6 +260,22 @@ export function ObraDiaryTab({ moduleId, initial, phases, canWrite }: Props) {
                     )}
                   </header>
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-text">{e.body}</p>
+                  {photos.length > 0 && (
+                    <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                      {photos.map((url, i) => (
+                        <a
+                          key={i}
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block aspect-square overflow-hidden rounded-md border border-border bg-bg-elev-2"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt="" className="h-full w-full object-cover transition-transform hover:scale-105" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </Card>
               </li>
             );

@@ -42,6 +42,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // App é 100% focado em obra: toda household ganha um módulo obra ativo já na criação.
+  const { error: mErr } = await admin.from("modules").insert({
+    household_id: household.id,
+    kind: "obra",
+    name: parsed.data.name.trim(),
+    status: "active",
+    created_by: user.id,
+  });
+  if (mErr) console.error("create obra module", mErr);
+
   // O trigger 0004_seed cria automaticamente o member como owner + categorias + métodos padrão.
   if (parsed.data.display_name || parsed.data.whatsapp_phone) {
     await admin
