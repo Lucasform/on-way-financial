@@ -2,7 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
-import { ASSISTANT_SYSTEM, buildFinancialContext, SEARCH_TRANSACTIONS_TOOL, searchTransactions } from "@/lib/ai/context";
+import {
+  ADD_SUPPLIER_TOOL,
+  addSupplier,
+  ASSISTANT_SYSTEM,
+  buildFinancialContext,
+  SEARCH_TRANSACTIONS_TOOL,
+  searchTransactions,
+} from "@/lib/ai/context";
 import { createTransactionFromIntent } from "@/lib/ai/create-transaction";
 import { ParsedSchema, parseCommand, parseFreeText, type ParsedIntent } from "@/lib/ai/parser";
 import { extractTransactionsFromText } from "@/lib/import/ai-extract";
@@ -143,24 +150,30 @@ export async function POST(req: NextRequest) {
       content: m.content,
     }));
 
+    const tools = [SEARCH_TRANSACTIONS_TOOL, ADD_SUPPLIER_TOOL];
+
     let res = await client().messages.create({
       model: env.ANTHROPIC_MODEL,
       max_tokens: 800,
       system,
       messages: history,
-      tools: [SEARCH_TRANSACTIONS_TOOL],
+      tools,
     });
 
-    // Se a IA pediu pra buscar transações, executa e devolve o resultado pra ela terminar a resposta.
+    // Se a IA pediu pra usar uma ferramenta, executa e devolve o resultado pra ela terminar a resposta.
     let rounds = 0;
     while (res.stop_reason === "tool_use" && rounds < 3) {
       rounds++;
       const toolUse = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
       if (!toolUse) break;
-      const result =
-        toolUse.name === "search_transactions"
-          ? await searchTransactions(ctx.householdId, toolUse.input as Record<string, string>)
-          : "Ferramenta desconhecida.";
+      let result: string;
+      if (toolUse.name === "search_transactions") {
+        result = await searchTransactions(ctx.householdId, toolUse.input as Record<string, string>);
+      } else if (toolUse.name === "add_supplier") {
+        result = await addSupplier(ctx.householdId, toolUse.input as { name: string });
+      } else {
+        result = "Ferramenta desconhecida.";
+      }
 
       history.push({ role: "assistant", content: res.content });
       history.push({
@@ -173,7 +186,7 @@ export async function POST(req: NextRequest) {
         max_tokens: 800,
         system,
         messages: history,
-        tools: [SEARCH_TRANSACTIONS_TOOL],
+        tools,
       });
     }
 

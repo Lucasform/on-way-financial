@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import {
-  Activity,
   Camera,
   Images,
   KanbanSquare,
@@ -11,8 +11,8 @@ import {
   Plus,
   Receipt,
   Send,
+  Target,
   Trash2,
-  TrendingUp,
   Truck,
   Users,
 } from "lucide-react";
@@ -24,19 +24,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Money } from "@/components/ui/money";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Empty } from "@/components/ui/empty";
-import { ObraDiaryTab, type DiaryEntry } from "@/components/modules/obra-diary-tab";
-import { ObraForecastTab } from "@/components/modules/obra-forecast-tab";
-import { ObraItemsTab, type ObraItem } from "@/components/modules/obra-items-tab";
-import { ObraQuotesTab, type Quote } from "@/components/modules/obra-quotes-tab";
-import { ObraSuppliersTab, type Supplier } from "@/components/modules/obra-suppliers-tab";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { normalizePhone, sanitizeFilename } from "@/lib/utils";
 import { percent } from "@/lib/money";
 
-interface Module {
+export interface Module {
   id: string;
   name: string;
   status: string;
@@ -44,7 +38,7 @@ interface Module {
   start_date: string | null;
   end_date: string | null;
 }
-interface Phase {
+export interface Phase {
   id: string;
   name: string;
   planned_budget: number | null;
@@ -53,14 +47,14 @@ interface Phase {
   planned_start: string | null;
   planned_end: string | null;
 }
-interface Worker {
+export interface Worker {
   id: string;
   name: string;
   role: string | null;
   whatsapp_phone: string | null;
   daily_rate: number | null;
 }
-interface GalleryItem {
+export interface GalleryItem {
   id: string;
   image_url: string;
   caption: string | null;
@@ -72,30 +66,21 @@ interface GalleryItem {
 }
 interface Props {
   module: Module;
-  phases: Phase[];
-  workers: Worker[];
-  gallery: GalleryItem[];
   transactions: { amount: number | string }[];
-  items: ObraItem[];
-  diary: DiaryEntry[];
-  suppliers: Supplier[];
-  quotes: Quote[];
-  householdId: string;
-  userId: string;
   canWrite: boolean;
 }
 
 const KANBAN = ["todo", "doing", "done", "blocked"] as const;
 
 const SECTIONS = [
-  { value: "forecast", label: "Previsão", icon: TrendingUp },
-  { value: "phases", label: "Fases", icon: KanbanSquare },
-  { value: "items", label: "Materiais", icon: Package },
-  { value: "suppliers", label: "Fornecedores", icon: Truck },
-  { value: "quotes", label: "Cotações", icon: Receipt },
-  { value: "diary", label: "Andamento", icon: Activity },
-  { value: "gallery", label: "Galeria", icon: Images },
-  { value: "workers", label: "Equipe", icon: Users },
+  { href: "/overview/previsao", label: "Previsão", icon: Target },
+  { href: "/overview/fases", label: "Fases", icon: KanbanSquare },
+  { href: "/overview/materiais", label: "Materiais", icon: Package },
+  { href: "/overview/fornecedores", label: "Fornecedores", icon: Truck },
+  { href: "/overview/cotacoes", label: "Cotações", icon: Receipt },
+  { href: "/overview/andamento", label: "Andamento", icon: Camera },
+  { href: "/overview/galeria", label: "Galeria", icon: Images },
+  { href: "/overview/equipe", label: "Equipe", icon: Users },
 ] as const;
 
 function statusLabel(s: string): string {
@@ -108,19 +93,7 @@ function statusLabel(s: string): string {
   }
 }
 
-export function ObraDashboard({
-  module,
-  phases,
-  workers,
-  gallery,
-  transactions,
-  items,
-  diary,
-  suppliers,
-  quotes,
-  householdId,
-  canWrite,
-}: Props) {
+export function ObraDashboard({ module, transactions, canWrite }: Props) {
   const total = transactions.reduce((s, t) => s + Number(t.amount), 0);
   const pct = module.budget ? percent(total, Number(module.budget)) : 0;
   return (
@@ -159,58 +132,20 @@ export function ObraDashboard({
         </Card>
       </section>
 
-      <Tabs defaultValue="forecast">
-        <TabsList className="grid h-auto grid-cols-4 gap-2 bg-transparent p-0 sm:grid-cols-8">
-          {SECTIONS.map(({ value, label, icon: Icon }) => (
-            <TabsTrigger
-              key={value}
-              value={value}
-              className="group flex h-auto flex-col items-center gap-2 rounded-2xl border border-border bg-bg-elev px-2 py-3 text-text-muted data-[state=active]:bg-bg-elev-2 data-[state=active]:text-text data-[state=active]:border-primary/50"
-            >
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-bg-elev-2 text-text-muted transition-colors group-data-[state=active]:bg-gradient-primary group-data-[state=active]:text-primary-foreground">
-                <Icon className="h-5 w-5" />
-              </span>
-              <span className="text-[11px] font-medium leading-tight">{label}</span>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent value="forecast">
-          <ObraForecastTab budget={module.budget} spent={total} items={items} phases={phases} />
-        </TabsContent>
-        <TabsContent value="phases">
-          <PhasesKanban moduleId={module.id} phases={phases} canWrite={canWrite} />
-        </TabsContent>
-        <TabsContent value="items">
-          <ObraItemsTab
-            moduleId={module.id}
-            initial={items}
-            phases={phases.map((p) => ({ id: p.id, name: p.name }))}
-            suppliers={suppliers.map((s) => ({ id: s.id, name: s.name }))}
-            canWrite={canWrite}
-          />
-        </TabsContent>
-        <TabsContent value="suppliers">
-          <ObraSuppliersTab householdId={householdId} initial={suppliers} canWrite={canWrite} />
-        </TabsContent>
-        <TabsContent value="quotes">
-          <ObraQuotesTab householdId={householdId} suppliers={suppliers} initial={quotes} canWrite={canWrite} />
-        </TabsContent>
-        <TabsContent value="diary">
-          <ObraDiaryTab
-            moduleId={module.id}
-            householdId={householdId}
-            initial={diary}
-            phases={phases.map((p) => ({ id: p.id, name: p.name }))}
-            canWrite={canWrite}
-          />
-        </TabsContent>
-        <TabsContent value="gallery">
-          <Gallery moduleId={module.id} householdId={householdId} initial={gallery} canWrite={canWrite} />
-        </TabsContent>
-        <TabsContent value="workers">
-          <WorkersPanel moduleId={module.id} initial={workers} canWrite={canWrite} />
-        </TabsContent>
-      </Tabs>
+      <section className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+        {SECTIONS.map(({ href, label, icon: Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            className="group flex flex-col items-center gap-2 rounded-2xl border border-border bg-bg-elev px-2 py-3 text-text-muted transition-colors hover:border-primary/50 hover:bg-bg-elev-2 hover:text-text"
+          >
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-bg-elev-2 text-text-muted transition-colors group-hover:bg-gradient-primary group-hover:text-primary-foreground">
+              <Icon className="h-5 w-5" />
+            </span>
+            <span className="text-center text-[11px] font-medium leading-tight">{label}</span>
+          </Link>
+        ))}
+      </section>
     </div>
   );
 }
@@ -229,7 +164,7 @@ const COL_COLOR: Record<string, string> = {
   blocked: "text-danger",
 };
 
-function PhasesKanban({
+export function PhasesKanban({
   moduleId,
   phases: initialPhases,
   canWrite,
@@ -306,6 +241,19 @@ function PhasesKanban({
     setDraggingId(null);
   }
 
+  function remove(id: string) {
+    if (!canWrite) return;
+    if (!confirm("Apagar esta fase? Os itens ligados a ela ficam sem fase.")) return;
+    start(async () => {
+      const { error } = await supabase.from("obra_phases").delete().eq("id", id);
+      if (error) {
+        toast.error("Falha ao apagar fase.");
+        return;
+      }
+      setPhases((s) => s.filter((p) => p.id !== id));
+    });
+  }
+
   return (
     <div className="space-y-4">
       {canWrite && (
@@ -355,7 +303,19 @@ function PhasesKanban({
                         (isDragging ? "opacity-50" : "")
                       }
                     >
-                      <p className="font-medium">{p.name}</p>
+                      <div className="flex items-start justify-between gap-1">
+                        <p className="font-medium">{p.name}</p>
+                        {canWrite && (
+                          <button
+                            type="button"
+                            onClick={() => remove(p.id)}
+                            aria-label="Apagar fase"
+                            className="shrink-0 text-text-muted hover:text-danger"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                       {p.planned_budget && (
                         <p className="text-xs text-text-muted">
                           <Money value={p.planned_budget} size="sm" tone="muted" />
@@ -393,7 +353,7 @@ function PhasesKanban({
   );
 }
 
-function Gallery({ moduleId, householdId, initial, canWrite }: { moduleId: string; householdId: string; initial: GalleryItem[]; canWrite: boolean }) {
+export function Gallery({ moduleId, householdId, initial, canWrite }: { moduleId: string; householdId: string; initial: GalleryItem[]; canWrite: boolean }) {
   const supabase = createSupabaseBrowser();
   const [items, setItems] = useState(initial);
   const [uploading, setUploading] = useState(false);
@@ -542,7 +502,7 @@ function Gallery({ moduleId, householdId, initial, canWrite }: { moduleId: strin
   );
 }
 
-function WorkersPanel({ moduleId, initial, canWrite }: { moduleId: string; initial: Worker[]; canWrite: boolean }) {
+export function WorkersPanel({ moduleId, initial, canWrite }: { moduleId: string; initial: Worker[]; canWrite: boolean }) {
   const supabase = createSupabaseBrowser();
   const [workers, setWorkers] = useState(initial);
   const [draft, setDraft] = useState<Partial<Worker>>({ name: "", role: "", whatsapp_phone: "" });

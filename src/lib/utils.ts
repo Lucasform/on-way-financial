@@ -57,6 +57,11 @@ export function normalizePhone(input: string): string {
   return digits.startsWith("+") ? input : `+${digits}`;
 }
 
+export function waLink(phone: string): string {
+  const digits = normalizePhone(phone).replace(/\D+/g, "");
+  return `https://wa.me/${digits}`;
+}
+
 export function range(n: number): number[] {
   return Array.from({ length: n }, (_, i) => i);
 }

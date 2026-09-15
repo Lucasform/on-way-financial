@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useDraggableFab } from "@/hooks/use-draggable-fab";
 import { cn } from "@/lib/utils";
 
 interface Msg {
@@ -43,6 +44,7 @@ Posso registrar despesas/receitas (ex: "gastei 50 no mercado") e responder pergu
 };
 
 export function AssistantFab() {
+  const fab = useDraggableFab("ai-assistant");
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([WELCOME]);
   const [input, setInput] = useState("");
@@ -108,15 +110,19 @@ export function AssistantFab() {
       {/* Botão fixo: mobile acima do FAB de + (bottom-20); desktop canto inferior direito */}
       <button
         type="button"
-        onClick={() => setOpen(true)}
-        aria-label="Abrir assistente"
+        onClick={() => {
+          if (fab.consumeDrag()) return;
+          setOpen(true);
+        }}
+        aria-label="Abrir assistente (arraste pra mover)"
         className={cn(
-          "fixed right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full",
+          "fixed right-4 z-30 flex h-14 w-14 touch-none items-center justify-center rounded-full",
           "bottom-40 md:bottom-4",
           "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-2xl",
           "transition-transform hover:scale-105 active:scale-95",
         )}
-        style={{ boxShadow: "0 12px 40px -10px rgba(0,209,160,0.6)" }}
+        style={{ boxShadow: "0 12px 40px -10px rgba(0,209,160,0.6)", ...fab.style }}
+        {...fab.handlers}
       >
         <Sparkles className="h-6 w-6" />
       </button>

@@ -484,6 +484,9 @@ export interface Database {
           name: string;
           category: string | null;
           phone: string | null;
+          phone2: string | null;
+          cnpj: string | null;
+          address: string | null;
           notes: string | null;
           rating: number | null;
           created_at: string;
@@ -495,6 +498,9 @@ export interface Database {
           name: string;
           category?: string | null;
           phone?: string | null;
+          phone2?: string | null;
+          cnpj?: string | null;
+          address?: string | null;
           notes?: string | null;
           rating?: number | null;
           created_at?: string;

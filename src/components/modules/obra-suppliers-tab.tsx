@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Phone, Plus, Star, Trash2, Truck } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, ChevronUp, MessageCircle, Phone, Plus, Star, Trash2, Truck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -10,12 +11,16 @@ import { Empty } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
+import { waLink } from "@/lib/utils";
 
 export interface Supplier {
   id: string;
   name: string;
   category: string | null;
   phone: string | null;
+  phone2: string | null;
+  cnpj: string | null;
+  address: string | null;
   notes: string | null;
   rating: number | null;
 }
@@ -33,6 +38,7 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
   const [suppliers, setSuppliers] = useState(initial);
   const [pending, start] = useTransition();
   const [draft, setDraft] = useState<Partial<Supplier>>({ category: "material" });
+  const [moreOpen, setMoreOpen] = useState(false);
 
   function add() {
     if (!canWrite || !draft.name?.trim()) return;
@@ -44,6 +50,9 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
           name: draft.name!.trim(),
           category: draft.category ?? "material",
           phone: draft.phone ?? null,
+          phone2: draft.phone2 ?? null,
+          cnpj: draft.cnpj ?? null,
+          address: draft.address ?? null,
           notes: draft.notes ?? null,
         })
         .select("*")
@@ -54,6 +63,7 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
       }
       setSuppliers((s) => [data as Supplier, ...s]);
       setDraft({ category: "material" });
+      setMoreOpen(false);
       toast.success("Fornecedor adicionado.");
     });
   }
@@ -123,6 +133,47 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
               </Button>
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setMoreOpen((s) => !s)}
+            className="mt-3 inline-flex items-center gap-1 text-xs text-text-muted hover:text-text"
+          >
+            {moreOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            Mais detalhes (2º telefone, CNPJ, endereço)
+          </button>
+
+          {moreOpen && (
+            <div className="mt-3 grid gap-2 border-t border-border pt-3 sm:grid-cols-3">
+              <div className="space-y-1">
+                <Label htmlFor="sphone2">2º telefone</Label>
+                <Input
+                  id="sphone2"
+                  value={draft.phone2 ?? ""}
+                  onChange={(e) => setDraft({ ...draft, phone2: e.target.value })}
+                  placeholder="(11) 98888-8888"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="scnpj">CNPJ</Label>
+                <Input
+                  id="scnpj"
+                  value={draft.cnpj ?? ""}
+                  onChange={(e) => setDraft({ ...draft, cnpj: e.target.value })}
+                  placeholder="00.000.000/0001-00"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="saddr">Endereço</Label>
+                <Input
+                  id="saddr"
+                  value={draft.address ?? ""}
+                  onChange={(e) => setDraft({ ...draft, address: e.target.value })}
+                  placeholder="Rua, número, bairro, cidade"
+                />
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
@@ -132,46 +183,75 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
         <ul className="space-y-2">
           {suppliers.map((s) => (
             <li key={s.id}>
-              <Card className="flex items-center gap-3 p-4">
-                <div className="flex-1">
-                  <p className="font-semibold">{s.name}</p>
-                  <p className="text-xs text-text-muted">
-                    {s.category ?? "—"}
-                    {s.phone && (
-                      <>
-                        {" "}
-                        · <Phone className="inline h-3 w-3" /> {s.phone}
-                      </>
-                    )}
-                  </p>
-                </div>
-                <div className="flex items-center gap-0.5">
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      disabled={!canWrite}
-                      onClick={() => rate(s.id, n)}
-                      aria-label={`Nota ${n}`}
+              <Card className="p-0">
+                <Link href={`/overview/fornecedores/${s.id}`} className="flex items-center gap-3 p-4 transition-colors hover:bg-bg-elev-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold">{s.name}</p>
+                    <p className="truncate text-xs text-text-muted">
+                      {s.category ?? "—"}
+                      {s.phone && <> · {s.phone}</>}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-0.5" onClick={(e) => e.preventDefault()}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        disabled={!canWrite}
+                        onClick={() => rate(s.id, n)}
+                        aria-label={`Nota ${n}`}
+                      >
+                        <Star
+                          className={`h-4 w-4 ${
+                            (s.rating ?? 0) >= n ? "fill-warning text-warning" : "text-text-muted"
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  {s.phone && (
+                    <a
+                      href={waLink(s.phone)}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label="Abrir WhatsApp"
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-success/15 text-success hover:bg-success/25"
                     >
-                      <Star
-                        className={`h-4 w-4 ${
-                          (s.rating ?? 0) >= n ? "fill-warning text-warning" : "text-text-muted"
-                        }`}
-                      />
-                    </button>
-                  ))}
-                </div>
-                {canWrite && (
-                  <Button variant="ghost" size="icon" onClick={() => remove(s.id)}>
-                    <Trash2 className="h-4 w-4 text-danger" />
-                  </Button>
-                )}
+                      <MessageCircle className="h-4 w-4" />
+                    </a>
+                  )}
+                  {canWrite && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        remove(s.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-danger" />
+                    </Button>
+                  )}
+                </Link>
               </Card>
             </li>
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+export function PhoneLink({ phone, label }: { phone: string; label?: string }) {
+  return (
+    <a
+      href={waLink(phone)}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1.5 text-primary hover:underline"
+    >
+      <Phone className="h-3.5 w-3.5" /> {label ?? phone}
+    </a>
   );
 }

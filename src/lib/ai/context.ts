@@ -118,6 +118,8 @@ REGRAS:
   resultado da ferramenta search_transactions. Não invente números.
 - Se o usuário pedir um gasto específico (fornecedor, material, categoria, período) que não está
   no resumo do contexto, USE a ferramenta search_transactions em vez de dizer que não sabe.
+- Se o usuário pedir pra cadastrar/adicionar um fornecedor (nome, telefone, CNPJ, endereço, tipo),
+  USE a ferramenta add_supplier. Peça só o nome se faltar; o resto é opcional.
 - Pra perguntas gerais (conceitos, comparações, produtos do mercado), use seu conhecimento.
 - Se faltar dado, peça pro usuário especificar.
 - Sugira ações claras e curtas, em bullet points quando ajudar.
@@ -186,6 +188,62 @@ export async function searchTransactions(
   if (rows.length > 30) lines.push(`... e mais ${rows.length - 30} transação(ões).`);
   return lines.join("\n");
 }
+
+export interface AddSupplierArgs {
+  name: string;
+  category?: string | null;
+  phone?: string | null;
+  phone2?: string | null;
+  cnpj?: string | null;
+  address?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * Cadastra um fornecedor via IA (tool use). Usada quando o usuário pede pra adicionar/cadastrar
+ * um fornecedor direto no chat, com qualquer combinação de telefone/CNPJ/endereço/tipo.
+ */
+export async function addSupplier(householdId: string, args: AddSupplierArgs): Promise<string> {
+  if (!args.name?.trim()) return "Preciso pelo menos do nome do fornecedor.";
+  const admin = createSupabaseAdmin();
+  const { data, error } = await admin
+    .from("suppliers")
+    .insert({
+      household_id: householdId,
+      name: args.name.trim(),
+      category: args.category ?? "material",
+      phone: args.phone ?? null,
+      phone2: args.phone2 ?? null,
+      cnpj: args.cnpj ?? null,
+      address: args.address ?? null,
+      notes: args.notes ?? null,
+    })
+    .select("id, name")
+    .single();
+  if (error || !data) return `Erro ao cadastrar: ${error?.message ?? "falha desconhecida"}.`;
+  return `Fornecedor "${data.name}" cadastrado com sucesso.`;
+}
+
+export const ADD_SUPPLIER_TOOL = {
+  name: "add_supplier",
+  description:
+    "Cadastra um novo fornecedor da obra (loja, prestador de serviço, mão de obra). Use quando o " +
+    'usuário pedir pra "adicionar", "cadastrar" ou "salvar" um fornecedor, com qualquer combinação ' +
+    "de telefone, CNPJ, endereço, tipo e notas.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      name: { type: "string", description: "Nome do fornecedor (obrigatório)." },
+      category: { type: "string", enum: ["material", "mão-de-obra", "equipamento", "serviço", "outro"], description: "Padrão: material." },
+      phone: { type: "string", description: "Telefone principal, se mencionado." },
+      phone2: { type: "string", description: "Segundo telefone, se mencionado." },
+      cnpj: { type: "string", description: "CNPJ, se mencionado." },
+      address: { type: "string", description: "Endereço, se mencionado." },
+      notes: { type: "string", description: "Observações livres, se houver." },
+    },
+    required: ["name"],
+  },
+};
 
 export const SEARCH_TRANSACTIONS_TOOL = {
   name: "search_transactions",
