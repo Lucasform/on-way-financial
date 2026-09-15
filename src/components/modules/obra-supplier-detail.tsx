@@ -100,6 +100,24 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
     }
   }
 
+  async function removeQuote(id: string) {
+    if (!canWrite) return;
+    if (!confirm("Apagar essa cotação?")) return;
+    setSavingQuote(true);
+    try {
+      const { error } = await supabase.from("price_quotes").delete().eq("id", id);
+      if (error) {
+        toast.error("Falha ao apagar cotação.");
+        return;
+      }
+      setQuotes((s) => s.filter((q) => q.id !== id));
+      setEditingQuoteId(null);
+      toast.success("Cotação apagada.");
+    } finally {
+      setSavingQuote(false);
+    }
+  }
+
   async function reopenQuote(id: string) {
     if (!canWrite) return;
     if (!confirm("Voltar essa cotação pro estado aberta? Isso não apaga a compra/despesa se ela ainda existir — pra isso, apague em Realizado.")) return;
@@ -473,6 +491,9 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
                         className="sm:col-span-2"
                       />
                       <div className="flex gap-2 sm:col-span-2 sm:justify-end">
+                        <Button variant="ghost" size="sm" className="mr-auto text-danger hover:text-danger" disabled={savingQuote} onClick={() => removeQuote(q.id)}>
+                          <Trash2 className="h-3.5 w-3.5" /> Apagar
+                        </Button>
                         <Button variant="ghost" size="sm" onClick={() => setEditingQuoteId(null)}>Cancelar</Button>
                         <Button size="sm" disabled={savingQuote} onClick={() => saveQuote(q.id)}>Salvar</Button>
                       </div>
