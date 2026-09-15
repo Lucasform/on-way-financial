@@ -59,29 +59,9 @@ export async function POST(req: NextRequest) {
   const today = new Date().toISOString().slice(0, 10);
   const total = quantity * Number(quote.unit_price);
 
-  const { data: item, error: itemErr } = await supabase
-    .from("obra_items")
-    .insert({
-      module_id: mod.id,
-      phase_id: phase_id ?? null,
-      category: supplier?.category ?? "material",
-      name: quote.item_name,
-      brand: null,
-      supplier: supplier?.name ?? null,
-      supplier_id: quote.supplier_id,
-      material_type_id: quote.material_type_id,
-      unit: quote.unit,
-      quantity,
-      unit_price: quote.unit_price,
-      actual_unit_price: quote.unit_price,
-      status: "bought",
-      bought_at: today,
-      notes: `Aceito da cotação de ${quote.quoted_at}`,
-    })
-    .select("*")
-    .single();
-  if (itemErr || !item) {
-    return NextResponse.json({ error: itemErr?.message ?? "item_failed" }, { status: 500 });
+  // Se algo falhar daqui pra frente, desfaz o "aceite" pra cotação não ficar travada sem nada criado.
+  async function unclaim() {
+    await supabase.from("price_quotes").update({ accepted_at: null }).eq("id", quote_id);
   }
 
   const { data: tx, error: txErr } = await supabase
@@ -100,8 +80,38 @@ export async function POST(req: NextRequest) {
     })
     .select("*")
     .single();
-  if (txErr) {
-    return NextResponse.json({ error: txErr.message, item }, { status: 500 });
+  if (txErr || !tx) {
+    await unclaim();
+    return NextResponse.json({ error: txErr?.message ?? "transaction_failed" }, { status: 500 });
+  }
+
+  const { data: item, error: itemErr } = await supabase
+    .from("obra_items")
+    .insert({
+      module_id: mod.id,
+      phase_id: phase_id ?? null,
+      category: supplier?.category ?? "material",
+      name: quote.item_name,
+      brand: null,
+      supplier: supplier?.name ?? null,
+      supplier_id: quote.supplier_id,
+      material_type_id: quote.material_type_id,
+      unit: quote.unit,
+      quantity,
+      unit_price: quote.unit_price,
+      actual_unit_price: quote.unit_price,
+      status: "bought",
+      bought_at: today,
+      quote_id: quote.id,
+      transaction_id: tx.id,
+      notes: `Aceito da cotação de ${quote.quoted_at}`,
+    })
+    .select("*")
+    .single();
+  if (itemErr || !item) {
+    await supabase.from("transactions").delete().eq("id", tx.id);
+    await unclaim();
+    return NextResponse.json({ error: itemErr?.message ?? "item_failed" }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, item, transaction: tx });

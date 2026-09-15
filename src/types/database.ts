@@ -412,6 +412,8 @@ export interface Database {
           bought_at: string | null;
           expected_date: string | null;
           notes: string | null;
+          quote_id: string | null;
+          transaction_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -433,6 +435,8 @@ export interface Database {
           bought_at?: string | null;
           expected_date?: string | null;
           notes?: string | null;
+          quote_id?: string | null;
+          transaction_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };

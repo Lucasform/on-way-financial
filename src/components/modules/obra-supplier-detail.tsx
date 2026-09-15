@@ -57,6 +57,7 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
   const [quotes, setQuotes] = useState(initialQuotes);
   const [purchases, setPurchases] = useState(initialPurchases);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [dropActive, setDropActive] = useState(false);
 
   async function acceptQuote(quote: QuoteRow) {
@@ -102,6 +103,31 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
       toast.success("Cotação aceita: virou compra e despesa.");
     } finally {
       setAcceptingId(null);
+    }
+  }
+
+  async function removePurchase(itemId: string) {
+    if (!canWrite || removingId) return;
+    if (!confirm("Apagar esse item realizado? A despesa lançada junto some, e se veio de uma cotação aceita ela volta a poder ser aceita de novo.")) return;
+    setRemovingId(itemId);
+    try {
+      const res = await fetch("/api/obra/revert-purchase", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ item_id: itemId }),
+      });
+      if (!res.ok) {
+        toast.error("Falha ao apagar.");
+        return;
+      }
+      const data = (await res.json()) as { quote_id: string | null };
+      setPurchases((s) => s.filter((p) => p.id !== itemId));
+      if (data.quote_id) {
+        setQuotes((s) => s.map((q) => (q.id === data.quote_id ? { ...q, accepted_at: null } : q)));
+      }
+      toast.success("Removido.");
+    } finally {
+      setRemovingId(null);
     }
   }
 
@@ -278,7 +304,7 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
         </div>
         {canWrite && quotes.length > 0 && (
           <p className="mb-2 text-[11px] text-text-muted">
-            Clique em <Check className="inline h-3 w-3" /> pra aceitar (vira compra + despesa), ou arraste pra &quot;Já compramos&quot;.
+            Clique em <Check className="inline h-3 w-3" /> pra aceitar (vira compra + despesa), ou arraste pra &quot;Realizado&quot;.
           </p>
         )}
         {quotes.length === 0 ? (
@@ -331,7 +357,7 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
       >
         <div className="mb-2 flex items-center justify-between">
           <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-            <ShoppingBag className="h-4 w-4" /> Já compramos
+            <ShoppingBag className="h-4 w-4" /> Realizado
           </h3>
           {purchases.length > 0 && <Money value={purchaseTotal} size="sm" tone="muted" />}
         </div>
@@ -355,6 +381,18 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
                     </p>
                   </div>
                   <Money value={total} size="sm" className="shrink-0" />
+                  {canWrite && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      disabled={removingId === p.id}
+                      onClick={() => removePurchase(p.id)}
+                      aria-label="Apagar"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-danger" />
+                    </Button>
+                  )}
                 </div>
               );
             })}

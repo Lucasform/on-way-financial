@@ -110,10 +110,12 @@ export function ObraDashboard({ module, transactions, canWrite }: Props) {
       </header>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Realizado</CardTitle></CardHeader>
-          <CardContent className="pt-0"><Money value={total} size="xl" /></CardContent>
-        </Card>
+        <Link href="/transactions">
+          <Card className="h-full transition-colors hover:border-primary/50 hover:bg-bg-elev-2">
+            <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Realizado</CardTitle></CardHeader>
+            <CardContent className="pt-0"><Money value={total} size="xl" /></CardContent>
+          </Card>
+        </Link>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Orçamento</CardTitle></CardHeader>
           <CardContent className="pt-0"><Money value={module.budget} size="xl" tone="muted" /></CardContent>
