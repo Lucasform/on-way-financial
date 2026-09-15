@@ -16,6 +16,7 @@ import { Money } from "@/components/ui/money";
 import { fmtDate } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { waLink } from "@/lib/utils";
+import { QuantityDialog } from "@/components/modules/quantity-dialog";
 import type { Supplier } from "@/components/modules/obra-suppliers-tab";
 
 export interface QuoteRow {
@@ -57,6 +58,7 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
   const [quotes, setQuotes] = useState(initialQuotes);
   const [purchases, setPurchases] = useState(initialPurchases);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [pendingAccept, setPendingAccept] = useState<QuoteRow | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [dropActive, setDropActive] = useState(false);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
@@ -165,15 +167,13 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
     }
   }
 
-  async function acceptQuote(quote: QuoteRow) {
+  function acceptQuote(quote: QuoteRow) {
     if (!canWrite || acceptingId || quote.accepted_at) return;
-    const raw = prompt(`Quantidade de "${quote.item_name}" (${quote.unit}):`, "1");
-    if (raw === null) return;
-    const quantity = Number(raw.replace(",", "."));
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      toast.error("Quantidade inválida.");
-      return;
-    }
+    setPendingAccept(quote);
+  }
+
+  async function confirmAccept(quote: QuoteRow, quantity: number) {
+    setPendingAccept(null);
     setAcceptingId(quote.id);
     try {
       const res = await fetch("/api/obra/accept-quote", {
@@ -607,6 +607,15 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
           </Card>
         )}
       </section>
+
+      {pendingAccept && (
+        <QuantityDialog
+          itemName={pendingAccept.item_name}
+          unit={pendingAccept.unit}
+          onConfirm={(quantity) => confirmAccept(pendingAccept, quantity)}
+          onCancel={() => setPendingAccept(null)}
+        />
+      )}
     </div>
   );
 }

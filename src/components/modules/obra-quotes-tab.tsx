@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Money } from "@/components/ui/money";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { fmtDate, todayISO } from "@/lib/dates";
+import { QuantityDialog } from "@/components/modules/quantity-dialog";
 import type { Supplier } from "@/components/modules/obra-suppliers-tab";
 
 export interface Quote {
@@ -41,6 +42,7 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
   const [quotes, setQuotes] = useState(initial);
   const [pending, start] = useTransition();
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [pendingAccept, setPendingAccept] = useState<Quote | null>(null);
   const [draft, setDraft] = useState<Partial<Quote>>({
     supplier_id: suppliers[0]?.id,
     unit: "un",
@@ -96,15 +98,13 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
     });
   }
 
-  async function accept(q: Quote) {
+  function accept(q: Quote) {
     if (!canWrite || acceptingId || q.accepted_at) return;
-    const raw = prompt(`Quantidade de "${q.item_name}" (${q.unit}):`, "1");
-    if (raw === null) return;
-    const quantity = Number(raw.replace(",", "."));
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      toast.error("Quantidade inválida.");
-      return;
-    }
+    setPendingAccept(q);
+  }
+
+  async function confirmAccept(q: Quote, quantity: number) {
+    setPendingAccept(null);
     setAcceptingId(q.id);
     try {
       const res = await fetch("/api/obra/accept-quote", {
@@ -263,6 +263,15 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
             </Card>
           ))}
         </div>
+      )}
+
+      {pendingAccept && (
+        <QuantityDialog
+          itemName={pendingAccept.item_name}
+          unit={pendingAccept.unit}
+          onConfirm={(quantity) => confirmAccept(pendingAccept, quantity)}
+          onCancel={() => setPendingAccept(null)}
+        />
       )}
     </div>
   );
