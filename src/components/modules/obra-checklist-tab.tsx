@@ -22,6 +22,7 @@ export interface ChecklistItem {
   is_estimate: boolean;
   status: string;
   obra_item_id: string | null;
+  times_added: number;
 }
 
 interface Props {
@@ -102,15 +103,20 @@ export function ObraChecklistTab({ moduleId, initial, canWrite }: Props) {
         toast.error("Falha ao adicionar à tabela.");
         return;
       }
+      const nextCount = item.times_added + 1;
       const { error: updErr } = await supabase
         .from("obra_checklist_items")
-        .update({ status: "added", obra_item_id: data.id })
+        .update({ status: "added", obra_item_id: data.id, times_added: nextCount })
         .eq("id", item.id);
       if (updErr) {
         toast.error("Item criado, mas falhou marcar o checklist.");
       }
-      setItems((s) => s.map((i) => (i.id === item.id ? { ...i, status: "added", obra_item_id: data.id } : i)));
-      toast.success("Adicionado em Materiais.");
+      setItems((s) => s.map((i) => (i.id === item.id ? { ...i, status: "added", obra_item_id: data.id, times_added: nextCount } : i)));
+      toast.success(
+        nextCount > 1
+          ? `Adicionado em Materiais (${nextCount}ª vez — outro fornecedor/compra? edite lá).`
+          : "Adicionado em Materiais.",
+      );
     } finally {
       setBusyId(null);
     }
@@ -262,21 +268,23 @@ export function ObraChecklistTab({ moduleId, initial, canWrite }: Props) {
                         </button>
                       )}
 
-                      {item.status === "added" ? (
-                        <Badge variant="success" className="shrink-0">na tabela</Badge>
-                      ) : (
-                        canWrite && (
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-7 w-7 shrink-0"
-                            disabled={item.estimated_value == null || busyId === item.id}
-                            onClick={() => addToTable(item)}
-                            aria-label="Adicionar à tabela"
-                          >
-                            <ShoppingCart className="h-3.5 w-3.5" />
-                          </Button>
-                        )
+                      {item.times_added > 0 && (
+                        <Badge variant="success" className="shrink-0">
+                          na tabela{item.times_added > 1 ? ` ×${item.times_added}` : ""}
+                        </Badge>
+                      )}
+                      {canWrite && (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          disabled={item.estimated_value == null || busyId === item.id}
+                          onClick={() => addToTable(item)}
+                          aria-label={item.times_added > 0 ? "Adicionar outra compra à tabela" : "Adicionar à tabela"}
+                          title={item.times_added > 0 ? "Comprar de novo (outro fornecedor ou nova compra)" : "Adicionar à tabela"}
+                        >
+                          <ShoppingCart className="h-3.5 w-3.5" />
+                        </Button>
                       )}
                       {canWrite && (
                         <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeItem(item.id)} aria-label="Remover">

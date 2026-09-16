@@ -535,6 +535,7 @@ export interface Database {
           is_estimate: boolean;
           status: string;
           obra_item_id: string | null;
+          times_added: number;
           notes: string | null;
           position: number;
           created_at: string;
@@ -551,6 +552,7 @@ export interface Database {
           is_estimate?: boolean;
           status?: string;
           obra_item_id?: string | null;
+          times_added?: number;
           notes?: string | null;
           position?: number;
           created_at?: string;
