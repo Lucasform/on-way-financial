@@ -39,6 +39,7 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
   const [pending, start] = useTransition();
   const [draft, setDraft] = useState<Partial<Supplier>>({ category: "material" });
   const [moreOpen, setMoreOpen] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
 
   function add() {
     if (!canWrite || !draft.name?.trim()) return;
@@ -64,6 +65,7 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
       setSuppliers((s) => [data as Supplier, ...s]);
       setDraft({ category: "material" });
       setMoreOpen(false);
+      setShowAdd(false);
       toast.success("Fornecedor adicionado.");
     });
   }
@@ -90,9 +92,18 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
 
   return (
     <div className="space-y-4">
-      {canWrite && (
+      {canWrite && !showAdd && (
+        <Button variant="outline" onClick={() => setShowAdd(true)} className="w-full sm:w-auto">
+          <Plus className="h-4 w-4" /> Novo fornecedor
+        </Button>
+      )}
+
+      {canWrite && showAdd && (
         <Card className="p-4">
-          <p className="mb-3 text-sm font-semibold">Novo fornecedor</p>
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-semibold">Novo fornecedor</p>
+            <Button variant="ghost" size="sm" onClick={() => setShowAdd(false)}>Cancelar</Button>
+          </div>
           <div className="grid gap-2 sm:grid-cols-5">
             <div className="sm:col-span-2 space-y-1">
               <Label htmlFor="sname">Nome</Label>

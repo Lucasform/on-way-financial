@@ -16,14 +16,24 @@ interface Props {
   displayName: string;
   whatsappPhone: string;
   householdId: string;
+  defaultWhatsapp?: string | null;
+  canConfigureHousehold?: boolean;
 }
 
-export function SettingsPanel({ memberId, displayName, whatsappPhone, householdId }: Props) {
+export function SettingsPanel({
+  memberId,
+  displayName,
+  whatsappPhone,
+  householdId,
+  defaultWhatsapp,
+  canConfigureHousehold,
+}: Props) {
   const supabase = createSupabaseBrowser();
   const [name, setName] = useState(displayName);
   const [phone, setPhone] = useState(whatsappPhone);
+  const [defaultWa, setDefaultWa] = useState(defaultWhatsapp ?? "");
   const [pending, start] = useTransition();
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [savingHousehold, setSavingHousehold] = useState(false);
 
   function saveProfile() {
     start(async () => {
@@ -39,10 +49,21 @@ export function SettingsPanel({ memberId, displayName, whatsappPhone, householdI
     });
   }
 
-  function applyTheme(next: "dark" | "light") {
-    setTheme(next);
-    if (next === "light") document.documentElement.setAttribute("data-theme", "light");
-    else document.documentElement.removeAttribute("data-theme");
+  async function saveDefaultWhatsapp() {
+    setSavingHousehold(true);
+    try {
+      const { error } = await supabase
+        .from("households")
+        .update({ default_whatsapp_phone: defaultWa ? normalizePhone(defaultWa) : null })
+        .eq("id", householdId);
+      if (error) {
+        toast.error("Falha ao salvar.");
+        return;
+      }
+      toast.success("WhatsApp padrão atualizado.");
+    } finally {
+      setSavingHousehold(false);
+    }
   }
 
   async function exportCsv() {
@@ -100,6 +121,24 @@ export function SettingsPanel({ memberId, displayName, whatsappPhone, householdI
           </div>
         </div>
       </Card>
+
+      {canConfigureHousehold && (
+        <Card className="p-4">
+          <h2 className="mb-1 text-base font-semibold">WhatsApp padrão da obra</h2>
+          <p className="mb-3 text-xs text-text-muted">
+            Número usado como padrão pra mensagens da obra (ex.: avisos pra equipe).
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              value={defaultWa}
+              onChange={(e) => setDefaultWa(e.target.value)}
+              placeholder="(11) 99999-9999"
+              className="max-w-xs"
+            />
+            <Button onClick={saveDefaultWhatsapp} disabled={savingHousehold}>Salvar</Button>
+          </div>
+        </Card>
+      )}
 
       <Card className="p-4">
         <h2 className="mb-3 text-base font-semibold">Exportar dados</h2>

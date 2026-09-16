@@ -9,7 +9,6 @@ import {
   Home,
   MoreHorizontal,
   Plus,
-  Settings,
   Users,
   Wallet,
   X,
@@ -27,22 +26,20 @@ import type { ActiveContext } from "@/lib/household";
 const NAV = [
   { href: "/overview", label: "Minha obra", icon: Home },
   { href: "/transactions", label: "Despesas", icon: Wallet },
+  { href: "/family", label: "Família", icon: Users },
   { href: "/categories", label: "Categorias", icon: Folders },
   { href: "/payment-methods", label: "Métodos", icon: CreditCard },
-  { href: "/family", label: "Grupo", icon: Users },
-  { href: "/settings", label: "Configurações", icon: Settings },
 ];
 
 const MOBILE_NAV = [
   { href: "/overview", label: "Obra", icon: Home },
   { href: "/transactions", label: "Despesas", icon: Wallet },
+  { href: "/family", label: "Família", icon: Users },
 ];
 
 const MORE_NAV = [
   { href: "/categories", label: "Categorias", icon: Folders },
   { href: "/payment-methods", label: "Métodos", icon: CreditCard },
-  { href: "/family", label: "Grupo", icon: Users },
-  { href: "/settings", label: "Configurações", icon: Settings },
 ];
 
 export function AppShell({ ctx, children }: { ctx: ActiveContext; children: React.ReactNode }) {
@@ -125,7 +122,7 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
 
       {/* Bottom nav mobile */}
       <nav
-        className="glass fixed inset-x-0 bottom-0 z-20 grid grid-cols-3 border-t border-border md:hidden"
+        className="glass fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-border md:hidden"
       >
         {MOBILE_NAV.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
@@ -179,7 +176,7 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {MORE_NAV.map((item) => {
                 const Icon = item.icon;
                 const active = pathname.startsWith(item.href);

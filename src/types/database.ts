@@ -7,9 +7,9 @@ export interface Database {
   public: {
     Tables: {
       households: {
-        Row: { id: string; name: string; created_by: string; created_at: string; updated_at: string };
-        Insert: { id?: string; name: string; created_by: string; created_at?: string; updated_at?: string };
-        Update: { id?: string; name?: string; created_by?: string; created_at?: string; updated_at?: string };
+        Row: { id: string; name: string; default_whatsapp_phone: string | null; created_by: string; created_at: string; updated_at: string };
+        Insert: { id?: string; name: string; default_whatsapp_phone?: string | null; created_by: string; created_at?: string; updated_at?: string };
+        Update: { id?: string; name?: string; default_whatsapp_phone?: string | null; created_by?: string; created_at?: string; updated_at?: string };
         Relationships: [];
       };
       household_members: {

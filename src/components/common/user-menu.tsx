@@ -31,7 +31,7 @@ export function UserMenu() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={() => router.push("/settings")}>
+        <DropdownMenuItem onSelect={() => router.push("/family")}>
           <Settings className="h-4 w-4" /> Configurações
         </DropdownMenuItem>
         <DropdownMenuSeparator />

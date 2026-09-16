@@ -43,6 +43,7 @@ export default async function SupplierDetailPage({ params }: { params: { id: str
       <ObraSectionHeader title={supplier.name} subtitle="Orçamentos e histórico de compras" />
       <ObraSupplierDetail
         supplier={supplier}
+        householdId={ctx.householdId}
         quotes={quotes ?? []}
         purchases={(purchases ?? []) as never}
         canWrite={ctx.role !== "viewer"}

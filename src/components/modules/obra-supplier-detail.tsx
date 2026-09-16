@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Building2, Check, ChevronDown, ChevronUp, MapPin, MessageCircle, Plus, Receipt, ShoppingBag, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -13,7 +12,7 @@ import { Empty } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Money } from "@/components/ui/money";
-import { fmtDate } from "@/lib/dates";
+import { fmtDate, todayISO } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { waLink } from "@/lib/utils";
 import { QuantityDialog } from "@/components/modules/quantity-dialog";
@@ -41,14 +40,16 @@ export interface PurchaseRow {
 
 interface Props {
   supplier: Supplier;
+  householdId: string;
   quotes: QuoteRow[];
   purchases: PurchaseRow[];
   canWrite: boolean;
 }
 
 const CATEGORIES = ["material", "mão-de-obra", "equipamento", "serviço", "outro"];
+const UNITS = ["un", "m", "m2", "m3", "kg", "saco", "litro", "rolo", "barra", "caixa", "hora", "diária"];
 
-export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, purchases: initialPurchases, canWrite }: Props) {
+export function ObraSupplierDetail({ supplier: initial, householdId, quotes: initialQuotes, purchases: initialPurchases, canWrite }: Props) {
   const supabase = createSupabaseBrowser();
   const router = useRouter();
   const [supplier, setSupplier] = useState(initial);
@@ -59,6 +60,9 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
   const [purchases, setPurchases] = useState(initialPurchases);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [pendingAccept, setPendingAccept] = useState<QuoteRow | null>(null);
+  const [showAddQuote, setShowAddQuote] = useState(false);
+  const [newQuote, setNewQuote] = useState({ item_name: "", unit: "un", unit_price: "", quoted_at: todayISO() });
+  const [savingNewQuote, setSavingNewQuote] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [dropActive, setDropActive] = useState(false);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
@@ -117,6 +121,35 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
       toast.success("Cotação apagada.");
     } finally {
       setSavingQuote(false);
+    }
+  }
+
+  async function addNewQuote() {
+    if (!canWrite || !newQuote.item_name.trim() || !newQuote.unit_price) return;
+    setSavingNewQuote(true);
+    try {
+      const { data, error } = await supabase
+        .from("price_quotes")
+        .insert({
+          household_id: householdId,
+          supplier_id: supplier.id,
+          item_name: newQuote.item_name.trim(),
+          unit: newQuote.unit,
+          unit_price: Number(newQuote.unit_price),
+          quoted_at: newQuote.quoted_at || todayISO(),
+        })
+        .select("*")
+        .single();
+      if (error || !data) {
+        toast.error("Falha ao registrar cotação.");
+        return;
+      }
+      setQuotes((s) => [data as QuoteRow, ...s]);
+      setNewQuote({ item_name: "", unit: "un", unit_price: "", quoted_at: todayISO() });
+      setShowAddQuote(false);
+      toast.success("Cotação registrada.");
+    } finally {
+      setSavingNewQuote(false);
     }
   }
 
@@ -403,10 +436,52 @@ export function ObraSupplierDetail({ supplier: initial, quotes: initialQuotes, p
           <h3 className="flex items-center gap-1.5 text-sm font-semibold">
             <Receipt className="h-4 w-4" /> Orçamentos
           </h3>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/overview/cotacoes"><Plus className="h-3.5 w-3.5" /> Nova cotação</Link>
-          </Button>
+          {canWrite && !showAddQuote && (
+            <Button variant="outline" size="sm" onClick={() => setShowAddQuote(true)}>
+              <Plus className="h-3.5 w-3.5" /> Nova cotação
+            </Button>
+          )}
         </div>
+        {showAddQuote && (
+          <Card className="mb-3 p-3">
+            <div className="grid gap-2 sm:grid-cols-5">
+              <Input
+                value={newQuote.item_name}
+                onChange={(e) => setNewQuote({ ...newQuote, item_name: e.target.value })}
+                placeholder="Item cotado"
+                className="sm:col-span-2"
+                autoFocus
+              />
+              <select
+                value={newQuote.unit}
+                onChange={(e) => setNewQuote({ ...newQuote, unit: e.target.value })}
+                className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
+              >
+                {UNITS.map((u) => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
+              </select>
+              <Input
+                type="number"
+                step="0.01"
+                value={newQuote.unit_price}
+                onChange={(e) => setNewQuote({ ...newQuote, unit_price: e.target.value })}
+                placeholder="Preço"
+              />
+              <Input
+                type="date"
+                value={newQuote.quoted_at}
+                onChange={(e) => setNewQuote({ ...newQuote, quoted_at: e.target.value })}
+              />
+            </div>
+            <div className="mt-2 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setShowAddQuote(false)}>Cancelar</Button>
+              <Button size="sm" disabled={savingNewQuote || !newQuote.item_name.trim() || !newQuote.unit_price} onClick={addNewQuote}>
+                Salvar
+              </Button>
+            </div>
+          </Card>
+        )}
         {canWrite && quotes.length > 0 && (
           <p className="mb-2 text-[11px] text-text-muted">
             Clique em <Check className="inline h-3 w-3" /> pra aceitar (vira compra + despesa), ou arraste pra &quot;Realizado&quot;.

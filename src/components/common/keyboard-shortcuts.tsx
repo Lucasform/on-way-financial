@@ -10,7 +10,6 @@ const ROUTES: Record<string, string> = {
   c: "/categories",
   p: "/payment-methods",
   f: "/family",
-  s: "/settings",
 };
 
 function isTyping(target: EventTarget | null): boolean {
