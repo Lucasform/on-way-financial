@@ -2,16 +2,13 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
 import {
   CreditCard,
   Folders,
   Home,
-  MoreHorizontal,
   Plus,
   Users,
   Wallet,
-  X,
 } from "lucide-react";
 
 import { HouseholdSwitcher } from "@/components/common/household-switcher";
@@ -35,9 +32,6 @@ const MOBILE_NAV = [
   { href: "/overview", label: "Obra", icon: Home },
   { href: "/transactions", label: "Despesas", icon: Wallet },
   { href: "/family", label: "Família", icon: Users },
-];
-
-const MORE_NAV = [
   { href: "/categories", label: "Categorias", icon: Folders },
   { href: "/payment-methods", label: "Métodos", icon: CreditCard },
 ];
@@ -45,7 +39,6 @@ const MORE_NAV = [
 export function AppShell({ ctx, children }: { ctx: ActiveContext; children: React.ReactNode }) {
   const pathname = usePathname() ?? "";
   const router = useRouter();
-  const [moreOpen, setMoreOpen] = useState(false);
   const fab = useDraggableFab<HTMLButtonElement>("quick-add");
 
   return (
@@ -122,7 +115,7 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
 
       {/* Bottom nav mobile */}
       <nav
-        className="glass fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-border md:hidden"
+        className="glass fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-border md:hidden"
       >
         {MOBILE_NAV.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
@@ -141,66 +134,7 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
             </Link>
           );
         })}
-        <button
-          type="button"
-          onClick={() => setMoreOpen(true)}
-          className={cn(
-            "flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors",
-            MORE_NAV.some((i) => pathname.startsWith(i.href)) ? "text-primary" : "text-text-muted",
-          )}
-          aria-label="Mais opções"
-        >
-          <MoreHorizontal className="h-5 w-5" />
-          Mais
-        </button>
       </nav>
-
-      {/* More menu (mobile) */}
-      {moreOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 md:hidden"
-          onClick={() => setMoreOpen(false)}
-        >
-          <div
-            className="absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-border bg-bg-elev p-4 pb-8"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm font-semibold">Mais opções</p>
-              <button
-                type="button"
-                onClick={() => setMoreOpen(false)}
-                aria-label="Fechar"
-                className="rounded-md p-1 text-text-muted hover:bg-bg-elev-2"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {MORE_NAV.map((item) => {
-                const Icon = item.icon;
-                const active = pathname.startsWith(item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMoreOpen(false)}
-                    className={cn(
-                      "flex flex-col items-center justify-center gap-2 rounded-lg border border-border p-4 text-center text-xs font-medium transition-colors",
-                      active
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "bg-bg-elev-2 text-text hover:bg-bg-elev-3",
-                    )}
-                  >
-                    <Icon className="h-5 w-5" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
