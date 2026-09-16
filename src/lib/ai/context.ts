@@ -118,8 +118,8 @@ REGRAS:
   resultado da ferramenta search_transactions. Não invente números.
 - Se o usuário pedir um gasto específico (fornecedor, material, categoria, período) que não está
   no resumo do contexto, USE a ferramenta search_transactions em vez de dizer que não sabe.
-- add_supplier, add_quote e add_material_item CADASTRAM DADO PERMANENTE (fornecedor, cotação,
-  material) — NUNCA chame essas ferramentas na primeira menção. Primeiro responda em texto um
+- add_supplier, add_quote, add_material_item e add_checklist_item CADASTRAM DADO PERMANENTE
+  (fornecedor, cotação, material, item de checklist) — NUNCA chame essas ferramentas na primeira menção. Primeiro responda em texto um
   resumo curto do que você entendeu e vai cadastrar (ex.: "Vou cadastrar o fornecedor João
   Pedreiro, telefone (11) 99999-9999. Confirma?") e espere o usuário confirmar (ex.: "sim",
   "confirma", "pode", "isso mesmo"). Só chame a ferramenta na mensagem seguinte, depois da
@@ -382,6 +382,68 @@ export const ADD_MATERIAL_TOOL = {
       notes: { type: "string", description: "Observações, se houver." },
     },
     required: ["name"],
+  },
+};
+
+export interface AddChecklistItemArgs {
+  phase_name: string;
+  category?: "material" | "serviço" | "processo" | null;
+  name: string;
+  unit?: string | null;
+  estimated_value?: number | null;
+}
+
+/** Adiciona um item de referência (processo/serviço/material) no checklist da obra via IA. */
+export async function addChecklistItem(householdId: string, args: AddChecklistItemArgs): Promise<string> {
+  if (!args.phase_name?.trim() || !args.name?.trim()) return "Preciso da fase e do nome do item.";
+  const admin = createSupabaseAdmin();
+  const { data: mod } = await admin
+    .from("modules")
+    .select("id")
+    .eq("household_id", householdId)
+    .eq("kind", "obra")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!mod) return "Não encontrei a obra ativa.";
+
+  const { data: last } = await admin
+    .from("obra_checklist_items")
+    .select("position")
+    .eq("module_id", mod.id)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { error } = await admin.from("obra_checklist_items").insert({
+    module_id: mod.id,
+    phase_name: args.phase_name.trim(),
+    category: args.category ?? "material",
+    name: args.name.trim(),
+    unit: args.unit ?? null,
+    estimated_value: args.estimated_value ?? null,
+    position: (last?.position ?? 0) + 1,
+  });
+  if (error) return `Erro ao adicionar ao checklist: ${error.message}`;
+  return `Adicionado ao checklist, na fase "${args.phase_name}": ${args.name}.`;
+}
+
+export const ADD_CHECKLIST_ITEM_TOOL = {
+  name: "add_checklist_item",
+  description:
+    "Adiciona um item de referência (processo, serviço ou material) no checklist da obra, " +
+    "organizado por fase (terraplenagem, fundação, alvenaria, etc). Use quando o usuário pedir " +
+    'pra "adicionar no checklist" algo que falta consultar/orçar, sem necessariamente já ter valor.',
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      phase_name: { type: "string", description: "Nome da fase (ex: Terraplenagem, Fundação, Alvenaria, Cobertura, Pintura...)." },
+      category: { type: "string", enum: ["material", "serviço", "processo"], description: "Padrão: material." },
+      name: { type: "string", description: "Nome do item/processo/serviço." },
+      unit: { type: "string", description: "Unidade, se fizer sentido (m2, m3, kg, un...)." },
+      estimated_value: { type: "number", description: "Valor estimado ou exato, se já souber." },
+    },
+    required: ["phase_name", "name"],
   },
 };
 

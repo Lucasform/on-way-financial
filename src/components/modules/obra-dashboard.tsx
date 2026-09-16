@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import {
   Camera,
+  ClipboardCheck,
   FolderOpen,
   Images,
   KanbanSquare,
@@ -72,6 +73,7 @@ const KANBAN = ["todo", "doing", "done", "blocked"] as const;
 
 const SECTIONS = [
   { href: "/overview/previsao", label: "Previsão", icon: Target },
+  { href: "/overview/checklist", label: "Checklist", icon: ClipboardCheck },
   { href: "/overview/fases", label: "Fases", icon: KanbanSquare },
   { href: "/overview/materiais", label: "Materiais", icon: Package },
   { href: "/overview/fornecedores", label: "Fornecedores", icon: Store },

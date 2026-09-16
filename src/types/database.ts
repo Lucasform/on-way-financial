@@ -523,6 +523,45 @@ export interface Database {
           { foreignKeyName: "material_types_household_id_fkey"; columns: ["household_id"]; referencedRelation: "households"; referencedColumns: ["id"] },
         ];
       };
+      obra_checklist_items: {
+        Row: {
+          id: string;
+          module_id: string;
+          phase_name: string;
+          category: string;
+          name: string;
+          unit: string | null;
+          estimated_value: number | null;
+          is_estimate: boolean;
+          status: string;
+          obra_item_id: string | null;
+          notes: string | null;
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          module_id: string;
+          phase_name: string;
+          category: string;
+          name: string;
+          unit?: string | null;
+          estimated_value?: number | null;
+          is_estimate?: boolean;
+          status?: string;
+          obra_item_id?: string | null;
+          notes?: string | null;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["obra_checklist_items"]["Insert"]>;
+        Relationships: [
+          { foreignKeyName: "obra_checklist_items_module_id_fkey"; columns: ["module_id"]; referencedRelation: "modules"; referencedColumns: ["id"] },
+          { foreignKeyName: "obra_checklist_items_obra_item_id_fkey"; columns: ["obra_item_id"]; referencedRelation: "obra_items"; referencedColumns: ["id"] },
+        ];
+      };
       obra_documents: {
         Row: {
           id: string;
