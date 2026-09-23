@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronUp, MessageCircle, Phone, Plus, Star, Store, Trash2 } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronUp, MessageCircle, Phone, Plus, Star, Store, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -23,9 +23,20 @@ export interface Supplier {
   address: string | null;
   notes: string | null;
   rating: number | null;
+  created_at?: string;
 }
 
 const CATEGORIES = ["material", "mão-de-obra", "equipamento", "serviço", "outro"];
+
+const SORT_OPTIONS = [
+  { value: "name-asc", label: "Nome (A-Z)" },
+  { value: "name-desc", label: "Nome (Z-A)" },
+  { value: "category", label: "Categoria" },
+  { value: "rating", label: "Melhor avaliado" },
+  { value: "recent", label: "Mais recente" },
+] as const;
+
+type SortValue = (typeof SORT_OPTIONS)[number]["value"];
 
 interface Props {
   householdId: string;
@@ -40,6 +51,26 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
   const [draft, setDraft] = useState<Partial<Supplier>>({ category: "material" });
   const [moreOpen, setMoreOpen] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [sort, setSort] = useState<SortValue>("name-asc");
+
+  const sortedSuppliers = useMemo(() => {
+    const list = [...suppliers];
+    switch (sort) {
+      case "name-desc":
+        return list.sort((a, b) => b.name.localeCompare(a.name));
+      case "category":
+        return list.sort(
+          (a, b) => (a.category ?? "").localeCompare(b.category ?? "") || a.name.localeCompare(b.name),
+        );
+      case "rating":
+        return list.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || a.name.localeCompare(b.name));
+      case "recent":
+        return list.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+      case "name-asc":
+      default:
+        return list.sort((a, b) => a.name.localeCompare(b.name));
+    }
+  }, [suppliers, sort]);
 
   function add() {
     if (!canWrite || !draft.name?.trim()) return;
@@ -191,8 +222,24 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
       {suppliers.length === 0 ? (
         <Empty icon={Store} title="Sem fornecedores" description="Cadastre lojas e prestadores pra comparar preço e histórico." />
       ) : (
-        <ul className="space-y-2">
-          {suppliers.map((s) => (
+        <>
+          <div className="flex items-center justify-end gap-2">
+            <ArrowUpDown className="h-3.5 w-3.5 text-text-muted" />
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortValue)}
+              aria-label="Ordenar fornecedores"
+              className="h-8 rounded-md border border-border bg-bg-elev px-2 text-xs"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <ul className="space-y-2">
+          {sortedSuppliers.map((s) => (
             <li key={s.id}>
               <Card className="p-0">
                 <Link href={`/overview/fornecedores/${s.id}`} className="flex items-center gap-3 p-4 transition-colors hover:bg-bg-elev-2">
@@ -248,7 +295,8 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
               </Card>
             </li>
           ))}
-        </ul>
+          </ul>
+        </>
       )}
     </div>
   );

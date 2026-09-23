@@ -71,7 +71,7 @@ interface Props {
 
 const KANBAN = ["todo", "doing", "done", "blocked"] as const;
 
-const SECTIONS = [
+export const OBRA_SECTIONS = [
   { href: "/overview/previsao", label: "Previsão", icon: Target },
   { href: "/overview/checklist", label: "Checklist", icon: ClipboardCheck },
   { href: "/overview/fases", label: "Fases", icon: KanbanSquare },
@@ -118,8 +118,8 @@ export function ObraDashboard({ module, transactions, canWrite }: Props) {
         </Link>
       </section>
 
-      <section className="grid grid-cols-4 gap-2 sm:grid-cols-8">
-        {SECTIONS.map(({ href, label, icon: Icon }) => (
+      <section className="grid grid-cols-4 gap-2 sm:grid-cols-8 md:hidden">
+        {OBRA_SECTIONS.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
             href={href}

@@ -16,6 +16,7 @@ import { KeyboardShortcuts } from "@/components/common/keyboard-shortcuts";
 import { ThemeToggle } from "@/components/common/theme-toggle";
 import { UserMenu } from "@/components/common/user-menu";
 import { Button } from "@/components/ui/button";
+import { OBRA_SECTIONS } from "@/components/modules/obra-dashboard";
 import { useDraggableFab } from "@/hooks/use-draggable-fab";
 import { cn } from "@/lib/utils";
 import type { ActiveContext } from "@/lib/household";
@@ -58,22 +59,46 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-                  active
-                    ? "bg-bg-elev-2 text-text"
-                    : "text-text-muted hover:bg-bg-elev-2 hover:text-text",
+              <div key={item.href}>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                    active
+                      ? "bg-bg-elev-2 text-text"
+                      : "text-text-muted hover:bg-bg-elev-2 hover:text-text",
+                  )}
+                >
+                  {active && (
+                    <span aria-hidden className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary" />
+                  )}
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                </Link>
+                {item.href === "/overview" && (
+                  <div className="ml-4 mt-0.5 space-y-0.5 border-l border-border pl-3">
+                    {OBRA_SECTIONS.map((sec) => {
+                      const secActive = pathname === sec.href || pathname.startsWith(sec.href + "/");
+                      const SecIcon = sec.icon;
+                      return (
+                        <Link
+                          key={sec.href}
+                          href={sec.href}
+                          className={cn(
+                            "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-xs transition-colors",
+                            secActive
+                              ? "bg-bg-elev-2 text-text"
+                              : "text-text-muted hover:bg-bg-elev-2 hover:text-text",
+                          )}
+                        >
+                          <SecIcon className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{sec.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
                 )}
-              >
-                {active && (
-                  <span aria-hidden className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary" />
-                )}
-                <Icon className="h-4 w-4 shrink-0" />
-                <span className="truncate">{item.label}</span>
-              </Link>
+              </div>
             );
           })}
         </nav>

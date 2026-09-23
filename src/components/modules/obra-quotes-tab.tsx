@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Check, Plus, Receipt, Trash2, Trophy } from "lucide-react";
+import { ArrowUpDown, Check, Plus, Receipt, Trash2, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +30,16 @@ export interface Quote {
 
 const UNITS = ["un", "m", "m2", "m3", "kg", "saco", "litro", "rolo", "barra", "caixa", "hora", "diária"];
 
+const SORT_OPTIONS = [
+  { value: "item-asc", label: "Item (A-Z)" },
+  { value: "item-desc", label: "Item (Z-A)" },
+  { value: "price-asc", label: "Menor preço" },
+  { value: "price-desc", label: "Maior preço" },
+  { value: "recent", label: "Mais recente" },
+] as const;
+
+type SortValue = (typeof SORT_OPTIONS)[number]["value"];
+
 interface Props {
   householdId: string;
   suppliers: Supplier[];
@@ -43,6 +53,7 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
   const [pending, start] = useTransition();
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [pendingAccept, setPendingAccept] = useState<Quote | null>(null);
+  const [sort, setSort] = useState<SortValue>("item-asc");
   const [draft, setDraft] = useState<Partial<Quote>>({
     supplier_id: suppliers[0]?.id,
     unit: "un",
@@ -55,14 +66,29 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
       const key = q.item_name.trim().toLowerCase();
       map.set(key, [...(map.get(key) ?? []), q]);
     }
-    return [...map.entries()]
-      .map(([key, list]) => ({
-        key,
-        name: list[0]!.item_name,
-        list: list.sort((a, b) => Number(a.unit_price) - Number(b.unit_price)),
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [quotes]);
+    const groups = [...map.entries()].map(([key, list]) => ({
+      key,
+      name: list[0]!.item_name,
+      list: list.sort((a, b) => Number(a.unit_price) - Number(b.unit_price)),
+    }));
+    switch (sort) {
+      case "item-desc":
+        return groups.sort((a, b) => b.name.localeCompare(a.name));
+      case "price-asc":
+        return groups.sort((a, b) => Number(a.list[0]!.unit_price) - Number(b.list[0]!.unit_price));
+      case "price-desc":
+        return groups.sort((a, b) => Number(b.list[0]!.unit_price) - Number(a.list[0]!.unit_price));
+      case "recent":
+        return groups.sort((a, b) => {
+          const aRecent = a.list.reduce((m, q) => (q.quoted_at > m ? q.quoted_at : m), a.list[0]!.quoted_at);
+          const bRecent = b.list.reduce((m, q) => (q.quoted_at > m ? q.quoted_at : m), b.list[0]!.quoted_at);
+          return bRecent.localeCompare(aRecent);
+        });
+      case "item-asc":
+      default:
+        return groups.sort((a, b) => a.name.localeCompare(b.name));
+    }
+  }, [quotes, sort]);
 
   function supplierName(id: string): string {
     return suppliers.find((s) => s.id === id)?.name ?? "—";
@@ -218,6 +244,21 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
         <Empty icon={Receipt} title="Sem cotações" description="Registre preços de fornecedores diferentes pra comparar." />
       ) : (
         <div className="space-y-4">
+          <div className="flex items-center justify-end gap-2">
+            <ArrowUpDown className="h-3.5 w-3.5 text-text-muted" />
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortValue)}
+              aria-label="Ordenar cotações"
+              className="h-8 rounded-md border border-border bg-bg-elev px-2 text-xs"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
           {grouped.map((g) => (
             <Card key={g.key} className="overflow-hidden">
               <div className="border-b border-border px-4 py-3 text-sm font-semibold">{g.name}</div>
