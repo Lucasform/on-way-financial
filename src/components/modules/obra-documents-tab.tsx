@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { File, FileImage, FileText, Loader2, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { fmtDate } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { sanitizeFilename } from "@/lib/utils";
+import { FolderChips, type ObraFolder } from "@/components/modules/obra-folders";
 
 export interface ObraDocument {
   id: string;
@@ -20,12 +21,14 @@ export interface ObraDocument {
   file_type: string | null;
   size_bytes: number | null;
   created_at: string;
+  folder_id: string | null;
 }
 
 interface Props {
   moduleId: string;
   householdId: string;
   initial: ObraDocument[];
+  initialFolders: ObraFolder[];
   canWrite: boolean;
 }
 
@@ -42,13 +45,21 @@ function fmtSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function ObraDocumentsTab({ moduleId, householdId, initial, canWrite }: Props) {
+export function ObraDocumentsTab({ moduleId, householdId, initial, initialFolders, canWrite }: Props) {
   const supabase = createSupabaseBrowser();
   const [docs, setDocs] = useState(initial);
+  const [folders, setFolders] = useState(initialFolders);
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [name, setName] = useState("");
+  const [uploadFolderId, setUploadFolderId] = useState<string>("");
   const [uploading, setUploading] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const visibleDocs = useMemo(
+    () => (selectedFolder ? docs.filter((d) => d.folder_id === selectedFolder) : docs),
+    [docs, selectedFolder],
+  );
 
   function pickFile(files: FileList | null) {
     const file = files?.[0] ?? null;
@@ -56,6 +67,32 @@ export function ObraDocumentsTab({ moduleId, householdId, initial, canWrite }: P
     if (file && !name.trim()) {
       setName(file.name.replace(/\.[^.]+$/, ""));
     }
+  }
+
+  async function createFolder(folderName: string) {
+    if (!canWrite) return;
+    const { data, error } = await supabase
+      .from("obra_folders")
+      .insert({ module_id: moduleId, kind: "document", name: folderName })
+      .select("id, name, kind")
+      .single();
+    if (error || !data) {
+      toast.error("Falha ao criar pasta.");
+      return;
+    }
+    setFolders((s) => [...s, data as ObraFolder]);
+  }
+
+  async function deleteFolder(id: string) {
+    if (!canWrite) return;
+    const { error } = await supabase.from("obra_folders").delete().eq("id", id);
+    if (error) {
+      toast.error("Falha ao apagar pasta.");
+      return;
+    }
+    setFolders((s) => s.filter((f) => f.id !== id));
+    setDocs((s) => s.map((d) => (d.folder_id === id ? { ...d, folder_id: null } : d)));
+    if (selectedFolder === id) setSelectedFolder(null);
   }
 
   async function upload() {
@@ -80,6 +117,7 @@ export function ObraDocumentsTab({ moduleId, householdId, initial, canWrite }: P
           file_url: pub.publicUrl,
           file_type: pendingFile.type || null,
           size_bytes: pendingFile.size,
+          folder_id: uploadFolderId || null,
         })
         .select("*")
         .single();
@@ -120,10 +158,19 @@ export function ObraDocumentsTab({ moduleId, householdId, initial, canWrite }: P
 
   return (
     <div className="space-y-4">
+      <FolderChips
+        folders={folders}
+        selected={selectedFolder}
+        onSelect={setSelectedFolder}
+        onCreate={createFolder}
+        onDelete={deleteFolder}
+        canWrite={canWrite}
+      />
+
       {canWrite && (
         <Card className="p-4">
           <p className="mb-3 text-sm font-semibold">Novo documento</p>
-          <div className="grid gap-2 sm:grid-cols-5">
+          <div className="grid gap-2 sm:grid-cols-6">
             <div className="sm:col-span-2 space-y-1">
               <Label htmlFor="dname">Nome</Label>
               <Input
@@ -137,6 +184,22 @@ export function ObraDocumentsTab({ moduleId, householdId, initial, canWrite }: P
               <Label htmlFor="dfile">Arquivo</Label>
               <Input id="dfile" type="file" onChange={(e) => pickFile(e.target.files)} />
             </div>
+            <div className="space-y-1">
+              <Label htmlFor="dfolder">Pasta</Label>
+              <select
+                id="dfolder"
+                value={uploadFolderId}
+                onChange={(e) => setUploadFolderId(e.target.value)}
+                className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
+              >
+                <option value="">Sem pasta</option>
+                {folders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="flex items-end">
               <Button onClick={upload} disabled={uploading || !pendingFile || !name.trim()} className="w-full">
                 {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
@@ -147,11 +210,15 @@ export function ObraDocumentsTab({ moduleId, householdId, initial, canWrite }: P
         </Card>
       )}
 
-      {docs.length === 0 ? (
-        <Empty icon={File} title="Sem documentos" description="Plantas, contratos, projetos — guarde tudo aqui, nomeado." />
+      {visibleDocs.length === 0 ? (
+        <Empty
+          icon={File}
+          title={selectedFolder ? "Pasta vazia" : "Sem documentos"}
+          description="Plantas, contratos, projetos — guarde tudo aqui, nomeado."
+        />
       ) : (
         <ul className="space-y-2">
-          {docs.map((d) => {
+          {visibleDocs.map((d) => {
             const Icon = iconFor(d.file_type);
             return (
               <li key={d.id}>

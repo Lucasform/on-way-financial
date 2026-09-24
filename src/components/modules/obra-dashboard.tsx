@@ -28,6 +28,7 @@ import { Money } from "@/components/ui/money";
 import { Empty } from "@/components/ui/empty";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { normalizePhone, sanitizeFilename, waLink } from "@/lib/utils";
+import { FolderChips, type ObraFolder } from "@/components/modules/obra-folders";
 
 export interface Module {
   id: string;
@@ -62,6 +63,7 @@ export interface GalleryItem {
   media_type?: string;
   thumbnail_url?: string | null;
   duration_seconds?: number | null;
+  folder_id: string | null;
 }
 interface Props {
   module: Module;
@@ -339,11 +341,54 @@ export function PhasesKanban({
   );
 }
 
-export function Gallery({ moduleId, householdId, initial, canWrite }: { moduleId: string; householdId: string; initial: GalleryItem[]; canWrite: boolean }) {
+export function Gallery({
+  moduleId,
+  householdId,
+  initial,
+  initialFolders,
+  canWrite,
+}: {
+  moduleId: string;
+  householdId: string;
+  initial: GalleryItem[];
+  initialFolders: ObraFolder[];
+  canWrite: boolean;
+}) {
   const supabase = createSupabaseBrowser();
   const [items, setItems] = useState(initial);
+  const [folders, setFolders] = useState(initialFolders);
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [uploadFolderId, setUploadFolderId] = useState("");
   const [uploading, setUploading] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const visibleItems = selectedFolder ? items.filter((i) => i.folder_id === selectedFolder) : items;
+
+  async function createFolder(name: string) {
+    if (!canWrite) return;
+    const { data, error } = await supabase
+      .from("obra_folders")
+      .insert({ module_id: moduleId, kind: "gallery", name })
+      .select("id, name, kind")
+      .single();
+    if (error || !data) {
+      toast.error("Falha ao criar pasta.");
+      return;
+    }
+    setFolders((s) => [...s, data as ObraFolder]);
+  }
+
+  async function deleteFolder(id: string) {
+    if (!canWrite) return;
+    const { error } = await supabase.from("obra_folders").delete().eq("id", id);
+    if (error) {
+      toast.error("Falha ao apagar pasta.");
+      return;
+    }
+    setFolders((s) => s.filter((f) => f.id !== id));
+    setItems((s) => s.map((i) => (i.folder_id === id ? { ...i, folder_id: null } : i)));
+    if (selectedFolder === id) setSelectedFolder(null);
+  }
 
   async function upload(files: FileList | null) {
     if (!files || !canWrite) return;
@@ -369,6 +414,7 @@ export function Gallery({ moduleId, householdId, initial, canWrite }: { moduleId
             image_url: url,
             caption: null,
             media_type: isVideo ? "video" : "image",
+            folder_id: uploadFolderId || null,
           })
           .select("*")
           .single();
@@ -414,6 +460,15 @@ export function Gallery({ moduleId, householdId, initial, canWrite }: { moduleId
 
   return (
     <div className="space-y-4">
+      <FolderChips
+        folders={folders}
+        selected={selectedFolder}
+        onSelect={setSelectedFolder}
+        onCreate={createFolder}
+        onDelete={deleteFolder}
+        canWrite={canWrite}
+      />
+
       {canWrite && (
         <div className="surface flex flex-wrap items-center gap-3 p-3">
           <Label htmlFor="gphoto" className="text-xs font-medium">
@@ -428,18 +483,31 @@ export function Gallery({ moduleId, householdId, initial, canWrite }: { moduleId
             onChange={(e) => upload(e.target.files)}
             className="max-w-md"
           />
+          <select
+            value={uploadFolderId}
+            onChange={(e) => setUploadFolderId(e.target.value)}
+            aria-label="Pasta de destino"
+            className="h-9 rounded-md border border-border bg-bg-elev px-2 text-xs"
+          >
+            <option value="">Sem pasta</option>
+            {folders.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
           {uploading && <span className="text-xs text-text-muted">Enviando...</span>}
         </div>
       )}
-      {items.length === 0 ? (
+      {visibleItems.length === 0 ? (
         <Empty
           icon={Camera}
-          title="Galeria da obra vazia"
+          title={selectedFolder ? "Pasta vazia" : "Galeria da obra vazia"}
           description="Bora registrar essa transformação 📸 com fotos e vídeos pra deixar o sonho documentado."
         />
       ) : (
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
-          {items.map((i) => {
+          {visibleItems.map((i) => {
             const isVideo = i.media_type === "video";
             return (
               <div
