@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Folder, FolderPlus, X } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export interface ObraFolder {
@@ -107,6 +108,47 @@ export function FolderChips({ folders, selected, onSelect, onCreate, onDelete, c
             <FolderPlus className="h-3 w-3" /> Nova pasta
           </button>
         ))}
+    </div>
+  );
+}
+
+export function MoveToFolderBar({
+  count,
+  folders,
+  onMove,
+  onCancel,
+}: {
+  count: number;
+  folders: ObraFolder[];
+  onMove: (folderId: string | null) => void;
+  onCancel: () => void;
+}) {
+  const [target, setTarget] = useState("");
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-sm">
+      <span className="font-medium">
+        {count} {count === 1 ? "selecionado" : "selecionados"}
+      </span>
+      <select
+        value={target}
+        onChange={(e) => setTarget(e.target.value)}
+        aria-label="Mover para a pasta"
+        className="h-8 rounded-md border border-border bg-bg-elev px-2 text-xs"
+      >
+        <option value="">Sem pasta</option>
+        {folders.map((f) => (
+          <option key={f.id} value={f.id}>
+            {f.name}
+          </option>
+        ))}
+      </select>
+      <Button size="sm" onClick={() => onMove(target || null)}>
+        Mover
+      </Button>
+      <Button size="sm" variant="ghost" onClick={onCancel}>
+        Cancelar
+      </Button>
     </div>
   );
 }

@@ -28,7 +28,7 @@ import { Money } from "@/components/ui/money";
 import { Empty } from "@/components/ui/empty";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { normalizePhone, sanitizeFilename, waLink } from "@/lib/utils";
-import { FolderChips, type ObraFolder } from "@/components/modules/obra-folders";
+import { FolderChips, MoveToFolderBar, type ObraFolder } from "@/components/modules/obra-folders";
 
 export interface Module {
   id: string;
@@ -361,8 +361,36 @@ export function Gallery({
   const [uploadFolderId, setUploadFolderId] = useState("");
   const [uploading, setUploading] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const visibleItems = selectedFolder ? items.filter((i) => i.folder_id === selectedFolder) : items;
+
+  function toggleSelected(id: string) {
+    setSelectedIds((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function moveSelected(folderId: string | null) {
+    if (!canWrite || selectedIds.size === 0) return;
+    const ids = [...selectedIds];
+    const { error } = await supabase.from("obra_gallery").update({ folder_id: folderId }).in("id", ids);
+    if (error) {
+      toast.error("Falha ao mover arquivos.");
+      return;
+    }
+    setItems((s) => s.map((i) => (selectedIds.has(i.id) ? { ...i, folder_id: folderId } : i)));
+    setSelectedIds(new Set());
+    toast.success(`${ids.length} arquivo${ids.length === 1 ? "" : "s"} movido${ids.length === 1 ? "" : "s"}.`);
+  }
+
+  function selectFolder(id: string | null) {
+    setSelectedFolder(id);
+    setSelectedIds(new Set());
+  }
 
   async function createFolder(name: string) {
     if (!canWrite) return;
@@ -452,6 +480,12 @@ export function Gallery({
         return;
       }
       setItems((s) => s.filter((x) => x.id !== item.id));
+      setSelectedIds((s) => {
+        if (!s.has(item.id)) return s;
+        const next = new Set(s);
+        next.delete(item.id);
+        return next;
+      });
       toast.success("Arquivo removido.");
     } finally {
       setRemovingId(null);
@@ -463,11 +497,20 @@ export function Gallery({
       <FolderChips
         folders={folders}
         selected={selectedFolder}
-        onSelect={setSelectedFolder}
+        onSelect={selectFolder}
         onCreate={createFolder}
         onDelete={deleteFolder}
         canWrite={canWrite}
       />
+
+      {canWrite && selectedIds.size > 0 && (
+        <MoveToFolderBar
+          count={selectedIds.size}
+          folders={folders}
+          onMove={moveSelected}
+          onCancel={() => setSelectedIds(new Set())}
+        />
+      )}
 
       {canWrite && (
         <div className="surface flex flex-wrap items-center gap-3 p-3">
@@ -512,8 +555,22 @@ export function Gallery({
             return (
               <div
                 key={i.id}
-                className="group relative block aspect-square overflow-hidden rounded-lg border border-border bg-bg-elev-2"
+                className={`group relative block aspect-square overflow-hidden rounded-lg border bg-bg-elev-2 ${
+                  selectedIds.has(i.id) ? "border-primary ring-2 ring-primary" : "border-border"
+                }`}
               >
+                {canWrite && (
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(i.id)}
+                    onChange={() => toggleSelected(i.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label="Selecionar arquivo"
+                    className={`absolute left-1.5 top-1.5 z-10 h-5 w-5 accent-primary transition-opacity ${
+                      selectedIds.has(i.id) ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                    }`}
+                  />
+                )}
                 <a href={i.image_url} target="_blank" rel="noreferrer" className="block h-full w-full">
                   {isVideo ? (
                     <>

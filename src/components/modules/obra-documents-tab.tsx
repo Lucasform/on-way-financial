@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { fmtDate } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { sanitizeFilename } from "@/lib/utils";
-import { FolderChips, type ObraFolder } from "@/components/modules/obra-folders";
+import { FolderChips, MoveToFolderBar, type ObraFolder } from "@/components/modules/obra-folders";
 
 export interface ObraDocument {
   id: string;
@@ -55,6 +55,7 @@ export function ObraDocumentsTab({ moduleId, householdId, initial, initialFolder
   const [uploadFolderId, setUploadFolderId] = useState<string>("");
   const [uploading, setUploading] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const visibleDocs = useMemo(
     () => (selectedFolder ? docs.filter((d) => d.folder_id === selectedFolder) : docs),
@@ -93,6 +94,28 @@ export function ObraDocumentsTab({ moduleId, householdId, initial, initialFolder
     setFolders((s) => s.filter((f) => f.id !== id));
     setDocs((s) => s.map((d) => (d.folder_id === id ? { ...d, folder_id: null } : d)));
     if (selectedFolder === id) setSelectedFolder(null);
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function moveSelected(folderId: string | null) {
+    if (!canWrite || selectedIds.size === 0) return;
+    const ids = [...selectedIds];
+    const { error } = await supabase.from("obra_documents").update({ folder_id: folderId }).in("id", ids);
+    if (error) {
+      toast.error("Falha ao mover documentos.");
+      return;
+    }
+    setDocs((s) => s.map((d) => (selectedIds.has(d.id) ? { ...d, folder_id: folderId } : d)));
+    setSelectedIds(new Set());
+    toast.success(`${ids.length} documento${ids.length === 1 ? "" : "s"} movido${ids.length === 1 ? "" : "s"}.`);
   }
 
   async function upload() {
@@ -151,9 +174,20 @@ export function ObraDocumentsTab({ moduleId, householdId, initial, initialFolder
         return;
       }
       setDocs((s) => s.filter((d) => d.id !== doc.id));
+      setSelectedIds((s) => {
+        if (!s.has(doc.id)) return s;
+        const next = new Set(s);
+        next.delete(doc.id);
+        return next;
+      });
     } finally {
       setRemovingId(null);
     }
+  }
+
+  function selectFolder(id: string | null) {
+    setSelectedFolder(id);
+    setSelectedIds(new Set());
   }
 
   return (
@@ -161,11 +195,20 @@ export function ObraDocumentsTab({ moduleId, householdId, initial, initialFolder
       <FolderChips
         folders={folders}
         selected={selectedFolder}
-        onSelect={setSelectedFolder}
+        onSelect={selectFolder}
         onCreate={createFolder}
         onDelete={deleteFolder}
         canWrite={canWrite}
       />
+
+      {canWrite && selectedIds.size > 0 && (
+        <MoveToFolderBar
+          count={selectedIds.size}
+          folders={folders}
+          onMove={moveSelected}
+          onCancel={() => setSelectedIds(new Set())}
+        />
+      )}
 
       {canWrite && (
         <Card className="p-4">
@@ -223,6 +266,15 @@ export function ObraDocumentsTab({ moduleId, householdId, initial, initialFolder
             return (
               <li key={d.id}>
                 <Card className="flex items-center gap-3 p-4">
+                  {canWrite && (
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(d.id)}
+                      onChange={() => toggleSelected(d.id)}
+                      aria-label={`Selecionar ${d.name}`}
+                      className="h-4 w-4 shrink-0 accent-primary"
+                    />
+                  )}
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg-elev-2 text-text-muted">
                     <Icon className="h-5 w-5" />
                   </span>
