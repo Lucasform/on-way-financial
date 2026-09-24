@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowUpDown, ChevronDown, ChevronUp, MessageCircle, Phone, Plus, Star, Store, Trash2 } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronUp, MessageCircle, Phone, Plus, Search, Star, Store, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -52,9 +52,11 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [sort, setSort] = useState<SortValue>("name-asc");
+  const [query, setQuery] = useState("");
 
   const sortedSuppliers = useMemo(() => {
-    const list = [...suppliers];
+    const q = query.trim().toLowerCase();
+    const list = q ? suppliers.filter((s) => s.name.toLowerCase().includes(q)) : [...suppliers];
     switch (sort) {
       case "name-desc":
         return list.sort((a, b) => b.name.localeCompare(a.name));
@@ -70,7 +72,7 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
       default:
         return list.sort((a, b) => a.name.localeCompare(b.name));
     }
-  }, [suppliers, sort]);
+  }, [suppliers, sort, query]);
 
   function add() {
     if (!canWrite || !draft.name?.trim()) return;
@@ -223,13 +225,23 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
         <Empty icon={Store} title="Sem fornecedores" description="Cadastre lojas e prestadores pra comparar preço e histórico." />
       ) : (
         <>
-          <div className="flex items-center justify-end gap-2">
-            <ArrowUpDown className="h-3.5 w-3.5 text-text-muted" />
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar fornecedor..."
+                aria-label="Buscar fornecedor"
+                className="h-8 pl-8 text-xs"
+              />
+            </div>
+            <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as SortValue)}
               aria-label="Ordenar fornecedores"
-              className="h-8 rounded-md border border-border bg-bg-elev px-2 text-xs"
+              className="h-8 shrink-0 rounded-md border border-border bg-bg-elev px-2 text-xs"
             >
               {SORT_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -238,6 +250,9 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
               ))}
             </select>
           </div>
+          {query.trim() && sortedSuppliers.length === 0 && (
+            <p className="text-center text-xs text-text-muted">Nenhum fornecedor encontrado.</p>
+          )}
           <ul className="space-y-2">
           {sortedSuppliers.map((s) => (
             <li key={s.id}>

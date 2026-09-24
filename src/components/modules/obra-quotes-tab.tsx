@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { ArrowUpDown, Check, Plus, Receipt, Trash2, Trophy } from "lucide-react";
+import { ArrowUpDown, Check, Plus, Receipt, Search, Trash2, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +54,7 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [pendingAccept, setPendingAccept] = useState<Quote | null>(null);
   const [sort, setSort] = useState<SortValue>("item-asc");
+  const [supplierQuery, setSupplierQuery] = useState("");
   const [draft, setDraft] = useState<Partial<Quote>>({
     supplier_id: suppliers[0]?.id,
     unit: "un",
@@ -61,10 +62,17 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
   });
 
   const grouped = useMemo(() => {
+    const q = supplierQuery.trim().toLowerCase();
+    const filteredQuotes = q
+      ? quotes.filter((quote) => {
+          const supplier = suppliers.find((s) => s.id === quote.supplier_id);
+          return supplier?.name.toLowerCase().includes(q) ?? false;
+        })
+      : quotes;
     const map = new Map<string, Quote[]>();
-    for (const q of quotes) {
-      const key = q.item_name.trim().toLowerCase();
-      map.set(key, [...(map.get(key) ?? []), q]);
+    for (const quote of filteredQuotes) {
+      const key = quote.item_name.trim().toLowerCase();
+      map.set(key, [...(map.get(key) ?? []), quote]);
     }
     const groups = [...map.entries()].map(([key, list]) => ({
       key,
@@ -88,7 +96,7 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
       default:
         return groups.sort((a, b) => a.name.localeCompare(b.name));
     }
-  }, [quotes, sort]);
+  }, [quotes, sort, suppliers, supplierQuery]);
 
   function supplierName(id: string): string {
     return suppliers.find((s) => s.id === id)?.name ?? "—";
@@ -240,25 +248,46 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
         </Card>
       )}
 
+      {quotes.length > 0 && (
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+            <Input
+              value={supplierQuery}
+              onChange={(e) => setSupplierQuery(e.target.value)}
+              placeholder="Buscar por fornecedor..."
+              aria-label="Buscar cotações por fornecedor"
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
+          <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortValue)}
+            aria-label="Ordenar cotações"
+            className="h-8 shrink-0 rounded-md border border-border bg-bg-elev px-2 text-xs"
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {grouped.length === 0 ? (
-        <Empty icon={Receipt} title="Sem cotações" description="Registre preços de fornecedores diferentes pra comparar." />
+        <Empty
+          icon={Receipt}
+          title={supplierQuery.trim() ? "Nenhuma cotação desse fornecedor" : "Sem cotações"}
+          description={
+            supplierQuery.trim()
+              ? "Tenta buscar por outro nome."
+              : "Registre preços de fornecedores diferentes pra comparar."
+          }
+        />
       ) : (
         <div className="space-y-4">
-          <div className="flex items-center justify-end gap-2">
-            <ArrowUpDown className="h-3.5 w-3.5 text-text-muted" />
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortValue)}
-              aria-label="Ordenar cotações"
-              className="h-8 rounded-md border border-border bg-bg-elev px-2 text-xs"
-            >
-              {SORT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
           {grouped.map((g) => (
             <Card key={g.key} className="overflow-hidden">
               <div className="border-b border-border px-4 py-3 text-sm font-semibold">{g.name}</div>
