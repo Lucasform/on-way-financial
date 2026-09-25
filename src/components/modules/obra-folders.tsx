@@ -115,15 +115,18 @@ export function FolderChips({ folders, selected, onSelect, onCreate, onDelete, c
 export function MoveToFolderBar({
   count,
   folders,
+  excludeFolderId,
   onMove,
   onCancel,
 }: {
   count: number;
   folders: ObraFolder[];
+  excludeFolderId?: string | null;
   onMove: (folderId: string | null) => void;
   onCancel: () => void;
 }) {
   const [target, setTarget] = useState("");
+  const options = excludeFolderId ? folders.filter((f) => f.id !== excludeFolderId) : folders;
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-sm">
@@ -136,8 +139,8 @@ export function MoveToFolderBar({
         aria-label="Mover para a pasta"
         className="h-8 rounded-md border border-border bg-bg-elev px-2 text-xs"
       >
-        <option value="">Sem pasta</option>
-        {folders.map((f) => (
+        <option value="">{excludeFolderId ? "Remover da pasta" : "Sem pasta"}</option>
+        {options.map((f) => (
           <option key={f.id} value={f.id}>
             {f.name}
           </option>

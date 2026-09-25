@@ -376,15 +376,30 @@ export function Gallery({
 
   async function moveSelected(folderId: string | null) {
     if (!canWrite || selectedIds.size === 0) return;
-    const ids = [...selectedIds];
-    const { error } = await supabase.from("obra_gallery").update({ folder_id: folderId }).in("id", ids);
+    const targets = items.filter((i) => selectedIds.has(i.id) && i.folder_id !== folderId);
+    if (targets.length === 0) {
+      toast.info("Os itens selecionados já estão nessa pasta.");
+      setSelectedIds(new Set());
+      return;
+    }
+    const ids = targets.map((i) => i.id);
+    const { data, error } = await supabase
+      .from("obra_gallery")
+      .update({ folder_id: folderId })
+      .in("id", ids)
+      .select("id");
     if (error) {
       toast.error("Falha ao mover arquivos.");
       return;
     }
-    setItems((s) => s.map((i) => (selectedIds.has(i.id) ? { ...i, folder_id: folderId } : i)));
+    const movedIds = new Set((data ?? []).map((r) => r.id));
+    setItems((s) => s.map((i) => (movedIds.has(i.id) ? { ...i, folder_id: folderId } : i)));
     setSelectedIds(new Set());
-    toast.success(`${ids.length} arquivo${ids.length === 1 ? "" : "s"} movido${ids.length === 1 ? "" : "s"}.`);
+    if (movedIds.size < ids.length) {
+      toast.error(`Só consegui mover ${movedIds.size} de ${ids.length}. Confere sua permissão na obra.`);
+    } else {
+      toast.success(`${movedIds.size} arquivo${movedIds.size === 1 ? "" : "s"} movido${movedIds.size === 1 ? "" : "s"}.`);
+    }
   }
 
   function selectFolder(id: string | null) {
@@ -507,6 +522,7 @@ export function Gallery({
         <MoveToFolderBar
           count={selectedIds.size}
           folders={folders}
+          excludeFolderId={selectedFolder}
           onMove={moveSelected}
           onCancel={() => setSelectedIds(new Set())}
         />
