@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Folder, FolderPlus, X } from "lucide-react";
+import { Check, Folder, FolderPlus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -83,6 +83,7 @@ export function FolderChips({ folders, selected, onSelect, onCreate, onDelete, c
           <span className="flex items-center gap-1">
             <input
               autoFocus
+              enterKeyHint="done"
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
@@ -92,12 +93,29 @@ export function FolderChips({ folders, selected, onSelect, onCreate, onDelete, c
                   setName("");
                 }
               }}
-              onBlur={() => {
-                if (!name.trim()) setCreating(false);
-              }}
               placeholder="Nome da pasta"
-              className="h-6 w-32 rounded-full border border-border bg-bg-elev px-2.5 text-xs outline-none focus:border-primary"
+              className="h-7 w-32 rounded-full border border-border bg-bg-elev px-2.5 text-xs outline-none focus:border-primary"
             />
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!name.trim()}
+              aria-label="Salvar pasta"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-white disabled:opacity-40"
+            >
+              <Check className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCreating(false);
+                setName("");
+              }}
+              aria-label="Cancelar"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-text-muted"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </span>
         ) : (
           <button
