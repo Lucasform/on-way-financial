@@ -6,12 +6,10 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 interface ContextOptions {
   householdId: string;
-  /** Carrega top categorias do mês atual */
+  /** Carrega gasto por fornecedor */
   includeCategories?: boolean;
-  /** Carrega 20 transações mais recentes */
+  /** Carrega últimos custos registrados */
   includeTransactions?: boolean;
-  /** Carrega módulos ativos com orçamento */
-  includeModules?: boolean;
 }
 
 /**
@@ -23,112 +21,98 @@ export async function buildFinancialContext(opts: ContextOptions): Promise<strin
   const { start, end } = monthRangeISO();
   const lines: string[] = [];
 
-  // Resumo do mês
-  const { data: monthTx } = await admin
-    .from("transactions")
-    .select("type, amount, category_id, categories:categories(name)")
+  const { data: mod } = await admin
+    .from("modules")
+    .select("id, name")
     .eq("household_id", opts.householdId)
-    .gte("occurred_at", start)
-    .lte("occurred_at", end);
+    .eq("kind", "obra")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
-  let income = 0;
-  let expense = 0;
-  const byCategory = new Map<string, number>();
-  for (const tx of (monthTx ?? []) as Array<{ type: string; amount: number | string; categories: { name: string } | null }>) {
-    const v = Number(tx.amount);
-    if (tx.type === "income") income += v;
-    if (tx.type === "expense") {
-      expense += v;
-      const name = (tx as unknown as { categories: { name: string } | null }).categories?.name ?? "Outros";
-      byCategory.set(name, (byCategory.get(name) ?? 0) + v);
-    }
+  if (!mod) {
+    lines.push("Nenhuma obra cadastrada ainda.");
+    return lines.join("\n");
   }
 
+  const { data: items } = await admin
+    .from("obra_items")
+    .select("name, quantity, unit_price, actual_unit_price, status, supplier, bought_at, suppliers:suppliers(name)")
+    .eq("module_id", mod.id);
+
+  type ItemRow = {
+    name: string;
+    quantity: number | string;
+    unit_price: number | string | null;
+    actual_unit_price: number | string | null;
+    status: string;
+    supplier: string | null;
+    bought_at: string | null;
+    suppliers: { name: string } | null;
+  };
+  const rows = (items ?? []) as unknown as ItemRow[];
+  const amountOf = (r: ItemRow) => Number(r.quantity) * Number(r.actual_unit_price ?? r.unit_price ?? 0);
+
+  const done = rows.filter((r) => r.status === "done");
+  const todo = rows.filter((r) => r.status === "todo");
+  const monthDone = done.filter((r) => r.bought_at && r.bought_at >= start && r.bought_at <= end);
+
+  const totalGasto = done.reduce((s, r) => s + amountOf(r), 0);
+  const totalMes = monthDone.reduce((s, r) => s + amountOf(r), 0);
+  const totalPendente = todo.reduce((s, r) => s + amountOf(r), 0);
+
   lines.push(
-    `## Resumo do mês atual (${start} a ${end})`,
-    `- Entradas: ${formatBRL(income)}`,
-    `- Saídas: ${formatBRL(expense)}`,
-    `- Saldo: ${formatBRL(income - expense)}`,
-    `- Taxa de poupança: ${income > 0 ? (((income - expense) / income) * 100).toFixed(1) : "0"}%`,
+    `## Obra: ${mod.name}`,
+    `- Gasto total até agora (custos já executados): ${formatBRL(totalGasto)}`,
+    `- Gasto no mês atual (${start} a ${end}): ${formatBRL(totalMes)}`,
+    `- Pendente (itens planejados, ainda não executados): ${formatBRL(totalPendente)} em ${todo.length} item(ns)`,
   );
 
   if (opts.includeCategories !== false) {
-    const top = [...byCategory.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const bySupplier = new Map<string, number>();
+    for (const r of done) {
+      const label = r.suppliers?.name || r.supplier || "Sem fornecedor";
+      bySupplier.set(label, (bySupplier.get(label) ?? 0) + amountOf(r));
+    }
+    const top = [...bySupplier.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
     if (top.length > 0) {
-      lines.push("", "## Top categorias do mês");
+      lines.push("", "## Gasto por fornecedor");
       for (const [name, v] of top) lines.push(`- ${name}: ${formatBRL(v)}`);
     }
   }
 
-  if (opts.includeTransactions !== false) {
-    const { data: recent } = await admin
-      .from("transactions")
-      .select("type, amount, description, occurred_at, categories:categories(name), payment_methods:payment_methods(name)")
-      .eq("household_id", opts.householdId)
-      .order("occurred_at", { ascending: false })
-      .limit(15);
-
-    if ((recent ?? []).length > 0) {
-      lines.push("", "## Últimas 15 transações");
-      for (const r of recent ?? []) {
-        const cat = (r as unknown as { categories: { name: string } | null }).categories?.name ?? "—";
-        const pm = (r as unknown as { payment_methods: { name: string } | null }).payment_methods?.name ?? "—";
-        const sign = r.type === "income" ? "+" : "-";
-        lines.push(`- ${r.occurred_at} ${sign}${formatBRL(Number(r.amount))} ${r.description ?? cat} (${cat} · ${pm})`);
-      }
-    }
-  }
-
-  if (opts.includeModules !== false) {
-    const { data: mods } = await admin
-      .from("modules")
-      .select("id, kind, name, budget, status")
-      .eq("household_id", opts.householdId)
-      .in("status", ["planning", "active"]);
-    if ((mods ?? []).length > 0) {
-      // Soma realizado por módulo
-      const ids = (mods ?? []).map((m) => m.id);
-      const { data: modTx } = await admin
-        .from("transactions")
-        .select("module_id, amount")
-        .in("module_id", ids)
-        .eq("type", "expense");
-      const used = new Map<string, number>();
-      for (const t of modTx ?? []) {
-        if (t.module_id) used.set(t.module_id, (used.get(t.module_id) ?? 0) + Number(t.amount));
-      }
-      lines.push("", "## Módulos ativos");
-      for (const m of mods ?? []) {
-        const u = used.get(m.id) ?? 0;
-        const b = Number(m.budget ?? 0);
-        const pct = b > 0 ? ((u / b) * 100).toFixed(0) : "—";
-        lines.push(`- [${m.kind}] ${m.name}: usado ${formatBRL(u)} de ${formatBRL(b)} (${pct}%)`);
-      }
+  if (opts.includeTransactions !== false && done.length > 0) {
+    const recent = [...done].sort((a, b) => (b.bought_at ?? "").localeCompare(a.bought_at ?? "")).slice(0, 15);
+    lines.push("", "## Últimos 15 custos registrados");
+    for (const r of recent) {
+      const supplierLabel = r.suppliers?.name || r.supplier || "—";
+      lines.push(`- ${r.bought_at ?? "—"} ${formatBRL(amountOf(r))} ${r.name} (${supplierLabel})`);
     }
   }
 
   return lines.join("\n");
 }
 
-export const ASSISTANT_SYSTEM = `Você é o ON AI, assistente do app ON FIN (finanças da obra).
+export const ASSISTANT_SYSTEM = `Você é o ON AI, assistente do app ON FIN (controle de custos da obra).
 Fala português brasileiro coloquial, direto, conciso. Sem floreios.
 
 REGRAS:
+- Esse app só registra CUSTOS da obra (executados ou planejados). Não existe receita/entrada.
 - Pra perguntas sobre os números do usuário, use APENAS os dados do "FINANCIAL CONTEXT" ou o
-  resultado da ferramenta search_transactions. Não invente números.
-- Se o usuário pedir um gasto específico (fornecedor, material, categoria, período) que não está
-  no resumo do contexto, USE a ferramenta search_transactions em vez de dizer que não sabe.
+  resultado da ferramenta search_costs. Não invente números.
+- Se o usuário pedir um gasto específico (fornecedor, item, período) que não está
+  no resumo do contexto, USE a ferramenta search_costs em vez de dizer que não sabe.
 - add_supplier, add_quote, add_material_item e add_checklist_item CADASTRAM DADO PERMANENTE
-  (fornecedor, cotação, material, item de checklist) — NUNCA chame essas ferramentas na primeira menção. Primeiro responda em texto um
-  resumo curto do que você entendeu e vai cadastrar (ex.: "Vou cadastrar o fornecedor João
-  Pedreiro, telefone (11) 99999-9999. Confirma?") e espere o usuário confirmar (ex.: "sim",
-  "confirma", "pode", "isso mesmo"). Só chame a ferramenta na mensagem seguinte, depois da
-  confirmação. Se o usuário corrigir algo no resumo, ajuste e pergunte de novo antes de cadastrar.
-- Se não estiver claro se um valor mencionado é uma despesa JÁ PAGA ou uma cotação/orçamento
-  que alguém passou (ainda não pago), pergunte primeiro qual dos dois é, antes até do resumo
-  de confirmação acima.
-- Registrar despesa/receita (lançamento normal, não fornecedor/cotação/material) continua direto,
-  sem pedir confirmação — isso é o fluxo rápido do dia a dia.
+  (fornecedor, cotação, item planejado, item de checklist) — NUNCA chame essas ferramentas na
+  primeira menção. Primeiro responda em texto um resumo curto do que você entendeu e vai
+  cadastrar (ex.: "Vou cadastrar o fornecedor João Pedreiro, telefone (11) 99999-9999. Confirma?")
+  e espere o usuário confirmar (ex.: "sim", "confirma", "pode", "isso mesmo"). Só chame a
+  ferramenta na mensagem seguinte, depois da confirmação. Se o usuário corrigir algo no resumo,
+  ajuste e pergunte de novo antes de cadastrar.
+- Registrar um custo JÁ PAGO (ex.: "gastei 50 no mercado", "paguei 300 no eletricista") continua
+  direto, sem pedir confirmação — isso é o fluxo rápido do dia a dia e entra como executado.
+- Se não estiver claro se um valor mencionado é um custo JÁ PAGO ou uma cotação/orçamento que
+  alguém passou (ainda não pago), pergunte primeiro qual dos dois é, antes de qualquer outra coisa.
 - Pra perguntas gerais (conceitos, comparações, produtos do mercado), use seu conhecimento.
 - Se faltar dado, peça pro usuário especificar.
 - Sugira ações claras e curtas, em bullet points quando ajudar.
@@ -137,64 +121,72 @@ REGRAS:
 - Não repita o contexto na resposta — ele já viu.
 - NUNCA use markdown: nada de ** _ \`\` # ou tabelas. Escreva texto puro. Pra ênfase use MAIÚSCULAS curtas. Pra listas, use "- " no início da linha.`;
 
-export interface SearchTransactionsArgs {
+export interface SearchCostsArgs {
   query?: string | null;
-  category?: string | null;
   date_from?: string | null;
   date_to?: string | null;
-  type?: "expense" | "income" | null;
+  status?: "done" | "todo" | null;
 }
 
 /**
- * Busca transações por critério livre (fornecedor/descrição/notas, categoria, período). Usada
- * pela IA como ferramenta (tool use) quando o usuário pede um gasto específico que não está no
- * resumo fixo do contexto.
+ * Busca custos da obra por critério livre (item/fornecedor) e período. Usada pela IA como
+ * ferramenta (tool use) quando o usuário pede um gasto específico que não está no resumo fixo
+ * do contexto.
  */
-export async function searchTransactions(
-  householdId: string,
-  args: SearchTransactionsArgs,
-): Promise<string> {
+export async function searchCosts(householdId: string, args: SearchCostsArgs): Promise<string> {
   const admin = createSupabaseAdmin();
-  let q = admin
-    .from("transactions")
-    .select("amount, description, supplier, occurred_at, categories:categories(name)")
+  const { data: mod } = await admin
+    .from("modules")
+    .select("id")
     .eq("household_id", householdId)
-    .eq("type", args.type ?? "expense")
-    .order("occurred_at", { ascending: false })
+    .eq("kind", "obra")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!mod) return "Não encontrei a obra ativa.";
+
+  let q = admin
+    .from("obra_items")
+    .select("name, quantity, unit_price, actual_unit_price, supplier, bought_at, suppliers:suppliers(name)")
+    .eq("module_id", mod.id)
+    .eq("status", args.status ?? "done")
+    .order("bought_at", { ascending: false })
     .limit(50);
 
-  if (args.date_from) q = q.gte("occurred_at", args.date_from);
-  if (args.date_to) q = q.lte("occurred_at", args.date_to);
-  if (args.query?.trim()) {
-    const term = args.query.trim();
-    q = q.or(`description.ilike.%${term}%,supplier.ilike.%${term}%,notes.ilike.%${term}%`);
-  }
+  if (args.date_from) q = q.gte("bought_at", args.date_from);
+  if (args.date_to) q = q.lte("bought_at", args.date_to);
 
   const { data, error } = await q;
   if (error) return `Erro ao buscar: ${error.message}`;
 
-  let rows = (data ?? []) as Array<{
-    amount: number | string;
-    description: string | null;
+  type Row = {
+    name: string;
+    quantity: number | string;
+    unit_price: number | string | null;
+    actual_unit_price: number | string | null;
     supplier: string | null;
-    occurred_at: string;
-    categories: { name: string } | null;
-  }>;
+    bought_at: string | null;
+    suppliers: { name: string } | null;
+  };
+  let rows = (data ?? []) as unknown as Row[];
 
-  if (args.category?.trim()) {
-    const cat = args.category.trim().toLowerCase();
-    rows = rows.filter((r) => (r.categories?.name ?? "").toLowerCase().includes(cat));
+  if (args.query?.trim()) {
+    const term = args.query.trim().toLowerCase();
+    rows = rows.filter(
+      (r) => r.name.toLowerCase().includes(term) || (r.suppliers?.name ?? r.supplier ?? "").toLowerCase().includes(term),
+    );
   }
 
-  if (rows.length === 0) return "Nenhuma transação encontrada com esses critérios.";
+  if (rows.length === 0) return "Nenhum custo encontrado com esses critérios.";
 
-  const total = rows.reduce((s, r) => s + Number(r.amount), 0);
-  const lines = [`${rows.length} transação(ões), total ${formatBRL(total)}:`];
+  const amountOf = (r: Row) => Number(r.quantity) * Number(r.actual_unit_price ?? r.unit_price ?? 0);
+  const total = rows.reduce((s, r) => s + amountOf(r), 0);
+  const lines = [`${rows.length} custo(s), total ${formatBRL(total)}:`];
   for (const r of rows.slice(0, 30)) {
-    const desc = r.description || r.supplier || r.categories?.name || "sem descrição";
-    lines.push(`- ${r.occurred_at} ${formatBRL(Number(r.amount))} ${desc}${r.supplier ? ` (${r.supplier})` : ""}`);
+    const supplierLabel = r.suppliers?.name || r.supplier || "—";
+    lines.push(`- ${r.bought_at ?? "—"} ${formatBRL(amountOf(r))} ${r.name} (${supplierLabel})`);
   }
-  if (rows.length > 30) lines.push(`... e mais ${rows.length - 30} transação(ões).`);
+  if (rows.length > 30) lines.push(`... e mais ${rows.length - 30} custo(s).`);
   return lines.join("\n");
 }
 
@@ -357,7 +349,7 @@ export async function addMaterialItem(householdId: string, args: AddMaterialArgs
     unit_price: args.unit_price ?? null,
     supplier: supplierName,
     supplier_id: supplierId,
-    status: "planned",
+    status: "todo",
     notes: args.notes ?? null,
   });
   if (error) return `Erro ao adicionar material: ${error.message}`;
@@ -447,20 +439,19 @@ export const ADD_CHECKLIST_ITEM_TOOL = {
   },
 };
 
-export const SEARCH_TRANSACTIONS_TOOL = {
-  name: "search_transactions",
+export const SEARCH_COSTS_TOOL = {
+  name: "search_costs",
   description:
-    "Busca despesas/receitas da obra por fornecedor, descrição, categoria ou período. Use sempre " +
+    "Busca custos da obra (executados ou planejados) por item, fornecedor ou período. Use sempre " +
     "que o usuário perguntar por um gasto específico que não está no resumo do contexto (ex.: " +
-    '"quanto gastei com cimento", "o que comprei da Leroy Merlin", "gastos de mão de obra em julho").',
+    '"quanto gastei com cimento", "o que comprei da Leroy Merlin", "gastos de julho").',
   input_schema: {
     type: "object" as const,
     properties: {
-      query: { type: "string", description: "Termo livre pra buscar em descrição/fornecedor/notas (ex.: 'cimento', 'Leroy Merlin')." },
-      category: { type: "string", description: "Nome (ou parte) da categoria (ex.: 'Material', 'Mão de obra')." },
+      query: { type: "string", description: "Termo livre pra buscar no nome do item ou fornecedor (ex.: 'cimento', 'Leroy Merlin')." },
       date_from: { type: "string", description: "Data inicial ISO (YYYY-MM-DD), se o usuário mencionar período." },
       date_to: { type: "string", description: "Data final ISO (YYYY-MM-DD), se o usuário mencionar período." },
-      type: { type: "string", enum: ["expense", "income"], description: "Padrão: expense." },
+      status: { type: "string", enum: ["done", "todo"], description: "Padrão: done (já executado)." },
     },
   },
 };

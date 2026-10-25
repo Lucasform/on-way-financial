@@ -13,16 +13,15 @@ import {
   addSupplier,
   ASSISTANT_SYSTEM,
   buildFinancialContext,
-  SEARCH_TRANSACTIONS_TOOL,
-  searchTransactions,
+  SEARCH_COSTS_TOOL,
+  searchCosts,
 } from "@/lib/ai/context";
-import { createTransactionFromIntent } from "@/lib/ai/create-transaction";
+import { createCostFromIntent } from "@/lib/ai/create-transaction";
 import { ParsedSchema, parseCommand, parseFreeText, type ParsedIntent } from "@/lib/ai/parser";
 import { extractTransactionsFromText } from "@/lib/import/ai-extract";
 import { formatBRL } from "@/lib/money";
 import { getServerEnv } from "@/lib/env";
 import { loadActiveContext } from "@/lib/household";
-import { getObraModule } from "@/lib/obra";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -52,7 +51,6 @@ export async function POST(req: NextRequest) {
   const parsed = bodySchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const obraModule = await getObraModule(ctx.householdId);
   const env = getServerEnv();
   const last = parsed.data.messages[parsed.data.messages.length - 1];
   const userText = last?.role === "user" ? last.content.trim() : "";
@@ -62,13 +60,16 @@ export async function POST(req: NextRequest) {
     try {
       const { rows } = await extractTransactionsFromText(last.content);
       if (rows.length >= 2) {
-        const moduleHint = obraModule ?? null;
         let created = 0;
         let total = 0;
         const failures: string[] = [];
         for (const r of rows) {
+          if (r.type === "income") {
+            failures.push(r.description);
+            continue;
+          }
           const intent: ParsedIntent = {
-            intent: r.type === "income" ? "income" : "expense",
+            intent: "expense",
             amount: r.amount,
             description: r.description,
             category_hint: r.category_hint ?? null,
@@ -77,13 +78,7 @@ export async function POST(req: NextRequest) {
             module_hint: null,
             confidence: 1,
           };
-          const res = await createTransactionFromIntent({
-            householdId: ctx.householdId,
-            userId: ctx.userId,
-            intent,
-            moduleOverride: moduleHint ? { id: moduleHint.id, kind: moduleHint.kind } : null,
-            origin: "ai_chat",
-          });
+          const res = await createCostFromIntent({ householdId: ctx.householdId, intent });
           if (res.ok) {
             created++;
             total += r.amount;
@@ -91,10 +86,9 @@ export async function POST(req: NextRequest) {
             failures.push(r.description);
           }
         }
-        const moduleLabel = moduleHint ? ` no módulo ${moduleHint.name}` : "";
         const reply =
-          `✅ ${created} transação${created === 1 ? "" : "ões"} registrada${created === 1 ? "" : "s"}${moduleLabel}. Total: ${formatBRL(total)}.` +
-          (failures.length > 0 ? `\n\n⚠️ ${failures.length} não foi(ram) salvas: ${failures.slice(0, 3).join(", ")}` : "");
+          `✅ ${created} custo${created === 1 ? "" : "s"} registrado${created === 1 ? "" : "s"}. Total: ${formatBRL(total)}.` +
+          (failures.length > 0 ? `\n\n⚠️ ${failures.length} não foi(ram) salvo(s): ${failures.slice(0, 3).join(", ")}` : "");
         return NextResponse.json({ reply });
       }
     } catch (e) {
@@ -129,24 +123,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (intent) {
-        // Mencionou módulo → cria direto
-        if (intent.module_hint) {
-          const r = await createTransactionFromIntent({
-            householdId: ctx.householdId,
-            userId: ctx.userId,
-            intent,
-            origin: "ai_chat",
-          });
-          return NextResponse.json({ reply: r.reply });
-        }
-        // App é obra-only: vincula direto à obra da household, sem perguntar.
-        const r = await createTransactionFromIntent({
-          householdId: ctx.householdId,
-          userId: ctx.userId,
-          intent,
-          moduleOverride: obraModule ? { id: obraModule.id, kind: obraModule.kind } : null,
-          origin: "ai_chat",
-        });
+        const r = await createCostFromIntent({ householdId: ctx.householdId, intent });
         return NextResponse.json({ reply: r.reply });
       }
     } catch (e) {
@@ -164,7 +141,7 @@ export async function POST(req: NextRequest) {
       content: m.content,
     }));
 
-    const tools = [SEARCH_TRANSACTIONS_TOOL, ADD_SUPPLIER_TOOL, ADD_QUOTE_TOOL, ADD_MATERIAL_TOOL, ADD_CHECKLIST_ITEM_TOOL];
+    const tools = [SEARCH_COSTS_TOOL, ADD_SUPPLIER_TOOL, ADD_QUOTE_TOOL, ADD_MATERIAL_TOOL, ADD_CHECKLIST_ITEM_TOOL];
 
     let res = await client().messages.create({
       model: env.ANTHROPIC_MODEL,
@@ -181,8 +158,8 @@ export async function POST(req: NextRequest) {
       const toolUse = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
       if (!toolUse) break;
       let result: string;
-      if (toolUse.name === "search_transactions") {
-        result = await searchTransactions(ctx.householdId, toolUse.input as Record<string, string>);
+      if (toolUse.name === "search_costs") {
+        result = await searchCosts(ctx.householdId, toolUse.input as Record<string, string>);
       } else if (toolUse.name === "add_supplier") {
         result = await addSupplier(ctx.householdId, toolUse.input as { name: string });
       } else if (toolUse.name === "add_quote") {

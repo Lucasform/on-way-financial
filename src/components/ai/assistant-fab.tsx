@@ -30,17 +30,17 @@ function renderInline(text: string): React.ReactNode {
 }
 
 const SUGGESTIONS = [
-  "Quanto gastei em alimentação esse mês?",
-  "Gastei 50 no mercado hoje",
-  "Recebi 3000 de salário",
+  "Quanto já gastei na obra?",
+  "Gastei 150 em cimento hoje",
+  "O que a Leroy cotou esse mês?",
   "Em que posso economizar agora?",
 ];
 
 const WELCOME: Msg = {
   role: "assistant",
-  content: `Oi! 👋 Sou seu copiloto financeiro.
+  content: `Oi! 👋 Sou seu copiloto da obra.
 
-Posso registrar despesas/receitas (ex: "gastei 50 no mercado") e responder perguntas sobre seus gastos.`,
+Posso registrar um custo já pago (ex: "gastei 150 em cimento") e responder perguntas sobre os gastos.`,
 };
 
 export function AssistantFab() {

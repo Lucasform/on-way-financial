@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Camera,
   ClipboardCheck,
   FolderOpen,
   Images,
+  Plus,
   Receipt,
   Store,
   Trash2,
@@ -22,6 +24,7 @@ import { Empty } from "@/components/ui/empty";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { uploadObraFile } from "@/lib/supabase/obra-storage";
 import { FolderChips, MoveToFolderBar, type ObraFolder } from "@/components/modules/obra-folders";
+import { QuickAddExpenseDialog, type SupplierOption } from "@/components/modules/quick-add-expense-dialog";
 
 export interface Module {
   id: string;
@@ -46,6 +49,7 @@ interface Props {
   module: Module;
   spentTotal: number;
   canWrite: boolean;
+  suppliers: SupplierOption[];
 }
 
 export const OBRA_SECTIONS = [
@@ -67,7 +71,10 @@ function statusLabel(s: string): string {
   }
 }
 
-export function ObraDashboard({ module, spentTotal }: Props) {
+export function ObraDashboard({ module, spentTotal, canWrite, suppliers }: Props) {
+  const router = useRouter();
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-3">
@@ -81,14 +88,38 @@ export function ObraDashboard({ module, spentTotal }: Props) {
         <Badge variant={module.status === "active" ? "success" : "secondary"}>{statusLabel(module.status)}</Badge>
       </header>
 
-      <section>
-        <Link href="/overview/gasto">
-          <Card className="transition-colors hover:border-primary/50 hover:bg-bg-elev-2">
+      <section className="grid gap-3 sm:grid-cols-2">
+        <Link href="/overview/gasto" className="block">
+          <Card className="h-full transition-colors hover:border-primary/50 hover:bg-bg-elev-2">
             <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Gasto até o momento</CardTitle></CardHeader>
             <CardContent className="pt-0"><Money value={spentTotal} size="xl" /></CardContent>
           </Card>
         </Link>
+        {canWrite && (
+          <button type="button" onClick={() => setShowQuickAdd(true)} className="block w-full text-left">
+            <Card className="h-full transition-colors hover:border-primary/50 hover:bg-bg-elev-2">
+              <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Adicionar despesa</CardTitle></CardHeader>
+              <CardContent className="flex items-center gap-2 pt-0">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-primary text-primary-foreground">
+                  <Plus className="h-5 w-5" />
+                </span>
+                <span className="text-sm text-text-muted">Valor, fornecedor e cotação ou feito</span>
+              </CardContent>
+            </Card>
+          </button>
+        )}
       </section>
+
+      {showQuickAdd && (
+        <QuickAddExpenseDialog
+          suppliers={suppliers}
+          onCancel={() => setShowQuickAdd(false)}
+          onDone={() => {
+            setShowQuickAdd(false);
+            router.refresh();
+          }}
+        />
+      )}
 
       <section className="grid grid-cols-3 gap-2 sm:grid-cols-6 md:hidden">
         {OBRA_SECTIONS.map(({ href, label, icon: Icon }) => (

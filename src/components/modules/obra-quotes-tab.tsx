@@ -55,20 +55,25 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
   const [pendingAccept, setPendingAccept] = useState<Quote | null>(null);
   const [sort, setSort] = useState<SortValue>("item-asc");
   const [supplierQuery, setSupplierQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<"aberto" | "aceita">("aberto");
   const [draft, setDraft] = useState<Partial<Quote>>({
     supplier_id: suppliers[0]?.id,
     unit: "un",
     quoted_at: todayISO(),
   });
 
+  const openCount = useMemo(() => quotes.filter((q) => !q.accepted_at).length, [quotes]);
+  const acceptedCount = quotes.length - openCount;
+
   const grouped = useMemo(() => {
+    const tabQuotes = quotes.filter((quote) => (activeTab === "aceita" ? quote.accepted_at : !quote.accepted_at));
     const q = supplierQuery.trim().toLowerCase();
     const filteredQuotes = q
-      ? quotes.filter((quote) => {
+      ? tabQuotes.filter((quote) => {
           const supplier = suppliers.find((s) => s.id === quote.supplier_id);
           return supplier?.name.toLowerCase().includes(q) ?? false;
         })
-      : quotes;
+      : tabQuotes;
     const map = new Map<string, Quote[]>();
     for (const quote of filteredQuotes) {
       const key = quote.item_name.trim().toLowerCase();
@@ -96,7 +101,7 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
       default:
         return groups.sort((a, b) => a.name.localeCompare(b.name));
     }
-  }, [quotes, sort, suppliers, supplierQuery]);
+  }, [quotes, sort, suppliers, supplierQuery, activeTab]);
 
   function supplierName(id: string): string {
     return suppliers.find((s) => s.id === id)?.name ?? "—";
@@ -248,6 +253,31 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
         </Card>
       )}
 
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab("aberto")}
+          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+            activeTab === "aberto"
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-border text-text-muted hover:bg-bg-elev-2"
+          }`}
+        >
+          Em aberto ({openCount})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("aceita")}
+          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+            activeTab === "aceita"
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-border text-text-muted hover:bg-bg-elev-2"
+          }`}
+        >
+          Aceita ({acceptedCount})
+        </button>
+      </div>
+
       {quotes.length > 0 && (
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
@@ -279,11 +309,19 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
       {grouped.length === 0 ? (
         <Empty
           icon={Receipt}
-          title={supplierQuery.trim() ? "Nenhuma cotação desse fornecedor" : "Sem cotações"}
+          title={
+            supplierQuery.trim()
+              ? "Nenhuma cotação desse fornecedor"
+              : activeTab === "aceita"
+                ? "Nenhuma cotação aceita ainda"
+                : "Sem cotações em aberto"
+          }
           description={
             supplierQuery.trim()
               ? "Tenta buscar por outro nome."
-              : "Registre preços de fornecedores diferentes pra comparar."
+              : activeTab === "aceita"
+                ? "Aceite uma cotação em aberto pra ela aparecer aqui."
+                : "Registre preços de fornecedores diferentes pra comparar."
           }
         />
       ) : (
