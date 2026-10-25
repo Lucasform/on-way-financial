@@ -82,9 +82,9 @@ export function ObraDashboard({ module, spentTotal }: Props) {
       </header>
 
       <section>
-        <Link href="/overview/fornecedores">
+        <Link href="/overview/gasto">
           <Card className="transition-colors hover:border-primary/50 hover:bg-bg-elev-2">
-            <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Gasto (custos feitos)</CardTitle></CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Gasto até o momento</CardTitle></CardHeader>
             <CardContent className="pt-0"><Money value={spentTotal} size="xl" /></CardContent>
           </Card>
         </Link>
