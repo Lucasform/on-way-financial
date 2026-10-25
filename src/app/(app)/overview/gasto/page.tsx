@@ -18,9 +18,10 @@ const PERIODS = [
   { value: "mes-passado", label: "Mês passado" },
 ] as const;
 
-export default async function GastoPage(props: { searchParams: Promise<{ periodo?: string }> }) {
+export default async function GastoPage(props: { searchParams: Promise<{ periodo?: string; de?: string; ate?: string }> }) {
   const searchParams = await props.searchParams;
-  const periodo = searchParams.periodo ?? "tudo";
+  const customRange = Boolean(searchParams.de || searchParams.ate);
+  const periodo = customRange ? "custom" : (searchParams.periodo ?? "tudo");
 
   const ctx = (await loadActiveContext())!;
   const supabase = createSupabaseServer();
@@ -33,7 +34,10 @@ export default async function GastoPage(props: { searchParams: Promise<{ periodo
     .eq("module_id", mod.id)
     .eq("status", "done");
 
-  if (periodo === "mes") {
+  if (customRange) {
+    if (searchParams.de) query = query.gte("bought_at", searchParams.de);
+    if (searchParams.ate) query = query.lte("bought_at", searchParams.ate);
+  } else if (periodo === "mes") {
     const { start, end } = monthRangeISO();
     query = query.gte("bought_at", start).lte("bought_at", end);
   } else if (periodo === "mes-passado") {
@@ -61,7 +65,7 @@ export default async function GastoPage(props: { searchParams: Promise<{ periodo
     <div>
       <ObraSectionHeader title="Gasto por fornecedor" />
 
-      <div className="mb-4 flex gap-2">
+      <div className="mb-3 flex flex-wrap gap-2">
         {PERIODS.map((p) => (
           <Link
             key={p.value}
@@ -77,6 +81,37 @@ export default async function GastoPage(props: { searchParams: Promise<{ periodo
           </Link>
         ))}
       </div>
+
+      <form
+        method="get"
+        className={cn(
+          "mb-4 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs",
+          customRange ? "border-primary bg-primary/5" : "border-border",
+        )}
+      >
+        <span className="text-text-muted">ou escolher período:</span>
+        <input
+          type="date"
+          name="de"
+          defaultValue={searchParams.de ?? ""}
+          className="h-8 rounded-md border border-border bg-bg-elev px-2"
+        />
+        <span className="text-text-muted">até</span>
+        <input
+          type="date"
+          name="ate"
+          defaultValue={searchParams.ate ?? ""}
+          className="h-8 rounded-md border border-border bg-bg-elev px-2"
+        />
+        <button type="submit" className="rounded-md border border-border bg-bg-elev px-3 py-1.5 font-medium hover:bg-bg-elev-2">
+          Filtrar
+        </button>
+        {customRange && (
+          <Link href="/overview/gasto" className="text-text-muted underline">
+            limpar
+          </Link>
+        )}
+      </form>
 
       {rows.length === 0 ? (
         <Card className="p-8 text-center text-sm text-text-muted">Nada gasto nesse período.</Card>
