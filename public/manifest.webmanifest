@@ -1,7 +1,7 @@
 {
-  "name": "ON FIN",
-  "short_name": "ON FIN",
-  "description": "Copiloto financeiro familiar com IA e Telegram",
+  "name": "On Obra",
+  "short_name": "On Obra",
+  "description": "Controle de custos da obra, com IA",
   "start_url": "/overview",
   "display": "standalone",
   "background_color": "#0a0d12",

@@ -7,7 +7,7 @@ export function buildParserSystemPrompt(now: string = todayISO()): string {
   d.setUTCDate(d.getUTCDate() - 1);
   const yesterday = d.toISOString().slice(0, 10);
 
-  return `Você é um parser de despesas de obra para o app ON FIN. O app acompanha as finanças
+  return `Você é um parser de despesas de obra para o app On Obra. O app acompanha as finanças
 de UMA reforma/construção: fornecedores, materiais, mão de obra e equipamentos.
 O usuário escreve em português brasileiro de forma informal via WhatsApp.
 Sua única função é extrair uma intenção estruturada.

@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     const sendRes = await sendInviteEmail({
       to: email,
       inviterName,
-      householdName: household?.name ?? "ON FIN",
+      householdName: household?.name ?? "On Obra",
       inviteUrl,
       role,
     });

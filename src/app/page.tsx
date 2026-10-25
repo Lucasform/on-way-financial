@@ -1,16 +1,16 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  Bell,
-  Car,
-  GraduationCap,
-  Gift,
-  Hammer,
+  Camera,
+  CheckCircle2,
+  ClipboardCheck,
+  FolderOpen,
+  Images,
   LineChart,
   Lock,
   MessageSquare,
-  Plane,
-  Sparkles,
+  Receipt,
+  Store,
   Users,
   Wallet,
   Zap,
@@ -33,10 +33,10 @@ export default function LandingPage() {
 
       {/* Top nav */}
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-        <Link href="/" className="flex items-center gap-2" aria-label="ON FIN">
+        <Link href="/" className="flex items-center gap-2" aria-label="On Obra">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/icons/icon.svg" alt="" width={32} height={32} className="rounded-md" />
-          <span className="text-sm font-semibold tracking-wide">ON FIN</span>
+          <span className="text-sm font-semibold tracking-wide">On Obra</span>
         </Link>
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="sm">
@@ -56,12 +56,12 @@ export default function LandingPage() {
           <Zap className="h-3.5 w-3.5 text-primary" /> grátis · com IA · sem propaganda
         </span>
         <h1 className="mx-auto mt-6 max-w-3xl text-balance text-4xl font-semibold leading-tight tracking-tight sm:text-6xl">
-          Suas finanças familiares <span className="text-primary">no piloto automático</span>
+          Sua obra sob controle, <span className="text-primary">sem planilha</span>
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-balance text-base text-text-muted sm:text-lg">
-          Lance gastos por mensagem, acompanhe a obra em fases, planeje a viagem do ano e
-          mantenha toda a família alinhada. Sem planilha, sem caderninho, sem perder de
-          vista pra onde o dinheiro foi.
+          Cadastre fornecedores, registre cotações e marque o que já foi executado.
+          Acompanhe o gasto total e por fornecedor, documentos, fotos e o diário da obra,
+          tudo num só lugar.
         </p>
 
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -84,26 +84,22 @@ export default function LandingPage() {
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-primary">
               <MessageSquare className="h-3.5 w-3.5" />
             </div>
-            <span>conversa com o bot</span>
+            <span>conversa com o assistente</span>
           </div>
           <ul className="space-y-3 text-sm">
-            <ChatLine you>gastei 80 no posto ontem credito</ChatLine>
+            <ChatLine you>gastei 150 em cimento hoje</ChatLine>
             <ChatLine>
-              ✅ <strong>Despesa registrada</strong>
+              ✅ <strong>Custo de R$ 150,00 registrado</strong>
               <br />
-              💰 R$ 80,00 · posto
+              Cimento
               <br />
-              🏷️ Transporte · 💳 Crédito · 📅 ontem
+              📅 Data: hoje
             </ChatLine>
-            <ChatLine you>qual o saldo do mês?</ChatLine>
+            <ChatLine you>quanto já gastei na obra?</ChatLine>
             <ChatLine>
-              📊 <strong>Resumo do mês</strong>
+              📊 <strong>Gasto total até agora</strong>: R$ 18.420,00
               <br />
-              Receitas: R$ 8.000,00
-              <br />
-              Despesas: R$ 3.450,00
-              <br />
-              Saldo: <strong>R$ 4.550,00</strong>
+              Esse mês: R$ 2.150,00
             </ChatLine>
           </ul>
         </div>
@@ -113,68 +109,59 @@ export default function LandingPage() {
       <section className="mx-auto max-w-6xl px-6 pb-20">
         <h2 className="text-center text-2xl font-semibold sm:text-3xl">Como funciona</h2>
         <p className="mx-auto mt-2 max-w-2xl text-center text-text-muted">
-          Três passos pra parar de adivinhar pra onde o dinheiro vai.
+          Três passos pra parar de adivinhar quanto a obra já custou.
         </p>
         <div className="mt-10 grid gap-4 sm:grid-cols-3">
-          <Step number={1} title="Crie sua família">
-            Convide quem mora com você. Cada um tem o seu acesso, com papéis: dono, admin ou só
-            visualizador.
+          <Step number={1} title="Cadastre fornecedores">
+            Quem vende material, presta serviço ou faz a mão de obra da sua reforma.
           </Step>
-          <Step number={2} title="Conecte um chat">
-            Vincule sua conta ao bot no celular. Mande mensagens normais (&quot;gastei 50 no mercado&quot;)
-            e o bot entende e registra.
+          <Step number={2} title="Registre a cotação, marque o que já foi feito">
+            Direto na tela do fornecedor, ou pedindo pro assistente de IA no chat.
           </Step>
-          <Step number={3} title="Acompanhe pelo app">
-            Veja gráficos, alertas, fechamento de fatura e progresso das suas metas em tempo
-            real.
+          <Step number={3} title="Acompanhe o gasto">
+            Total até agora, por fornecedor, com filtro por período. Só o que importa.
           </Step>
         </div>
       </section>
 
-      {/* Modules */}
+      {/* Real app sections */}
       <section className="mx-auto max-w-6xl px-6 pb-20">
         <h2 className="text-center text-2xl font-semibold sm:text-3xl">
-          Módulos especiais pra quem planeja grande
+          Tudo que uma obra precisa, num só lugar
         </h2>
         <p className="mx-auto mt-2 max-w-2xl text-center text-text-muted">
-          Não é só &quot;categoria de despesa&quot;. É um espaço inteiro com fases, metas e linha do tempo.
+          Sem módulo genérico de categoria. Cada tela existe porque resolve uma coisa real da obra.
         </p>
         <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <ModuleCard
-            icon={<Hammer className="h-5 w-5" />}
-            emoji="🧱"
-            title="Obra"
-            desc="Fases em kanban, equipe, galeria de fotos e projeção de término."
+            icon={<Store className="h-5 w-5" />}
+            title="Fornecedores"
+            desc="Cadastro de quem você compra ou contrata, com telefone, CNPJ e nota."
           />
           <ModuleCard
-            icon={<Plane className="h-5 w-5" />}
-            emoji="✈️"
-            title="Viagem"
-            desc="Itinerário, reservas, conversor de moeda e gastos por dia."
+            icon={<Receipt className="h-5 w-5" />}
+            title="Cotações"
+            desc="Compare preços entre fornecedores, aceite o melhor e ele já vira custo."
           />
           <ModuleCard
-            icon={<Car className="h-5 w-5" />}
-            emoji="🚗"
-            title="Carro novo"
-            desc="Compare modelos, simule financiamento e veja quanto já poupou."
+            icon={<ClipboardCheck className="h-5 w-5" />}
+            title="Checklist"
+            desc="Lista do que falta fazer, organizada por etapa, marcando como feito."
           />
           <ModuleCard
-            icon={<Gift className="h-5 w-5" />}
-            emoji="🎁"
-            title="Presentes"
-            desc="Calendário de aniversários, ideias por pessoa e orçamento."
+            icon={<Camera className="h-5 w-5" />}
+            title="Andamento"
+            desc="Álbum cronológico da obra, mês a mês, com fotos e registros."
           />
           <ModuleCard
-            icon={<GraduationCap className="h-5 w-5" />}
-            emoji="🎓"
-            title="Educação"
-            desc="Mensalidades, cursos e projeção dos próximos 12 meses."
+            icon={<FolderOpen className="h-5 w-5" />}
+            title="Documentos"
+            desc="Contratos, notas e projetos guardados por pasta."
           />
           <ModuleCard
-            icon={<Sparkles className="h-5 w-5" />}
-            emoji="✨"
-            title="Personalizado"
-            desc="Crie campos do jeito que precisar. Sem template, sem limite."
+            icon={<Images className="h-5 w-5" />}
+            title="Galeria"
+            desc="Fotos e vídeos da obra, organizados do jeito que você quiser."
           />
         </div>
       </section>
@@ -182,38 +169,38 @@ export default function LandingPage() {
       {/* Features grid */}
       <section className="mx-auto max-w-6xl px-6 pb-20">
         <h2 className="text-center text-2xl font-semibold sm:text-3xl">
-          Tudo que você esperaria de um app de banco, e mais
+          Feito só pra controlar custo de obra
         </h2>
         <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Feature
             icon={<Wallet className="h-5 w-5 text-primary" />}
-            title="Despesas e receitas"
-            desc="Parcelas viram N transações automáticas. Comprovante anexado em foto."
+            title="Só o que é custo"
+            desc="Sem categoria de vida pessoal, sem receita. Só o dinheiro que sai na obra, previsto ou já gasto."
           />
           <Feature
             icon={<LineChart className="h-5 w-5 text-accent" />}
-            title="Gráficos que importam"
-            desc="Por categoria, por dia, por método. Comparação com o mês passado embutida."
+            title="Gasto por fornecedor"
+            desc="Soma automática de quanto já foi pago a cada fornecedor, com filtro por período."
           />
           <Feature
             icon={<MessageSquare className="h-5 w-5 text-primary" />}
-            title="Bot inteligente"
-            desc="Linguagem natural com IA. 'Comprei pão 8 reais' vira despesa em Alimentação."
+            title="Lance custo pelo chat"
+            desc="Fale normal com a IA: 'gastei 150 em cimento' já entra como custo, sem formulário."
           />
           <Feature
-            icon={<Bell className="h-5 w-5 text-warning" />}
-            title="Alertas customizados"
-            desc="Estourou o orçamento de mercado? Cartão fechando amanhã? Avisamos no chat."
+            icon={<CheckCircle2 className="h-5 w-5 text-success" />}
+            title="Cotação virou custo"
+            desc="Aceite o melhor preço e ele já entra como gasto, sem lançar de novo."
           />
           <Feature
             icon={<Users className="h-5 w-5 text-accent" />}
             title="Família compartilhada"
-            desc="Múltiplas famílias por conta. Cada uma com seus membros, contas e papéis."
+            desc="Convide quem mora com você. Cada um com seu acesso: dono, admin ou só visualizador."
           />
           <Feature
-            icon={<Lock className="h-5 w-5 text-success" />}
+            icon={<Lock className="h-5 w-5 text-warning" />}
             title="Privado por padrão"
-            desc="Cada família vê só os próprios dados. Linha por linha, no nível do banco."
+            desc="Seus dados isolados por família, protegidos linha por linha no banco."
           />
         </div>
       </section>
@@ -237,7 +224,7 @@ export default function LandingPage() {
 
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-6 py-6 text-xs text-text-muted sm:flex-row">
-          <span>© {new Date().getFullYear()} ON FIN · feito no Brasil</span>
+          <span>© {new Date().getFullYear()} On Obra · feito no Brasil</span>
           <span>Login por email · dados em servidor brasileiro</span>
         </div>
       </footer>
@@ -259,29 +246,19 @@ function Step({ number, title, children }: { number: number; title: string; chil
 
 function ModuleCard({
   icon,
-  emoji,
   title,
   desc,
 }: {
   icon: React.ReactNode;
-  emoji: string;
   title: string;
   desc: string;
 }) {
   return (
     <div className="group relative overflow-hidden rounded-lg border border-border bg-bg-elev p-5 transition-colors hover:border-primary/40">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute right-[-30px] top-[-30px] text-[110px] opacity-5 transition-opacity group-hover:opacity-10"
-      >
-        {emoji}
-      </div>
       <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-md bg-bg-elev-2 text-primary">
         {icon}
       </div>
-      <h3 className="text-base font-semibold">
-        {emoji} {title}
-      </h3>
+      <h3 className="text-base font-semibold">{title}</h3>
       <p className="mt-1 text-sm text-text-muted">{desc}</p>
     </div>
   );

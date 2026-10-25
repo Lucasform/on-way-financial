@@ -15,7 +15,7 @@ function safe(input: string | null | undefined): string {
 
 export function tgHelpMessage(): string {
   return [
-    "🤖 *ON FIN*",
+    "🤖 *On Obra*",
     "",
     "*Comandos:*",
     "• `/despesa 50 mercado #Mercado @pix` ·registra despesa",
@@ -58,7 +58,7 @@ export function tgWelcomeNotLinked(appUrl: string): string {
   return [
     "👋 *Olá!*",
     "",
-    "Este chat ainda não está vinculado a nenhuma conta no ON FIN.",
+    "Este chat ainda não está vinculado a nenhuma conta no On Obra.",
     "",
     `Pra vincular:`,
     `1. Abra ${appUrl}/settings`,

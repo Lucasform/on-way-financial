@@ -27,7 +27,7 @@ export async function sendInviteEmail(args: SendInviteArgs): Promise<{ ok: boole
 
   const role = ROLE_LABEL[args.role] ?? args.role;
   const inviter = args.inviterName ? args.inviterName : "Alguém";
-  const appName = env.NEXT_PUBLIC_APP_NAME ?? "ON FIN";
+  const appName = env.NEXT_PUBLIC_APP_NAME ?? "On Obra";
   const from = `${appName} <${env.INVITE_FROM_EMAIL}>`;
   const replyTo = env.INVITE_REPLY_TO ?? undefined;
 

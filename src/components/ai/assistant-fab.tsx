@@ -225,7 +225,7 @@ export function AssistantFab() {
             </Button>
           </div>
           <p className="mt-1.5 text-[10px] text-text-muted">
-            By ON FIN · respeitamos seus dados, contexto é por sessão
+            By On Obra · respeitamos seus dados, contexto é por sessão
           </p>
         </form>
       </aside>

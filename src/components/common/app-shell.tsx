@@ -39,8 +39,7 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/icons/icon.svg" alt="" width={32} height={32} className="rounded-lg" />
           <div className="leading-tight">
-            <p className="text-sm font-semibold tracking-wide text-text">ON FIN</p>
-            <p className="text-[10px] uppercase tracking-wider text-text-muted">Obra</p>
+            <p className="text-sm font-semibold tracking-wide text-text">On Obra</p>
           </div>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-4">

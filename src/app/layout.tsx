@@ -18,11 +18,11 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: { default: "ON FIN", template: "%s · ON FIN" },
-  description: "Copiloto financeiro para sua família, com WhatsApp e IA.",
-  applicationName: "ON FIN",
+  title: { default: "On Obra", template: "%s · On Obra" },
+  description: "Controle de custos da sua obra: fornecedor, cotação e gasto, com IA.",
+  applicationName: "On Obra",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "ON FIN" },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "On Obra" },
   formatDetection: { telephone: false },
   icons: {
     icon: [{ url: "/icons/icon.svg", type: "image/svg+xml" }],

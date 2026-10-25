@@ -93,7 +93,7 @@ export async function buildFinancialContext(opts: ContextOptions): Promise<strin
   return lines.join("\n");
 }
 
-export const ASSISTANT_SYSTEM = `Você é o ON AI, assistente do app ON FIN (controle de custos da obra).
+export const ASSISTANT_SYSTEM = `Você é o ON AI, assistente do app On Obra (controle de custos da obra).
 Fala português brasileiro coloquial, direto, conciso. Sem floreios.
 
 REGRAS:
