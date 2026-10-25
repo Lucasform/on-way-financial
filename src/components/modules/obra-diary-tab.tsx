@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { BookOpen, Camera, ChevronDown, ChevronUp, Loader2, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -12,14 +12,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { fmtDate, todayISO } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
-import { sanitizeFilename } from "@/lib/utils";
+import { uploadObraFile } from "@/lib/supabase/obra-storage";
 
 export interface DiaryEntry {
   id: string;
   module_id: string;
-  phase_id: string | null;
   entry_date: string;
-  weather: string | null;
   body: string;
   workers_count: number | null;
   hours_worked: number | null;
@@ -30,11 +28,14 @@ interface Props {
   moduleId: string;
   householdId: string;
   initial: DiaryEntry[];
-  phases: { id: string; name: string }[];
   canWrite: boolean;
 }
 
-export function ObraDiaryTab({ moduleId, householdId, initial, phases, canWrite }: Props) {
+function monthKey(iso: string): string {
+  return iso.slice(0, 7);
+}
+
+export function ObraDiaryTab({ moduleId, householdId, initial, canWrite }: Props) {
   const supabase = createSupabaseBrowser();
   const [entries, setEntries] = useState(initial);
   const [pending, start] = useTransition();
@@ -42,6 +43,16 @@ export function ObraDiaryTab({ moduleId, householdId, initial, phases, canWrite 
   const [moreOpen, setMoreOpen] = useState(false);
   const [draft, setDraft] = useState<Partial<DiaryEntry>>({ entry_date: todayISO() });
   const [pendingPhotos, setPendingPhotos] = useState<{ file: File; preview: string }[]>([]);
+
+  const months = useMemo(() => {
+    const sorted = [...entries].sort((a, b) => b.entry_date.localeCompare(a.entry_date));
+    const map = new Map<string, DiaryEntry[]>();
+    for (const e of sorted) {
+      const key = monthKey(e.entry_date);
+      map.set(key, [...(map.get(key) ?? []), e]);
+    }
+    return [...map.entries()];
+  }, [entries]);
 
   function addPhotos(files: FileList | null) {
     if (!files) return;
@@ -59,26 +70,19 @@ export function ObraDiaryTab({ moduleId, householdId, initial, phases, canWrite 
     try {
       const photoUrls: string[] = [];
       for (const p of pendingPhotos) {
-        const safe = sanitizeFilename(p.file.name);
-        const path = `${householdId}/${moduleId}/${crypto.randomUUID()}-${safe}`;
-        const { error } = await supabase.storage
-          .from("obra-gallery")
-          .upload(path, p.file, { cacheControl: "3600", contentType: p.file.type || undefined });
-        if (error) {
-          toast.error(`Falha ao subir foto: ${error.message}`);
+        const result = await uploadObraFile(supabase, "obra-gallery", householdId, moduleId, p.file);
+        if ("error" in result) {
+          toast.error(`Falha ao subir foto: ${result.error}`);
           continue;
         }
-        const { data: pub } = supabase.storage.from("obra-gallery").getPublicUrl(path);
-        photoUrls.push(pub.publicUrl);
+        photoUrls.push(result.url);
       }
 
       const { data, error } = await supabase
         .from("obra_diary")
         .insert({
           module_id: moduleId,
-          phase_id: draft.phase_id ?? null,
           entry_date: draft.entry_date ?? todayISO(),
-          weather: draft.weather ?? null,
           body: draft.body!.trim(),
           workers_count: draft.workers_count ?? null,
           hours_worked: draft.hours_worked ?? null,
@@ -110,7 +114,7 @@ export function ObraDiaryTab({ moduleId, householdId, initial, phases, canWrite 
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {canWrite && (
         <Card className="p-4">
           <p className="mb-3 text-sm font-semibold">O que foi feito?</p>
@@ -142,7 +146,7 @@ export function ObraDiaryTab({ moduleId, householdId, initial, phases, canWrite 
               className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-text"
             >
               {moreOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-              Mais detalhes (fase, data, equipe)
+              Mais detalhes (data, equipe)
             </button>
           </div>
 
@@ -166,7 +170,7 @@ export function ObraDiaryTab({ moduleId, householdId, initial, phases, canWrite 
           )}
 
           {moreOpen && (
-            <div className="mt-3 grid gap-2 border-t border-border pt-3 sm:grid-cols-4">
+            <div className="mt-3 grid gap-2 border-t border-border pt-3 sm:grid-cols-3">
               <div className="space-y-1">
                 <Label htmlFor="ddate">Data</Label>
                 <Input
@@ -175,20 +179,6 @@ export function ObraDiaryTab({ moduleId, householdId, initial, phases, canWrite 
                   value={draft.entry_date}
                   onChange={(e) => setDraft({ ...draft, entry_date: e.target.value })}
                 />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="dphase">Fase</Label>
-                <select
-                  id="dphase"
-                  value={draft.phase_id ?? ""}
-                  onChange={(e) => setDraft({ ...draft, phase_id: e.target.value || null })}
-                  className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
-                >
-                  <option value="">—</option>
-                  {phases.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
               </div>
               <div className="space-y-1">
                 <Label htmlFor="dwc">Pessoas na obra</Label>
@@ -234,53 +224,56 @@ export function ObraDiaryTab({ moduleId, householdId, initial, phases, canWrite 
           description="Registre o andamento com uma foto. O progresso merece ficar documentado 🧱"
         />
       ) : (
-        <ol className="relative space-y-3 border-l border-border pl-6">
-          {entries.map((e) => {
-            const phase = phases.find((p) => p.id === e.phase_id);
-            const photos = e.photo_urls ?? [];
-            return (
-              <li key={e.id} className="relative">
-                <span className="absolute -left-[31px] flex h-5 w-5 items-center justify-center rounded-full border border-border bg-primary/15 text-[10px]">
-                  🧱
-                </span>
-                <Card className="p-4">
-                  <header className="mb-2 flex items-center justify-between">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
-                      <span className="font-semibold text-text">{fmtDate(e.entry_date, "EEEE, dd 'de' MMMM")}</span>
-                      {phase && <span>· {phase.name}</span>}
-                      {e.workers_count != null && (
-                        <span>· {e.workers_count} {e.workers_count === 1 ? "pessoa" : "pessoas"}</span>
+        months.map(([key, monthEntries]) => (
+          <div key={key} className="space-y-3">
+            <h3 className="text-sm font-semibold capitalize text-text-muted">{fmtDate(`${key}-01`, "MMMM 'de' yyyy")}</h3>
+            <ol className="relative space-y-3 border-l border-border pl-6">
+              {monthEntries.map((e) => {
+                const photos = e.photo_urls ?? [];
+                return (
+                  <li key={e.id} className="relative">
+                    <span className="absolute -left-[31px] flex h-5 w-5 items-center justify-center rounded-full border border-border bg-primary/15 text-[10px]">
+                      🧱
+                    </span>
+                    <Card className="p-4">
+                      <header className="mb-2 flex items-center justify-between">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
+                          <span className="font-semibold text-text">{fmtDate(e.entry_date, "EEEE, dd 'de' MMMM")}</span>
+                          {e.workers_count != null && (
+                            <span>· {e.workers_count} {e.workers_count === 1 ? "pessoa" : "pessoas"}</span>
+                          )}
+                          {e.hours_worked != null && <span>· {Number(e.hours_worked)}h</span>}
+                        </div>
+                        {canWrite && (
+                          <Button variant="ghost" size="icon" onClick={() => remove(e.id)} aria-label="Remover">
+                            <Trash2 className="h-4 w-4 text-danger" />
+                          </Button>
+                        )}
+                      </header>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-text">{e.body}</p>
+                      {photos.length > 0 && (
+                        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                          {photos.map((url, i) => (
+                            <a
+                              key={i}
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block aspect-square overflow-hidden rounded-md border border-border bg-bg-elev-2"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={url} alt="" className="h-full w-full object-cover transition-transform hover:scale-105" />
+                            </a>
+                          ))}
+                        </div>
                       )}
-                      {e.hours_worked != null && <span>· {Number(e.hours_worked)}h</span>}
-                    </div>
-                    {canWrite && (
-                      <Button variant="ghost" size="icon" onClick={() => remove(e.id)} aria-label="Remover">
-                        <Trash2 className="h-4 w-4 text-danger" />
-                      </Button>
-                    )}
-                  </header>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-text">{e.body}</p>
-                  {photos.length > 0 && (
-                    <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                      {photos.map((url, i) => (
-                        <a
-                          key={i}
-                          href={url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block aspect-square overflow-hidden rounded-md border border-border bg-bg-elev-2"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={url} alt="" className="h-full w-full object-cover transition-transform hover:scale-105" />
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                </Card>
-              </li>
-            );
-          })}
-        </ol>
+                    </Card>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        ))
       )}
     </div>
   );

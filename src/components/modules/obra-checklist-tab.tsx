@@ -1,28 +1,20 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { ChevronDown, ChevronRight, ClipboardCheck, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ClipboardCheck, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Money } from "@/components/ui/money";
+import { useConfirm } from "@/hooks/use-confirm";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 
 export interface ChecklistItem {
   id: string;
   phase_name: string;
-  category: string;
   name: string;
-  unit: string | null;
-  estimated_value: number | null;
-  is_estimate: boolean;
   status: string;
-  obra_item_id: string | null;
-  times_added: number;
 }
 
 interface Props {
@@ -31,25 +23,16 @@ interface Props {
   canWrite: boolean;
 }
 
-const CATEGORIES = ["material", "serviço", "processo"] as const;
-const CATEGORY_TONE: Record<string, "default" | "secondary" | "success" | "warning"> = {
-  material: "default",
-  "serviço": "warning",
-  processo: "secondary",
-};
-
 export function ObraChecklistTab({ moduleId, initial, canWrite }: Props) {
   const supabase = createSupabaseBrowser();
   const [items, setItems] = useState(initial);
-  const [openPhases, setOpenPhases] = useState<Set<string>>(new Set());
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [valueDraft, setValueDraft] = useState("");
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [showAdd, setShowAdd] = useState(false);
-  const [newItem, setNewItem] = useState({ phase_name: "", category: "material" as string, name: "", unit: "" });
+  const [newItem, setNewItem] = useState({ group: "", name: "" });
   const [pending, start] = useTransition();
+  const { confirm, ConfirmDialog } = useConfirm();
 
-  const phases = useMemo(() => {
+  const groups = useMemo(() => {
     const map = new Map<string, ChecklistItem[]>();
     for (const it of items) {
       map.set(it.phase_name, [...(map.get(it.phase_name) ?? []), it]);
@@ -57,8 +40,8 @@ export function ObraChecklistTab({ moduleId, initial, canWrite }: Props) {
     return [...map.entries()];
   }, [items]);
 
-  function togglePhase(name: string) {
-    setOpenPhases((s) => {
+  function toggleGroup(name: string) {
+    setOpenGroups((s) => {
       const next = new Set(s);
       if (next.has(name)) next.delete(name);
       else next.add(name);
@@ -66,83 +49,34 @@ export function ObraChecklistTab({ moduleId, initial, canWrite }: Props) {
     });
   }
 
-  function startEdit(item: ChecklistItem) {
+  function toggleDone(item: ChecklistItem) {
     if (!canWrite) return;
-    setEditingId(item.id);
-    setValueDraft(item.estimated_value != null ? String(item.estimated_value) : "");
-  }
-
-  function saveValue(item: ChecklistItem) {
-    const num = valueDraft.trim() === "" ? null : Number(valueDraft.replace(",", "."));
-    setItems((s) => s.map((i) => (i.id === item.id ? { ...i, estimated_value: num } : i)));
-    setEditingId(null);
+    const nextStatus = item.status === "done" ? "pending" : "done";
+    setItems((s) => s.map((i) => (i.id === item.id ? { ...i, status: nextStatus } : i)));
     start(async () => {
-      await supabase.from("obra_checklist_items").update({ estimated_value: num }).eq("id", item.id);
+      const { error } = await supabase.from("obra_checklist_items").update({ status: nextStatus }).eq("id", item.id);
+      if (error) {
+        setItems((s) => s.map((i) => (i.id === item.id ? { ...i, status: item.status } : i)));
+        toast.error("Falha ao atualizar.");
+      }
     });
   }
 
-  async function addToTable(item: ChecklistItem) {
-    if (!canWrite || item.estimated_value == null || busyId) return;
-    setBusyId(item.id);
-    try {
-      const { data, error } = await supabase
-        .from("obra_items")
-        .insert({
-          module_id: moduleId,
-          category: item.category === "material" ? "material" : "serviço",
-          name: item.name,
-          unit: item.unit ?? "un",
-          quantity: 1,
-          unit_price: item.estimated_value,
-          status: "planned",
-          notes: item.is_estimate ? "Valor estimado (checklist)" : "Valor exato (checklist)",
-        })
-        .select("id")
-        .single();
-      if (error || !data) {
-        toast.error("Falha ao adicionar à tabela.");
-        return;
-      }
-      const nextCount = item.times_added + 1;
-      const { error: updErr } = await supabase
-        .from("obra_checklist_items")
-        .update({ status: "added", obra_item_id: data.id, times_added: nextCount })
-        .eq("id", item.id);
-      if (updErr) {
-        toast.error("Item criado, mas falhou marcar o checklist.");
-      }
-      setItems((s) => s.map((i) => (i.id === item.id ? { ...i, status: "added", obra_item_id: data.id, times_added: nextCount } : i)));
-      toast.success(
-        nextCount > 1
-          ? `Adicionado em Materiais (${nextCount}ª vez — outro fornecedor/compra? edite lá).`
-          : "Adicionado em Materiais.",
-      );
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  function removeItem(id: string) {
+  async function removeItem(item: ChecklistItem) {
     if (!canWrite) return;
-    if (!confirm("Remover esse item do checklist?")) return;
-    setItems((s) => s.filter((i) => i.id !== id));
-    start(async () => {
-      await supabase.from("obra_checklist_items").delete().eq("id", id);
-    });
+    if (!(await confirm(`Apagar "${item.name}"?`, { danger: true }))) return;
+    setItems((s) => s.filter((i) => i.id !== item.id));
+    const { error } = await supabase.from("obra_checklist_items").delete().eq("id", item.id);
+    if (error) toast.error("Falha ao apagar.");
   }
 
-  function addCustomItem() {
-    if (!canWrite || !newItem.phase_name.trim() || !newItem.name.trim()) return;
+  function addItem() {
+    if (!canWrite || !newItem.name.trim()) return;
+    const group = newItem.group.trim() || "Geral";
     start(async () => {
       const { data, error } = await supabase
         .from("obra_checklist_items")
-        .insert({
-          module_id: moduleId,
-          phase_name: newItem.phase_name.trim(),
-          category: newItem.category,
-          name: newItem.name.trim(),
-          unit: newItem.unit.trim() || null,
-        })
+        .insert({ module_id: moduleId, phase_name: group, category: "processo", name: newItem.name.trim() })
         .select("*")
         .single();
       if (error || !data) {
@@ -150,63 +84,48 @@ export function ObraChecklistTab({ moduleId, initial, canWrite }: Props) {
         return;
       }
       setItems((s) => [...s, data as ChecklistItem]);
-      setOpenPhases((s) => new Set(s).add(data.phase_name));
-      setNewItem({ phase_name: "", category: "material", name: "", unit: "" });
+      setOpenGroups((s) => new Set(s).add(group));
+      setNewItem({ group: "", name: "" });
       setShowAdd(false);
-      toast.success("Item adicionado ao checklist.");
     });
   }
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-text-muted">
-        Consulte o que falta por fase, da terraplenagem ao acabamento. Preencha o valor (médio ou
-        exato) e clique em <ShoppingCart className="inline h-3 w-3" /> pra jogar em Materiais.
-      </p>
-
+      {ConfirmDialog}
       {canWrite && !showAdd && (
         <Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
-          <Plus className="h-3.5 w-3.5" /> Adicionar item ao checklist
+          <Plus className="h-3.5 w-3.5" /> Adicionar item
         </Button>
       )}
       {canWrite && showAdd && (
         <Card className="p-3">
-          <div className="grid gap-2 sm:grid-cols-5">
-            <Input
-              value={newItem.phase_name}
-              onChange={(e) => setNewItem({ ...newItem, phase_name: e.target.value })}
-              placeholder="Fase (ex: Alvenaria)"
-              list="checklist-phases"
-            />
-            <datalist id="checklist-phases">
-              {phases.map(([name]) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
-            <select
-              value={newItem.category}
-              onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
-              className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+          <div className="grid gap-2 sm:grid-cols-3">
             <Input
               value={newItem.name}
               onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-              placeholder="Nome"
+              placeholder="O que precisa fazer"
               className="sm:col-span-2"
+              autoFocus
+              onKeyDown={(e) => e.key === "Enter" && addItem()}
             />
             <Input
-              value={newItem.unit}
-              onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
-              placeholder="Unidade"
+              value={newItem.group}
+              onChange={(e) => setNewItem({ ...newItem, group: e.target.value })}
+              placeholder="Grupo (opcional)"
+              list="checklist-groups"
             />
+            <datalist id="checklist-groups">
+              {groups.map(([name]) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
           </div>
           <div className="mt-2 flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setShowAdd(false)}>Cancelar</Button>
-            <Button size="sm" disabled={pending || !newItem.phase_name.trim() || !newItem.name.trim()} onClick={addCustomItem}>
+            <Button variant="ghost" size="sm" onClick={() => setShowAdd(false)}>
+              Cancelar
+            </Button>
+            <Button size="sm" disabled={pending || !newItem.name.trim()} onClick={addItem}>
               Salvar
             </Button>
           </div>
@@ -214,91 +133,62 @@ export function ObraChecklistTab({ moduleId, initial, canWrite }: Props) {
       )}
 
       <div className="space-y-2">
-        {phases.map(([phaseName, phaseItems]) => {
-          const open = openPhases.has(phaseName);
-          const withValue = phaseItems.filter((i) => i.estimated_value != null).length;
-          const added = phaseItems.filter((i) => i.status === "added").length;
+        {groups.map(([groupName, groupItems]) => {
+          const open = openGroups.has(groupName);
+          const done = groupItems.filter((i) => i.status === "done").length;
           return (
-            <Card key={phaseName} className="overflow-hidden p-0">
+            <Card key={groupName} className="overflow-hidden p-0">
               <button
                 type="button"
-                onClick={() => togglePhase(phaseName)}
+                onClick={() => toggleGroup(groupName)}
                 className="flex w-full items-center justify-between gap-2 p-3 text-left hover:bg-bg-elev-2"
               >
                 <span className="flex items-center gap-2 text-sm font-semibold">
                   {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                  {phaseName}
+                  {groupName}
                 </span>
                 <span className="text-[11px] text-text-muted">
-                  {added}/{phaseItems.length} na tabela · {withValue}/{phaseItems.length} com valor
+                  {done}/{groupItems.length} feitos
                 </span>
               </button>
               {open && (
                 <ul className="divide-y divide-border border-t border-border">
-                  {phaseItems.map((item) => (
-                    <li key={item.id} className="flex flex-wrap items-center gap-2 p-3 text-sm">
-                      <Badge variant={CATEGORY_TONE[item.category] ?? "default"} className="shrink-0">
-                        {item.category}
-                      </Badge>
-                      <div className="min-w-[10rem] flex-1">
-                        <p className="font-medium">{item.name}</p>
-                        {item.unit && <p className="text-[11px] text-text-muted">{item.unit}</p>}
-                      </div>
-
-                      {editingId === item.id ? (
-                        <Input
-                          type="number"
-                          step="0.01"
-                          autoFocus
-                          value={valueDraft}
-                          onChange={(e) => setValueDraft(e.target.value)}
-                          onBlur={() => saveValue(item)}
-                          onKeyDown={(e) => e.key === "Enter" && saveValue(item)}
-                          placeholder="Valor"
-                          className="h-8 w-28"
-                        />
-                      ) : (
+                  {groupItems.map((item) => {
+                    const checked = item.status === "done";
+                    return (
+                      <li key={item.id} className="flex items-center gap-2 p-3 text-sm">
                         <button
                           type="button"
                           disabled={!canWrite}
-                          onClick={() => startEdit(item)}
-                          className="rounded-md border border-dashed border-border px-2 py-1 text-xs text-text-muted hover:border-primary/50 hover:text-text"
+                          onClick={() => toggleDone(item)}
+                          aria-label={checked ? "Marcar como pendente" : "Marcar como feito"}
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                            checked ? "border-success bg-success text-white" : "border-border"
+                          }`}
                         >
-                          {item.estimated_value != null ? <Money value={item.estimated_value} size="sm" /> : "definir valor"}
+                          {checked && <Check className="h-3.5 w-3.5" />}
                         </button>
-                      )}
-
-                      {item.times_added > 0 && (
-                        <Badge variant="success" className="shrink-0">
-                          na tabela{item.times_added > 1 ? ` ×${item.times_added}` : ""}
-                        </Badge>
-                      )}
-                      {canWrite && (
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-7 w-7 shrink-0"
-                          disabled={item.estimated_value == null || busyId === item.id}
-                          onClick={() => addToTable(item)}
-                          aria-label={item.times_added > 0 ? "Adicionar outra compra à tabela" : "Adicionar à tabela"}
-                          title={item.times_added > 0 ? "Comprar de novo (outro fornecedor ou nova compra)" : "Adicionar à tabela"}
-                        >
-                          <ShoppingCart className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                      {canWrite && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeItem(item.id)} aria-label="Remover">
-                          <Trash2 className="h-3.5 w-3.5 text-danger" />
-                        </Button>
-                      )}
-                    </li>
-                  ))}
+                        <p className={`flex-1 ${checked ? "text-text-muted line-through" : ""}`}>{item.name}</p>
+                        {canWrite && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0"
+                            onClick={() => removeItem(item)}
+                            aria-label="Remover"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-danger" />
+                          </Button>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </Card>
           );
         })}
-        {phases.length === 0 && (
+        {groups.length === 0 && (
           <Card className="flex flex-col items-center gap-2 p-8 text-center text-sm text-text-muted">
             <ClipboardCheck className="h-6 w-6" />
             Checklist vazio.

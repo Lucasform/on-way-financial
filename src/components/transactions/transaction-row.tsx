@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { CategoryIcon } from "@/components/common/category-icon";
 import { Money } from "@/components/ui/money";
 import { Badge } from "@/components/ui/badge";
+import { useConfirm } from "@/hooks/use-confirm";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 
 export interface TxRow {
@@ -45,16 +46,17 @@ export function TransactionRow({ tx }: { tx: TxRow }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [deleting, setDeleting] = useState(false);
+  const { confirm, ConfirmDialog } = useConfirm();
   const isIncome = tx.type === "income";
   const isTransfer = tx.type === "transfer";
   const title = tx.description || tx.categories?.name || (isIncome ? "Receita" : "Despesa");
   const origin = detectOrigin(tx);
   const originLabel = origin ? ORIGIN_LABEL[origin] ?? origin : null;
 
-  function handleDelete(e: React.MouseEvent) {
+  async function handleDelete(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm(`Excluir "${title}"? Essa ação não pode ser desfeita.`)) return;
+    if (!(await confirm(`Excluir "${title}"? Essa ação não pode ser desfeita.`, { danger: true }))) return;
     setDeleting(true);
     start(async () => {
       const supabase = createSupabaseBrowser();
@@ -71,6 +73,7 @@ export function TransactionRow({ tx }: { tx: TxRow }) {
 
   return (
     <div className="surface-hover group relative flex items-center gap-3 px-4 py-3 transition-colors sm:px-5">
+      {ConfirmDialog}
       <Link
         href={`/transactions?focus=${tx.id}`}
         className="absolute inset-0"
@@ -110,7 +113,7 @@ export function TransactionRow({ tx }: { tx: TxRow }) {
           href={`/transactions/${tx.id}/edit`}
           onClick={(e) => e.stopPropagation()}
           aria-label="Editar transação"
-          className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted opacity-0 transition-all hover:bg-primary/10 hover:text-primary focus:opacity-100 group-hover:opacity-100"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-primary/10 hover:text-primary"
         >
           <Pencil className="h-4 w-4" />
         </Link>
@@ -119,7 +122,7 @@ export function TransactionRow({ tx }: { tx: TxRow }) {
           onClick={handleDelete}
           disabled={pending || deleting}
           aria-label="Excluir transação"
-          className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted opacity-0 transition-all hover:bg-danger/10 hover:text-danger focus:opacity-100 group-hover:opacity-100 disabled:opacity-50"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
         >
           <Trash2 className="h-4 w-4" />
         </button>

@@ -14,19 +14,19 @@ export default async function AndamentoPage() {
   const mod = await getObraModule(ctx.householdId);
   if (!mod) redirect("/overview");
 
-  const [{ data: diary }, { data: phases }] = await Promise.all([
-    supabase.from("obra_diary").select("*").eq("module_id", mod.id).order("entry_date", { ascending: false }),
-    supabase.from("obra_phases").select("id, name").eq("module_id", mod.id).order("position"),
-  ]);
+  const { data: diary } = await supabase
+    .from("obra_diary")
+    .select("*")
+    .eq("module_id", mod.id)
+    .order("entry_date", { ascending: false });
 
   return (
     <div>
-      <ObraSectionHeader title="Andamento" subtitle="Registre o progresso com fotos" />
+      <ObraSectionHeader title="Andamento" subtitle="O álbum cronológico da obra, mês a mês" />
       <ObraDiaryTab
         moduleId={mod.id}
         householdId={ctx.householdId}
         initial={(diary ?? []) as never}
-        phases={phases ?? []}
         canWrite={ctx.role !== "viewer"}
       />
     </div>

@@ -37,7 +37,7 @@ export default async function ChecklistPage() {
 
   return (
     <div>
-      <ObraSectionHeader title="Checklist da obra" subtitle="Processos, serviços e materiais por fase" />
+      <ObraSectionHeader title="Checklist da obra" subtitle="O que falta fazer, por grupo" />
       <ObraChecklistTab moduleId={mod.id} initial={(items ?? []) as never} canWrite={canWrite} />
     </div>
   );

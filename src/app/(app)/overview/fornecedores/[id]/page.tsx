@@ -34,8 +34,7 @@ export default async function SupplierDetailPage({ params }: { params: { id: str
       .select("id, name, quantity, unit, unit_price, actual_unit_price, status, bought_at")
       .eq("module_id", mod.id)
       .eq("supplier_id", params.id)
-      .in("status", ["bought", "installed"])
-      .order("bought_at", { ascending: false }),
+      .order("created_at", { ascending: false }),
   ]);
 
   return (

@@ -10,8 +10,8 @@ export const runtime = "nodejs";
 const bodySchema = z.object({ item_id: z.string().uuid() });
 
 /**
- * Apaga um item "comprado" (realizado). Se ele veio de uma cotação aceita, some com a despesa
- * lançada junto e volta a cotação pro estado "não aceita" (pode aceitar de novo).
+ * Apaga um item (custo) da obra. Se ele veio de uma cotação aceita, volta a cotação
+ * pro estado "não aceita" (pode aceitar de novo).
  */
 export async function POST(req: NextRequest) {
   const ctx = await loadActiveContext();
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 
   const { data: item } = await supabase
     .from("obra_items")
-    .select("id, quote_id, transaction_id")
+    .select("id, quote_id")
     .eq("id", item_id)
     .eq("module_id", mod.id)
     .maybeSingle();
@@ -37,9 +37,6 @@ export async function POST(req: NextRequest) {
   const { error: delErr } = await supabase.from("obra_items").delete().eq("id", item.id);
   if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
 
-  if (item.transaction_id) {
-    await supabase.from("transactions").delete().eq("id", item.transaction_id);
-  }
   if (item.quote_id) {
     await supabase.from("price_quotes").update({ accepted_at: null }).eq("id", item.quote_id);
   }

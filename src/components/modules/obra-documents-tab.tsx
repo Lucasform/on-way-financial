@@ -9,9 +9,10 @@ import { Card } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useConfirm } from "@/hooks/use-confirm";
 import { fmtDate } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
-import { sanitizeFilename } from "@/lib/utils";
+import { uploadObraFile } from "@/lib/supabase/obra-storage";
 import { FolderChips, MoveToFolderBar, type ObraFolder } from "@/components/modules/obra-folders";
 
 export interface ObraDocument {
@@ -56,6 +57,7 @@ export function ObraDocumentsTab({ moduleId, householdId, initial, initialFolder
   const [uploading, setUploading] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const visibleDocs = useMemo(
     () => (selectedFolder ? docs.filter((d) => d.folder_id === selectedFolder) : docs),
@@ -137,22 +139,17 @@ export function ObraDocumentsTab({ moduleId, householdId, initial, initialFolder
     if (!canWrite || !pendingFile || !name.trim()) return;
     setUploading(true);
     try {
-      const safe = sanitizeFilename(pendingFile.name);
-      const path = `${householdId}/${moduleId}/${crypto.randomUUID()}-${safe}`;
-      const { error: upErr } = await supabase.storage
-        .from("obra-documents")
-        .upload(path, pendingFile, { cacheControl: "3600", contentType: pendingFile.type || undefined });
-      if (upErr) {
-        toast.error(`Falha no upload: ${upErr.message}`);
+      const result = await uploadObraFile(supabase, "obra-documents", householdId, moduleId, pendingFile);
+      if ("error" in result) {
+        toast.error(`Falha no upload: ${result.error}`);
         return;
       }
-      const { data: pub } = supabase.storage.from("obra-documents").getPublicUrl(path);
       const { data, error } = await supabase
         .from("obra_documents")
         .insert({
           module_id: moduleId,
           name: name.trim(),
-          file_url: pub.publicUrl,
+          file_url: result.url,
           file_type: pendingFile.type || null,
           size_bytes: pendingFile.size,
           folder_id: uploadFolderId || null,
@@ -174,7 +171,7 @@ export function ObraDocumentsTab({ moduleId, householdId, initial, initialFolder
 
   async function remove(doc: ObraDocument) {
     if (!canWrite) return;
-    if (!confirm(`Apagar "${doc.name}"?`)) return;
+    if (!(await confirm(`Apagar "${doc.name}"?`, { danger: true }))) return;
     setRemovingId(doc.id);
     try {
       const marker = "/obra-documents/";
@@ -207,6 +204,7 @@ export function ObraDocumentsTab({ moduleId, householdId, initial, initialFolder
 
   return (
     <div className="space-y-4">
+      {ConfirmDialog}
       <FolderChips
         folders={folders}
         selected={selectedFolder}

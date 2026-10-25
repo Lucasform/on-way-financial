@@ -2,14 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  CreditCard,
-  Folders,
-  Home,
-  Plus,
-  Users,
-  Wallet,
-} from "lucide-react";
+import { Home, Plus, Receipt, Store, Users } from "lucide-react";
 
 import { HouseholdSwitcher } from "@/components/common/household-switcher";
 import { KeyboardShortcuts } from "@/components/common/keyboard-shortcuts";
@@ -23,18 +16,14 @@ import type { ActiveContext } from "@/lib/household";
 
 const NAV = [
   { href: "/overview", label: "Minha obra", icon: Home },
-  { href: "/transactions", label: "Despesas", icon: Wallet },
   { href: "/family", label: "Família", icon: Users },
-  { href: "/categories", label: "Categorias", icon: Folders },
-  { href: "/payment-methods", label: "Métodos", icon: CreditCard },
 ];
 
 const MOBILE_NAV = [
   { href: "/overview", label: "Obra", icon: Home },
-  { href: "/transactions", label: "Despesas", icon: Wallet },
+  { href: "/overview/fornecedores", label: "Fornecedores", icon: Store },
+  { href: "/overview/cotacoes", label: "Cotações", icon: Receipt },
   { href: "/family", label: "Família", icon: Users },
-  { href: "/categories", label: "Categorias", icon: Folders },
-  { href: "/payment-methods", label: "Métodos", icon: CreditCard },
 ];
 
 export function AppShell({ ctx, children }: { ctx: ActiveContext; children: React.ReactNode }) {
@@ -103,8 +92,8 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
           })}
         </nav>
         <div className="border-t border-border p-3">
-          <Button className="w-full" onClick={() => router.push("/transactions/new")}>
-            <Plus className="h-4 w-4" /> Nova transação
+          <Button className="w-full" onClick={() => router.push("/overview/fornecedores")}>
+            <Plus className="h-4 w-4" /> Novo fornecedor
           </Button>
         </div>
       </aside>
@@ -129,9 +118,9 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
         className="fixed bottom-20 right-4 z-30 h-14 w-14 touch-none rounded-full shadow-2xl will-change-transform md:hidden"
         onClick={() => {
           if (fab.consumeDrag()) return;
-          router.push("/transactions/new");
+          router.push("/overview/fornecedores");
         }}
-        aria-label="Nova transação (arraste pra mover)"
+        aria-label="Novo fornecedor (arraste pra mover)"
         style={{ boxShadow: "0 10px 30px -10px rgba(0,209,160,0.6)" }}
         {...fab.handlers}
       >
@@ -140,7 +129,7 @@ export function AppShell({ ctx, children }: { ctx: ActiveContext; children: Reac
 
       {/* Bottom nav mobile */}
       <nav
-        className="glass fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-border md:hidden"
+        className="glass fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-border md:hidden"
       >
         {MOBILE_NAV.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");

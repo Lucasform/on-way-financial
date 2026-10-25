@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, Folder, FolderPlus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/hooks/use-confirm";
 import { cn } from "@/lib/utils";
 
 export interface ObraFolder {
@@ -24,6 +25,7 @@ interface Props {
 export function FolderChips({ folders, selected, onSelect, onCreate, onDelete, canWrite }: Props) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
 
   function submit() {
     const trimmed = name.trim();
@@ -35,6 +37,7 @@ export function FolderChips({ folders, selected, onSelect, onCreate, onDelete, c
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
+      {ConfirmDialog}
       <button
         type="button"
         onClick={() => onSelect(null)}
@@ -64,14 +67,14 @@ export function FolderChips({ folders, selected, onSelect, onCreate, onDelete, c
           {canWrite && (
             <button
               type="button"
-              onClick={(e) => {
+              onClick={async (e) => {
                 e.stopPropagation();
-                if (confirm(`Apagar a pasta "${f.name}"? Os arquivos continuam, só saem da pasta.`)) {
+                if (await confirm(`Apagar a pasta "${f.name}"? Os arquivos continuam, só saem da pasta.`, { danger: true })) {
                   onDelete(f.id);
                 }
               }}
               aria-label={`Apagar pasta ${f.name}`}
-              className="opacity-0 transition-opacity group-hover:opacity-100 hover:text-danger"
+              className="text-text-muted transition-colors hover:text-danger"
             >
               <X className="h-3 w-3" />
             </button>

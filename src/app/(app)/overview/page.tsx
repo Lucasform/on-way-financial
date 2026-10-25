@@ -15,12 +15,16 @@ export default async function OverviewPage() {
     return <ObraCreatePrompt householdId={ctx.householdId} canWrite={ctx.role !== "viewer"} />;
   }
 
-  const { data: tx } = await supabase
-    .from("transactions")
-    .select("amount")
-    .eq("household_id", ctx.householdId)
+  const { data: items } = await supabase
+    .from("obra_items")
+    .select("quantity, unit_price, actual_unit_price")
     .eq("module_id", mod.id)
-    .eq("type", "expense");
+    .eq("status", "done");
 
-  return <ObraDashboard module={mod} transactions={tx ?? []} canWrite={ctx.role !== "viewer"} />;
+  const spentTotal = (items ?? []).reduce(
+    (s, i) => s + Number(i.quantity) * Number(i.actual_unit_price ?? i.unit_price ?? 0),
+    0,
+  );
+
+  return <ObraDashboard module={mod} spentTotal={spentTotal} canWrite={ctx.role !== "viewer"} />;
 }

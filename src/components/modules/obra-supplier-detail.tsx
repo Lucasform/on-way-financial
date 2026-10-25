@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Check, ChevronDown, ChevronUp, MapPin, MessageCircle, Plus, Receipt, ShoppingBag, Star, Trash2 } from "lucide-react";
+import { Building2, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, MapPin, MessageCircle, Plus, Receipt, ShoppingBag, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import { Empty } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Money } from "@/components/ui/money";
+import { useConfirm } from "@/hooks/use-confirm";
 import { fmtDate, todayISO } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { waLink } from "@/lib/utils";
@@ -54,6 +55,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, quotes: ini
   const router = useRouter();
   const [supplier, setSupplier] = useState(initial);
   const [editing, setEditing] = useState(false);
+  const { confirm, ConfirmDialog } = useConfirm();
   const [draft, setDraft] = useState(initial);
   const [pending, start] = useTransition();
   const [quotes, setQuotes] = useState(initialQuotes);
@@ -175,6 +177,22 @@ export function ObraSupplierDetail({ supplier: initial, householdId, quotes: ini
     setEditingPurchaseId(p.id);
   }
 
+  async function toggleDone(p: PurchaseRow) {
+    if (!canWrite) return;
+    const done = p.status === "done";
+    const nextStatus = done ? "todo" : "done";
+    const nextBoughtAt = done ? null : todayISO();
+    setPurchases((s) => s.map((x) => (x.id === p.id ? { ...x, status: nextStatus, bought_at: nextBoughtAt } : x)));
+    const { error } = await supabase
+      .from("obra_items")
+      .update({ status: nextStatus, bought_at: nextBoughtAt })
+      .eq("id", p.id);
+    if (error) {
+      setPurchases((s) => s.map((x) => (x.id === p.id ? { ...x, status: p.status, bought_at: p.bought_at } : x)));
+      toast.error("Falha ao atualizar.");
+    }
+  }
+
   async function savePurchase(id: string) {
     setSavingPurchase(true);
     try {
@@ -238,7 +256,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, quotes: ini
         },
         ...s,
       ]);
-      toast.success("Cotação aceita: virou compra e despesa.");
+      toast.success("Cotação aceita: virou custo a fazer.");
     } finally {
       setAcceptingId(null);
     }
@@ -246,7 +264,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, quotes: ini
 
   async function removePurchase(itemId: string) {
     if (!canWrite || removingId) return;
-    if (!confirm("Apagar esse item realizado? A despesa lançada junto some, e se veio de uma cotação aceita ela volta a poder ser aceita de novo.")) return;
+    if (!(await confirm("Apagar esse custo? Se veio de uma cotação aceita, ela volta a poder ser aceita de novo.", { danger: true }))) return;
     setRemovingId(itemId);
     try {
       const res = await fetch("/api/obra/revert-purchase", {
@@ -310,9 +328,9 @@ export function ObraSupplierDetail({ supplier: initial, householdId, quotes: ini
     });
   }
 
-  function remove() {
+  async function remove() {
     if (!canWrite) return;
-    if (!confirm(`Apagar "${supplier.name}"?`)) return;
+    if (!(await confirm(`Apagar "${supplier.name}"?`, { danger: true }))) return;
     start(async () => {
       const { error } = await supabase.from("suppliers").delete().eq("id", supplier.id);
       if (error) {
@@ -330,6 +348,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, quotes: ini
 
   return (
     <div className="space-y-4">
+      {ConfirmDialog}
       <Card className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -484,7 +503,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, quotes: ini
         )}
         {canWrite && quotes.length > 0 && (
           <p className="mb-2 text-[11px] text-text-muted">
-            Clique em <Check className="inline h-3 w-3" /> pra aceitar (vira compra + despesa), ou arraste pra &quot;Realizado&quot;.
+            Clique em <Check className="inline h-3 w-3" /> pra aceitar e virar um custo, ou arraste pra baixo.
           </p>
         )}
         {quotes.length === 0 ? (
@@ -593,32 +612,44 @@ export function ObraSupplierDetail({ supplier: initial, householdId, quotes: ini
       >
         <div className="mb-2 flex items-center justify-between">
           <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-            <ShoppingBag className="h-4 w-4" /> Realizado
+            <ShoppingBag className="h-4 w-4" /> Custos
           </h3>
           {purchases.length > 0 && <Money value={purchaseTotal} size="sm" tone="muted" />}
         </div>
         {purchases.length === 0 ? (
           <Empty
             icon={ShoppingBag}
-            title="Nada comprado ainda"
-            description={canWrite ? "Aceite uma cotação acima ou arraste ela pra cá." : "Itens comprados aparecem aqui."}
+            title="Sem custos ainda"
+            description={canWrite ? "Aceite uma cotação acima ou arraste ela pra cá." : "Custos aceitos aparecem aqui."}
           />
         ) : (
           <Card className="divide-y divide-border">
             {purchases.map((p) => {
               const total = Number(p.quantity) * Number(p.actual_unit_price ?? p.unit_price ?? 0);
               const isEditing = editingPurchaseId === p.id;
+              const done = p.status === "done";
               return (
                 <div key={p.id}>
                 <div
-                  onClick={() => openPurchase(p)}
-                  className={`flex items-center justify-between gap-3 p-3 text-sm ${canWrite ? "cursor-pointer hover:bg-bg-elev-2" : ""}`}
+                  className={`flex items-center justify-between gap-3 p-3 text-sm ${canWrite ? "hover:bg-bg-elev-2" : ""} ${done ? "opacity-60" : ""}`}
                 >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{p.name}</p>
+                  {canWrite ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleDone(p)}
+                      aria-label={done ? "Marcar como a fazer" : "Marcar como feito"}
+                      className="shrink-0 text-text-muted hover:text-success"
+                    >
+                      {done ? <CheckCircle2 className="h-5 w-5 text-success" /> : <Circle className="h-5 w-5" />}
+                    </button>
+                  ) : (
+                    done ? <CheckCircle2 className="h-5 w-5 shrink-0 text-success" /> : <Circle className="h-5 w-5 shrink-0 text-text-muted" />
+                  )}
+                  <div className="min-w-0 flex-1 cursor-pointer" onClick={() => openPurchase(p)}>
+                    <p className={`truncate font-medium ${done ? "line-through" : ""}`}>{p.name}</p>
                     <p className="text-xs text-text-muted">
                       {Number(p.quantity)} {p.unit}
-                      {p.bought_at && <> · {fmtDate(p.bought_at, "dd/MM/yyyy")}</>}
+                      {done && p.bought_at && <> · feito em {fmtDate(p.bought_at, "dd/MM/yyyy")}</>}
                     </p>
                   </div>
                   <Money value={total} size="sm" className="shrink-0" />
