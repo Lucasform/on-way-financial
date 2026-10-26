@@ -5,9 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Camera,
-  ClipboardCheck,
   FolderOpen,
   Images,
+  ListTodo,
   Plus,
   Receipt,
   Store,
@@ -55,7 +55,7 @@ interface Props {
 export const OBRA_SECTIONS = [
   { href: "/overview/fornecedores", label: "Fornecedores", icon: Store },
   { href: "/overview/cotacoes", label: "Cotações", icon: Receipt },
-  { href: "/overview/checklist", label: "Checklist", icon: ClipboardCheck },
+  { href: "/overview/atividades", label: "Atividades", icon: ListTodo },
   { href: "/overview/andamento", label: "Andamento", icon: Camera },
   { href: "/overview/documentos", label: "Documentos", icon: FolderOpen },
   { href: "/overview/galeria", label: "Galeria", icon: Images },

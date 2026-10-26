@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Check, ChevronDown, ChevronRight, ClipboardCheck, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronRight, ClipboardCheck, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -21,9 +21,10 @@ interface Props {
   moduleId: string;
   initial: ChecklistItem[];
   canWrite: boolean;
+  onPromote?: (title: string) => void;
 }
 
-export function ObraChecklistTab({ moduleId, initial, canWrite }: Props) {
+export function ObraChecklistTab({ moduleId, initial, canWrite, onPromote }: Props) {
   const supabase = createSupabaseBrowser();
   const [items, setItems] = useState(initial);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
@@ -169,6 +170,18 @@ export function ObraChecklistTab({ moduleId, initial, canWrite }: Props) {
                           {checked && <Check className="h-3.5 w-3.5" />}
                         </button>
                         <p className={`flex-1 ${checked ? "text-text-muted line-through" : ""}`}>{item.name}</p>
+                        {canWrite && onPromote && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0"
+                            onClick={() => onPromote(item.name)}
+                            aria-label="Criar tarefa a partir desse item"
+                            title="Criar tarefa"
+                          >
+                            <ArrowRight className="h-3.5 w-3.5 text-primary" />
+                          </Button>
+                        )}
                         {canWrite && (
                           <Button
                             variant="ghost"
