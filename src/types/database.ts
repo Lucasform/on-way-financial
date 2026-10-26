@@ -363,6 +363,7 @@ export type Database = {
       }
       obra_activities: {
         Row: {
+          assignee: string | null
           created_at: string
           done_at: string | null
           due_date: string | null
@@ -374,6 +375,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          assignee?: string | null
           created_at?: string
           done_at?: string | null
           due_date?: string | null
@@ -385,6 +387,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          assignee?: string | null
           created_at?: string
           done_at?: string | null
           due_date?: string | null

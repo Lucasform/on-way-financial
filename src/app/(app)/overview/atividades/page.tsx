@@ -16,10 +16,12 @@ export default async function AtividadesPage() {
   if (!mod) redirect("/overview");
   const canWrite = ctx.role !== "viewer";
 
-  const [{ data: activities }, checklistResult] = await Promise.all([
+  const [{ data: activities }, checklistResult, { data: members }] = await Promise.all([
     supabase.from("obra_activities").select("*").eq("module_id", mod.id).order("created_at"),
     supabase.from("obra_checklist_items").select("*").eq("module_id", mod.id).order("position"),
+    supabase.from("household_members").select("display_name").eq("household_id", ctx.householdId),
   ]);
+  const memberNames = (members ?? []).map((m) => m.display_name?.trim()).filter((n): n is string => !!n);
 
   let checklist = checklistResult.data;
   if ((checklist ?? []).length === 0 && canWrite) {
@@ -42,6 +44,7 @@ export default async function AtividadesPage() {
         moduleId={mod.id}
         initialActivities={(activities ?? []) as never}
         initialChecklist={(checklist ?? []) as never}
+        memberNames={memberNames}
         canWrite={canWrite}
       />
     </div>

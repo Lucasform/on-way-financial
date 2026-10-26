@@ -20,23 +20,32 @@ export interface Activity {
   due_date: string | null;
   status: string;
   done_at: string | null;
+  assignee: string | null;
 }
 
 interface Props {
   moduleId: string;
   initialActivities: Activity[];
   initialChecklist: ChecklistItem[];
+  memberNames: string[];
   canWrite: boolean;
 }
 
-export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklist, canWrite }: Props) {
+const EMPTY_DRAFT = { title: "", due_date: "", notes: "", assignee: "" };
+
+export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklist, memberNames, canWrite }: Props) {
   const supabase = createSupabaseBrowser();
   const [subTab, setSubTab] = useState<"tarefas" | "referencia">("tarefas");
   const [activities, setActivities] = useState(initialActivities);
   const [showAdd, setShowAdd] = useState(false);
-  const [draft, setDraft] = useState({ title: "", due_date: "", notes: "" });
+  const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState({ title: "", due_date: "", notes: "" });
+  const [editDraft, setEditDraft] = useState(EMPTY_DRAFT);
+
+  const assigneeOptions = useMemo(() => {
+    const names = [...memberNames, ...activities.map((a) => a.assignee ?? "")].map((n) => n.trim()).filter(Boolean);
+    return [...new Set(names)].sort((a, b) => a.localeCompare(b));
+  }, [memberNames, activities]);
   const [pending, start] = useTransition();
   const { confirm, ConfirmDialog } = useConfirm();
 
@@ -76,6 +85,7 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
           title: draft.title.trim(),
           due_date: draft.due_date || null,
           notes: draft.notes.trim() || null,
+          assignee: draft.assignee.trim() || null,
         })
         .select("*")
         .single();
@@ -84,7 +94,7 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
         return;
       }
       setActivities((s) => [...s, data as Activity]);
-      setDraft({ title: "", due_date: "", notes: "" });
+      setDraft(EMPTY_DRAFT);
       setShowAdd(false);
     });
   }
@@ -121,7 +131,7 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
       setEditingId(null);
       return;
     }
-    setEditDraft({ title: a.title, due_date: a.due_date ?? "", notes: a.notes ?? "" });
+    setEditDraft({ title: a.title, due_date: a.due_date ?? "", notes: a.notes ?? "", assignee: a.assignee ?? "" });
     setEditingId(a.id);
   }
 
@@ -131,6 +141,7 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
         title: editDraft.title.trim(),
         due_date: editDraft.due_date || null,
         notes: editDraft.notes.trim() || null,
+        assignee: editDraft.assignee.trim() || null,
       };
       const { error } = await supabase.from("obra_activities").update(payload).eq("id", id);
       if (error) {
@@ -165,6 +176,17 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
             <p className={cn("truncate", checked ? "text-text-muted line-through" : "")}>{a.title}</p>
             {a.notes && <p className="truncate text-xs text-text-muted">{a.notes}</p>}
           </div>
+          {a.assignee && (
+            <span
+              className="flex max-w-[9rem] shrink-0 items-center gap-1.5 rounded-full bg-primary/10 py-0.5 pl-0.5 pr-2 text-xs font-medium text-primary"
+              title={`Responsável: ${a.assignee}`}
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-semibold uppercase text-white">
+                {a.assignee.trim().charAt(0)}
+              </span>
+              <span className="truncate">{a.assignee}</span>
+            </span>
+          )}
           {a.due_date && (
             <span className={cn("shrink-0 text-xs", overdueNow ? "font-medium text-danger" : "text-text-muted")}>
               {fmtDate(a.due_date, "dd/MM/yyyy")}
@@ -186,7 +208,7 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
           )}
         </li>
         {isEditing && (
-          <div className="grid gap-2 border-t border-border bg-bg-elev-2 p-3 sm:grid-cols-4">
+          <div className="grid gap-2 border-t border-border bg-bg-elev-2 p-3 sm:grid-cols-5">
             <Input
               value={editDraft.title}
               onChange={(e) => setEditDraft({ ...editDraft, title: e.target.value })}
@@ -199,11 +221,17 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
               onChange={(e) => setEditDraft({ ...editDraft, due_date: e.target.value })}
             />
             <Input
+              value={editDraft.assignee}
+              onChange={(e) => setEditDraft({ ...editDraft, assignee: e.target.value })}
+              placeholder="Responsável"
+              list="activity-assignees"
+            />
+            <Input
               value={editDraft.notes}
               onChange={(e) => setEditDraft({ ...editDraft, notes: e.target.value })}
               placeholder="Nota (opcional)"
             />
-            <div className="flex justify-end gap-2 sm:col-span-4">
+            <div className="flex justify-end gap-2 sm:col-span-5">
               <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>Cancelar</Button>
               <Button size="sm" disabled={pending || !editDraft.title.trim()} onClick={() => saveEdit(a.id)}>Salvar</Button>
             </div>
@@ -234,6 +262,11 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
   return (
     <div className="space-y-4">
       {ConfirmDialog}
+      <datalist id="activity-assignees">
+        {assigneeOptions.map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
 
       <div className="flex gap-2">
         <button
@@ -267,7 +300,7 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
           )}
           {canWrite && showAdd && (
             <Card className="p-3">
-              <div className="grid gap-2 sm:grid-cols-4">
+              <div className="grid gap-2 sm:grid-cols-5">
                 <Input
                   value={draft.title}
                   onChange={(e) => setDraft({ ...draft, title: e.target.value })}
@@ -280,6 +313,12 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
                   type="date"
                   value={draft.due_date}
                   onChange={(e) => setDraft({ ...draft, due_date: e.target.value })}
+                />
+                <Input
+                  value={draft.assignee}
+                  onChange={(e) => setDraft({ ...draft, assignee: e.target.value })}
+                  placeholder="Responsável"
+                  list="activity-assignees"
                 />
                 <Input
                   value={draft.notes}
