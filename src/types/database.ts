@@ -1049,6 +1049,54 @@ export type Database = {
           },
         ]
       }
+      supplier_budget_files: {
+        Row: {
+          created_at: string
+          file_type: string | null
+          file_url: string
+          id: string
+          module_id: string
+          name: string
+          size_bytes: number | null
+          supplier_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_type?: string | null
+          file_url: string
+          id?: string
+          module_id: string
+          name: string
+          size_bytes?: number | null
+          supplier_id: string
+        }
+        Update: {
+          created_at?: string
+          file_type?: string | null
+          file_url?: string
+          id?: string
+          module_id?: string
+          name?: string
+          size_bytes?: number | null
+          supplier_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_budget_files_module_id_fkey"
+            columns: ["module_id"]
+            isOneToOne: false
+            referencedRelation: "modules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_budget_files_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           address: string | null

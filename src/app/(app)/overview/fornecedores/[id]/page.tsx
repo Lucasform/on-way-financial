@@ -22,7 +22,7 @@ export default async function SupplierDetailPage({ params }: { params: { id: str
     .maybeSingle();
   if (!supplier) notFound();
 
-  const [{ data: quotes }, { data: purchases }] = await Promise.all([
+  const [{ data: quotes }, { data: purchases }, { data: budgetFiles }] = await Promise.all([
     supabase
       .from("price_quotes")
       .select("id, item_name, unit, unit_price, quoted_at, accepted_at")
@@ -35,6 +35,12 @@ export default async function SupplierDetailPage({ params }: { params: { id: str
       .eq("module_id", mod.id)
       .eq("supplier_id", params.id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("supplier_budget_files")
+      .select("id, name, file_url, file_type, size_bytes, created_at")
+      .eq("module_id", mod.id)
+      .eq("supplier_id", params.id)
+      .order("created_at", { ascending: false }),
   ]);
 
   return (
@@ -43,8 +49,10 @@ export default async function SupplierDetailPage({ params }: { params: { id: str
       <ObraSupplierDetail
         supplier={supplier}
         householdId={ctx.householdId}
+        moduleId={mod.id}
         quotes={quotes ?? []}
         purchases={(purchases ?? []) as never}
+        budgetFiles={budgetFiles ?? []}
         canWrite={ctx.role !== "viewer"}
       />
     </div>

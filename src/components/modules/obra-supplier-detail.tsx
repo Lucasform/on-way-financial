@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, MapPin, MessageCircle, Plus, Receipt, ShoppingBag, Star, Trash2 } from "lucide-react";
+import { Building2, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, FileText, Loader2, MapPin, MessageCircle, Plus, Receipt, ShoppingBag, Star, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import { Money } from "@/components/ui/money";
 import { useConfirm } from "@/hooks/use-confirm";
 import { fmtDate, todayISO } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
+import { uploadObraFile } from "@/lib/supabase/obra-storage";
 import { waLink } from "@/lib/utils";
 import { QuantityDialog } from "@/components/modules/quantity-dialog";
 import type { Supplier } from "@/components/modules/obra-suppliers-tab";
@@ -39,18 +40,36 @@ export interface PurchaseRow {
   bought_at: string | null;
 }
 
+export interface BudgetFile {
+  id: string;
+  name: string;
+  file_url: string;
+  file_type: string | null;
+  size_bytes: number | null;
+  created_at: string;
+}
+
 interface Props {
   supplier: Supplier;
   householdId: string;
+  moduleId: string;
   quotes: QuoteRow[];
   purchases: PurchaseRow[];
+  budgetFiles: BudgetFile[];
   canWrite: boolean;
+}
+
+function fmtFileSize(bytes: number | null): string {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 const CATEGORIES = ["material", "mão-de-obra", "equipamento", "serviço", "outro"];
 const UNITS = ["un", "m", "m2", "m3", "kg", "saco", "litro", "rolo", "barra", "caixa", "hora", "diária"];
 
-export function ObraSupplierDetail({ supplier: initial, householdId, quotes: initialQuotes, purchases: initialPurchases, canWrite }: Props) {
+export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, quotes: initialQuotes, purchases: initialPurchases, budgetFiles: initialBudgetFiles, canWrite }: Props) {
   const supabase = createSupabaseBrowser();
   const router = useRouter();
   const [supplier, setSupplier] = useState(initial);
@@ -60,6 +79,9 @@ export function ObraSupplierDetail({ supplier: initial, householdId, quotes: ini
   const [pending, start] = useTransition();
   const [quotes, setQuotes] = useState(initialQuotes);
   const [purchases, setPurchases] = useState(initialPurchases);
+  const [budgetFiles, setBudgetFiles] = useState(initialBudgetFiles);
+  const [uploadingBudget, setUploadingBudget] = useState(false);
+  const [removingBudgetId, setRemovingBudgetId] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [pendingAccept, setPendingAccept] = useState<QuoteRow | null>(null);
   const [showAddQuote, setShowAddQuote] = useState(false);
@@ -287,6 +309,64 @@ export function ObraSupplierDetail({ supplier: initial, householdId, quotes: ini
     }
   }
 
+  async function uploadBudgetFiles(files: FileList | null) {
+    if (!canWrite || !files || files.length === 0) return;
+    setUploadingBudget(true);
+    try {
+      let okCount = 0;
+      for (const file of Array.from(files)) {
+        const result = await uploadObraFile(supabase, "obra-documents", householdId, moduleId, file);
+        if ("error" in result) {
+          toast.error(`Falha no upload de "${file.name}": ${result.error}`);
+          continue;
+        }
+        const { data, error } = await supabase
+          .from("supplier_budget_files")
+          .insert({
+            module_id: moduleId,
+            supplier_id: supplier.id,
+            name: file.name,
+            file_url: result.url,
+            file_type: file.type || null,
+            size_bytes: file.size,
+          })
+          .select("*")
+          .single();
+        if (error || !data) {
+          toast.error(`Falha ao salvar "${file.name}".`);
+          continue;
+        }
+        setBudgetFiles((s) => [data as BudgetFile, ...s]);
+        okCount += 1;
+      }
+      if (okCount > 0) toast.success(okCount === 1 ? "PDF adicionado." : `${okCount} PDFs adicionados.`);
+    } finally {
+      setUploadingBudget(false);
+    }
+  }
+
+  async function removeBudgetFile(f: BudgetFile) {
+    if (!canWrite) return;
+    if (!(await confirm(`Apagar "${f.name}"?`, { danger: true }))) return;
+    setRemovingBudgetId(f.id);
+    try {
+      const marker = "/obra-documents/";
+      const idx = f.file_url.indexOf(marker);
+      const storagePath = idx >= 0 ? f.file_url.slice(idx + marker.length) : null;
+      if (storagePath) {
+        await supabase.storage.from("obra-documents").remove([decodeURIComponent(storagePath)]);
+      }
+      const { error } = await supabase.from("supplier_budget_files").delete().eq("id", f.id);
+      if (error) {
+        toast.error("Falha ao apagar.");
+        return;
+      }
+      setBudgetFiles((s) => s.filter((x) => x.id !== f.id));
+    } finally {
+      setRemovingBudgetId(null);
+    }
+  }
+
   function onDropQuote(e: React.DragEvent) {
     e.preventDefault();
     setDropActive(false);
@@ -449,6 +529,63 @@ export function ObraSupplierDetail({ supplier: initial, householdId, quotes: ini
           </div>
         )}
       </Card>
+
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+            <FileText className="h-4 w-4" /> PDF do orçamento
+          </h3>
+          {canWrite && (
+            <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+              {uploadingBudget ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              Adicionar PDF
+              <input
+                type="file"
+                accept="application/pdf"
+                multiple
+                className="hidden"
+                disabled={uploadingBudget}
+                onChange={(e) => {
+                  void uploadBudgetFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          )}
+        </div>
+        {budgetFiles.length === 0 ? (
+          <Empty icon={FileText} title="Sem PDF ainda" description="Anexe o orçamento que esse fornecedor enviou. Pode subir mais de um." />
+        ) : (
+          <Card className="divide-y divide-border">
+            {budgetFiles.map((f) => (
+              <div key={f.id} className="flex items-center gap-3 p-3 text-sm">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-bg-elev-2 text-text-muted">
+                  <FileText className="h-4 w-4" />
+                </span>
+                <a href={f.file_url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 hover:underline">
+                  <p className="truncate font-medium">{f.name}</p>
+                  <p className="text-xs text-text-muted">
+                    {fmtDate(f.created_at, "dd/MM/yyyy")}
+                    {f.size_bytes ? ` · ${fmtFileSize(f.size_bytes)}` : ""}
+                  </p>
+                </a>
+                {canWrite && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    disabled={removingBudgetId === f.id}
+                    onClick={() => removeBudgetFile(f)}
+                    aria-label="Apagar"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-danger" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </Card>
+        )}
+      </section>
 
       <section>
         <div className="mb-2 flex items-center justify-between">
