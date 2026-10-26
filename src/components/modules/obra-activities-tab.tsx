@@ -153,12 +153,12 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
     });
   }
 
-  function Row({ a }: { a: Activity }) {
+  function renderRow(a: Activity) {
     const checked = a.status === "feito";
     const overdueNow = !checked && a.due_date && a.due_date < today;
     const isEditing = editingId === a.id;
     return (
-      <div>
+      <div key={a.id}>
         <li className="flex items-center gap-2 p-3 text-sm">
           <button
             type="button"
@@ -241,7 +241,7 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
     );
   }
 
-  function Section({ title, rows, muted }: { title: string; rows: Activity[]; muted?: boolean }) {
+  function renderSection(title: string, rows: Activity[], muted?: boolean) {
     if (rows.length === 0) return null;
     return (
       <div>
@@ -250,9 +250,7 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
         </p>
         <Card className="divide-y divide-border overflow-hidden p-0">
           <ul className="divide-y divide-border">
-            {rows.map((a) => (
-              <Row key={a.id} a={a} />
-            ))}
+            {rows.map((a) => renderRow(a))}
           </ul>
         </Card>
       </div>
@@ -333,10 +331,10 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
             </Card>
           )}
 
-          <Section title="Atrasadas" rows={overdue} />
-          <Section title="Próximas" rows={upcoming} />
-          <Section title="Sem data" rows={noDate} muted />
-          <Section title="Concluídas" rows={done} muted />
+          {renderSection("Atrasadas", overdue)}
+          {renderSection("Próximas", upcoming)}
+          {renderSection("Sem data", noDate, true)}
+          {renderSection("Concluídas", done, true)}
 
           {activities.length === 0 && (
             <Card className="flex flex-col items-center gap-2 p-8 text-center text-sm text-text-muted">
