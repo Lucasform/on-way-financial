@@ -12,21 +12,45 @@ export interface SupplierOption {
   name: string;
 }
 
+const NEW_SUPPLIER = "__new__";
+
+export interface QuickAddResult {
+  supplier: SupplierOption;
+  quote: { id: string; item_name: string; unit: string; unit_price: number; quoted_at: string; accepted_at: string | null };
+  item: {
+    id: string;
+    name: string;
+    quantity: number;
+    unit: string;
+    unit_price: number | null;
+    actual_unit_price: number | null;
+    status: string;
+    bought_at: string | null;
+  } | null;
+}
+
 interface Props {
   suppliers: SupplierOption[];
-  onDone: () => void;
+  defaultSupplierId?: string;
+  allowNewSupplier?: boolean;
+  onDone: (result: QuickAddResult) => void;
   onCancel: () => void;
 }
 
-export function QuickAddExpenseDialog({ suppliers, onDone, onCancel }: Props) {
+export function QuickAddExpenseDialog({ suppliers, defaultSupplierId, allowNewSupplier = true, onDone, onCancel }: Props) {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
-  const [supplierId, setSupplierId] = useState("");
+  const [supplierId, setSupplierId] = useState(
+    defaultSupplierId ?? (suppliers.length === 0 && allowNewSupplier ? NEW_SUPPLIER : ""),
+  );
+  const [newSupplierName, setNewSupplierName] = useState("");
   const [status, setStatus] = useState<"cotacao" | "executada">("executada");
   const [saving, setSaving] = useState(false);
 
+  const creatingSupplier = supplierId === NEW_SUPPLIER;
   const num = Number(amount.replace(",", "."));
-  const valid = name.trim().length > 0 && Number.isFinite(num) && num > 0 && supplierId.length > 0;
+  const supplierOk = creatingSupplier ? newSupplierName.trim().length > 0 : supplierId.length > 0;
+  const valid = name.trim().length > 0 && Number.isFinite(num) && num > 0 && supplierOk;
 
   async function submit() {
     if (!valid || saving) return;
@@ -38,7 +62,7 @@ export function QuickAddExpenseDialog({ suppliers, onDone, onCancel }: Props) {
         body: JSON.stringify({
           name: name.trim(),
           amount: num,
-          supplier_id: supplierId,
+          ...(creatingSupplier ? { new_supplier_name: newSupplierName.trim() } : { supplier_id: supplierId }),
           status,
         }),
       });
@@ -47,7 +71,7 @@ export function QuickAddExpenseDialog({ suppliers, onDone, onCancel }: Props) {
         return;
       }
       toast.success(status === "executada" ? "Custo registrado." : "Cotação registrada.");
-      onDone();
+      onDone((await res.json()) as QuickAddResult);
     } finally {
       setSaving(false);
     }
@@ -86,22 +110,27 @@ export function QuickAddExpenseDialog({ suppliers, onDone, onCancel }: Props) {
           </div>
           <div className="space-y-1">
             <Label htmlFor="qa-supplier">Fornecedor</Label>
-            {suppliers.length > 0 ? (
-              <select
-                id="qa-supplier"
-                value={supplierId}
-                onChange={(e) => setSupplierId(e.target.value)}
-                className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
-              >
-                <option value="">Selecione...</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <p className="text-xs text-text-muted">Cadastre um fornecedor primeiro pra registrar despesas.</p>
+            <select
+              id="qa-supplier"
+              value={supplierId}
+              onChange={(e) => setSupplierId(e.target.value)}
+              className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
+            >
+              <option value="">Selecione...</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+              {allowNewSupplier && <option value={NEW_SUPPLIER}>+ Cadastrar novo fornecedor</option>}
+            </select>
+            {creatingSupplier && (
+              <Input
+                value={newSupplierName}
+                onChange={(e) => setNewSupplierName(e.target.value)}
+                placeholder="Nome do novo fornecedor"
+                aria-label="Nome do novo fornecedor"
+              />
             )}
           </div>
           <div className="space-y-1">

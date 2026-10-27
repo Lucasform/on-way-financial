@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { ObraCostsList, type CostRow } from "@/components/modules/obra-costs-list";
 import { ObraSectionHeader } from "@/components/modules/obra-section-header";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
@@ -30,7 +31,7 @@ export default async function GastoPage(props: { searchParams: Promise<{ periodo
 
   let query = supabase
     .from("obra_items")
-    .select("supplier_id, supplier, quantity, unit_price, actual_unit_price, bought_at")
+    .select("id, name, quote_id, supplier_id, supplier, quantity, unit_price, actual_unit_price, bought_at, created_at")
     .eq("module_id", mod.id)
     .eq("status", "done");
 
@@ -47,10 +48,23 @@ export default async function GastoPage(props: { searchParams: Promise<{ periodo
 
   const [{ data: items }, { data: suppliers }] = await Promise.all([
     query,
-    supabase.from("suppliers").select("id, name").eq("household_id", ctx.householdId),
+    supabase.from("suppliers").select("id, name").eq("household_id", ctx.householdId).order("name"),
   ]);
 
   const nameById = new Map((suppliers ?? []).map((s) => [s.id, s.name]));
+
+  const costs: CostRow[] = (items ?? [])
+    .map((i) => ({
+      id: i.id,
+      name: i.name,
+      supplier_id: i.supplier_id && nameById.has(i.supplier_id) ? i.supplier_id : null,
+      amount: Number(i.quantity) * Number(i.actual_unit_price ?? i.unit_price ?? 0),
+      bought_at: i.bought_at,
+      quote_id: i.quote_id,
+      sortKey: i.bought_at ?? i.created_at,
+    }))
+    .sort((a, b) => (a.supplier_id ? 1 : 0) - (b.supplier_id ? 1 : 0) || b.sortKey.localeCompare(a.sortKey))
+    .map(({ sortKey: _sortKey, ...c }) => c);
 
   const totals = new Map<string, number>();
   for (const i of items ?? []) {
@@ -131,6 +145,8 @@ export default async function GastoPage(props: { searchParams: Promise<{ periodo
           </div>
         </Card>
       )}
+
+      <ObraCostsList costs={costs} suppliers={suppliers ?? []} canWrite={ctx.role !== "viewer"} />
     </div>
   );
 }

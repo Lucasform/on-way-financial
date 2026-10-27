@@ -324,20 +324,22 @@ export async function addMaterialItem(householdId: string, args: AddMaterialArgs
     .maybeSingle();
   if (!mod) return "Não encontrei a obra ativa.";
 
-  let supplierId: string | null = null;
-  let supplierName: string | null = null;
-  if (args.supplier_name?.trim()) {
-    const { data: supplier } = await admin
-      .from("suppliers")
-      .select("id, name")
-      .eq("household_id", householdId)
-      .ilike("name", `%${args.supplier_name.trim()}%`)
-      .limit(1)
-      .maybeSingle();
-    if (supplier) {
-      supplierId = supplier.id;
-      supplierName = supplier.name;
-    }
+  if (!args.supplier_name?.trim()) {
+    return "Não adicionei: todo custo precisa de fornecedor. Pergunte ao usuário qual fornecedor cadastrado é.";
+  }
+  const { data: suppliers } = await admin
+    .from("suppliers")
+    .select("id, name")
+    .eq("household_id", householdId)
+    .ilike("name", `%${args.supplier_name.trim()}%`)
+    .limit(2);
+  if (!suppliers || suppliers.length === 0) {
+    return `Não adicionei: não existe fornecedor cadastrado com o nome "${args.supplier_name}". Peça pro usuário cadastrar em Fornecedores primeiro.`;
+  }
+  const [supplier, ...others] = suppliers;
+  if (!supplier) return "Não encontrei o fornecedor.";
+  if (others.length > 0) {
+    return `Não adicionei: "${args.supplier_name}" bate com mais de um fornecedor (${suppliers.map((s) => s.name).join(", ")}). Pergunte qual é.`;
   }
 
   const { error } = await admin.from("obra_items").insert({
@@ -347,13 +349,13 @@ export async function addMaterialItem(householdId: string, args: AddMaterialArgs
     unit: args.unit ?? "un",
     quantity: args.quantity ?? 1,
     unit_price: args.unit_price ?? null,
-    supplier: supplierName,
-    supplier_id: supplierId,
+    supplier: supplier.name,
+    supplier_id: supplier.id,
     status: "todo",
     notes: args.notes ?? null,
   });
   if (error) return `Erro ao adicionar material: ${error.message}`;
-  return `Item "${args.name}" adicionado como planejado.`;
+  return `Item "${args.name}" adicionado como planejado em ${supplier.name}.`;
 }
 
 export const ADD_MATERIAL_TOOL = {
@@ -361,7 +363,7 @@ export const ADD_MATERIAL_TOOL = {
   description:
     "Adiciona um item planejado (material, mão de obra, equipamento ou serviço) na lista de " +
     'materiais da obra. Use quando o usuário pedir pra "adicionar", "planejar" ou "incluir" um ' +
-    "item, com quantidade/preço/fornecedor se mencionados.",
+    "item. Fornecedor é obrigatório e precisa já estar cadastrado; se o usuário não disser, pergunte antes de chamar.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -370,10 +372,10 @@ export const ADD_MATERIAL_TOOL = {
       unit: { type: "string", description: "Unidade (un, saco, m2, m3, kg, hora...). Padrão: un." },
       quantity: { type: "number", description: "Quantidade. Padrão: 1." },
       unit_price: { type: "number", description: "Preço unitário estimado, se mencionado." },
-      supplier_name: { type: "string", description: "Nome do fornecedor, se mencionado." },
+      supplier_name: { type: "string", description: "Nome (ou parte) do fornecedor já cadastrado. Obrigatório." },
       notes: { type: "string", description: "Observações, se houver." },
     },
-    required: ["name"],
+    required: ["name", "supplier_name"],
   },
 };
 

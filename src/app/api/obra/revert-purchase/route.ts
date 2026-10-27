@@ -7,7 +7,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-const bodySchema = z.object({ item_id: z.string().uuid() });
+const bodySchema = z.object({ item_id: z.string().uuid(), delete_quote: z.boolean().optional() });
 
 /**
  * Apaga um item (custo) da obra. Se ele veio de uma cotação aceita, volta a cotação
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = bodySchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  const { item_id } = parsed.data;
+  const { item_id, delete_quote } = parsed.data;
 
   const supabase = createSupabaseServer();
   const mod = await getObraModule(ctx.householdId);
@@ -38,8 +38,12 @@ export async function POST(req: NextRequest) {
   if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
 
   if (item.quote_id) {
-    await supabase.from("price_quotes").update({ accepted_at: null }).eq("id", item.quote_id);
+    if (delete_quote) {
+      await supabase.from("price_quotes").delete().eq("id", item.quote_id).eq("household_id", ctx.householdId);
+    } else {
+      await supabase.from("price_quotes").update({ accepted_at: null }).eq("id", item.quote_id);
+    }
   }
 
-  return NextResponse.json({ ok: true, quote_id: item.quote_id });
+  return NextResponse.json({ ok: true, quote_id: delete_quote ? null : item.quote_id });
 }

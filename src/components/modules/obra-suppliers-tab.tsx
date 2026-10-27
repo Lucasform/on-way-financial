@@ -2,9 +2,10 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowUpDown, ChevronDown, ChevronUp, MessageCircle, Phone, Plus, Search, Star, Store, Trash2 } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronUp, MessageCircle, Phone, Plus, Receipt, Search, Star, Store, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { QuickAddExpenseDialog } from "@/components/modules/quick-add-expense-dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
@@ -51,6 +52,7 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
   const [draft, setDraft] = useState<Partial<Supplier>>({ category: "material" });
   const [moreOpen, setMoreOpen] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [showAddCost, setShowAddCost] = useState(false);
   const [sort, setSort] = useState<SortValue>("name-asc");
   const [query, setQuery] = useState("");
 
@@ -126,9 +128,43 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
   return (
     <div className="space-y-4">
       {canWrite && !showAdd && (
-        <Button variant="outline" onClick={() => setShowAdd(true)} className="w-full sm:w-auto">
-          <Plus className="h-4 w-4" /> Novo fornecedor
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button variant="outline" onClick={() => setShowAdd(true)} className="w-full sm:w-auto">
+            <Plus className="h-4 w-4" /> Novo fornecedor
+          </Button>
+          <Button variant="outline" onClick={() => setShowAddCost(true)} className="w-full sm:w-auto">
+            <Receipt className="h-4 w-4" /> Adicionar despesa
+          </Button>
+        </div>
+      )}
+
+      {showAddCost && (
+        <QuickAddExpenseDialog
+          suppliers={suppliers.map((s) => ({ id: s.id, name: s.name })).sort((a, b) => a.name.localeCompare(b.name))}
+          onDone={(r) => {
+            setShowAddCost(false);
+            setSuppliers((s) =>
+              s.some((x) => x.id === r.supplier.id)
+                ? s
+                : [
+                    {
+                      id: r.supplier.id,
+                      name: r.supplier.name,
+                      category: "material",
+                      phone: null,
+                      phone2: null,
+                      cnpj: null,
+                      address: null,
+                      notes: null,
+                      rating: null,
+                      created_at: new Date().toISOString(),
+                    },
+                    ...s,
+                  ],
+            );
+          }}
+          onCancel={() => setShowAddCost(false)}
+        />
       )}
 
       {canWrite && showAdd && (

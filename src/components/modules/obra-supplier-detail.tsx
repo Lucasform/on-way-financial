@@ -18,6 +18,7 @@ import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { uploadObraFile } from "@/lib/supabase/obra-storage";
 import { waLink } from "@/lib/utils";
 import { QuantityDialog } from "@/components/modules/quantity-dialog";
+import { QuickAddExpenseDialog } from "@/components/modules/quick-add-expense-dialog";
 import type { Supplier } from "@/components/modules/obra-suppliers-tab";
 
 export interface QuoteRow {
@@ -82,6 +83,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
   const [budgetFiles, setBudgetFiles] = useState(initialBudgetFiles);
   const [uploadingBudget, setUploadingBudget] = useState(false);
   const [removingBudgetId, setRemovingBudgetId] = useState<string | null>(null);
+  const [showAddExpense, setShowAddExpense] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [pendingAccept, setPendingAccept] = useState<QuoteRow | null>(null);
   const [showAddQuote, setShowAddQuote] = useState(false);
@@ -751,7 +753,14 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
           <h3 className="flex items-center gap-1.5 text-sm font-semibold">
             <ShoppingBag className="h-4 w-4" /> Custos
           </h3>
-          {purchases.length > 0 && <Money value={purchaseTotal} size="sm" tone="muted" />}
+          <div className="flex items-center gap-2">
+            {purchases.length > 0 && <Money value={purchaseTotal} size="sm" tone="muted" />}
+            {canWrite && (
+              <Button variant="outline" size="sm" onClick={() => setShowAddExpense(true)}>
+                <Plus className="h-3.5 w-3.5" /> Adicionar despesa
+              </Button>
+            )}
+          </div>
         </div>
         {purchases.length === 0 ? (
           <Empty
@@ -850,6 +859,20 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
           </Card>
         )}
       </section>
+
+      {showAddExpense && (
+        <QuickAddExpenseDialog
+          suppliers={[{ id: supplier.id, name: supplier.name }]}
+          defaultSupplierId={supplier.id}
+          allowNewSupplier={false}
+          onDone={(r) => {
+            setShowAddExpense(false);
+            setQuotes((s) => [r.quote, ...s]);
+            if (r.item) setPurchases((s) => [r.item!, ...s]);
+          }}
+          onCancel={() => setShowAddExpense(false)}
+        />
+      )}
 
       {pendingAccept && (
         <QuantityDialog

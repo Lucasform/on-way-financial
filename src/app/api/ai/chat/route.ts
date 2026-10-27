@@ -78,7 +78,11 @@ export async function POST(req: NextRequest) {
             module_hint: null,
             confidence: 1,
           };
-          const res = await createCostFromIntent({ householdId: ctx.householdId, intent });
+          const res = await createCostFromIntent({
+            householdId: ctx.householdId,
+            intent,
+            texts: [r.description, last.content],
+          });
           if (res.ok) {
             created++;
             total += r.amount;
@@ -123,7 +127,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (intent) {
-        const r = await createCostFromIntent({ householdId: ctx.householdId, intent });
+        const r = await createCostFromIntent({ householdId: ctx.householdId, intent, texts: [last.content] });
         return NextResponse.json({ reply: r.reply });
       }
     } catch (e) {
