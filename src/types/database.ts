@@ -12,6 +12,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      auth_email_sends: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          kind: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          kind: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          kind?: string
+        }
+        Relationships: []
+      }
       alerts: {
         Row: {
           active: boolean
@@ -988,6 +1009,8 @@ export type Database = {
       price_quotes: {
         Row: {
           accepted_at: string | null
+          execution_started_at: string | null
+          total_amount: number | null
           created_at: string
           household_id: string
           id: string
@@ -1002,6 +1025,8 @@ export type Database = {
         }
         Insert: {
           accepted_at?: string | null
+          execution_started_at?: string | null
+          total_amount?: number | null
           created_at?: string
           household_id: string
           id?: string
@@ -1016,6 +1041,8 @@ export type Database = {
         }
         Update: {
           accepted_at?: string | null
+          execution_started_at?: string | null
+          total_amount?: number | null
           created_at?: string
           household_id?: string
           id?: string
@@ -1048,6 +1075,57 @@ export type Database = {
             columns: ["supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quote_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          due_date: string | null
+          household_id: string
+          id: string
+          item_id: string | null
+          label: string
+          paid_at: string | null
+          quote_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          due_date?: string | null
+          household_id: string
+          id?: string
+          item_id?: string | null
+          label: string
+          paid_at?: string | null
+          quote_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          due_date?: string | null
+          household_id?: string
+          id?: string
+          item_id?: string | null
+          label?: string
+          paid_at?: string | null
+          quote_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_payments_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "price_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_payments_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "obra_items"
             referencedColumns: ["id"]
           },
         ]

@@ -25,7 +25,7 @@ export default async function SupplierDetailPage({ params }: { params: { id: str
   const [{ data: quotes }, { data: purchases }, { data: budgetFiles }] = await Promise.all([
     supabase
       .from("price_quotes")
-      .select("id, item_name, unit, unit_price, quoted_at, accepted_at")
+      .select("id, item_name, unit, unit_price, quoted_at, accepted_at, execution_started_at, total_amount")
       .eq("household_id", ctx.householdId)
       .eq("supplier_id", params.id)
       .order("quoted_at", { ascending: false }),
@@ -43,6 +43,14 @@ export default async function SupplierDetailPage({ params }: { params: { id: str
       .order("created_at", { ascending: false }),
   ]);
 
+  const quoteIds = (quotes ?? []).map((q) => q.id);
+  const { data: payments } = quoteIds.length
+    ? await supabase
+        .from("quote_payments")
+        .select("id, quote_id, label, amount, due_date, paid_at, item_id")
+        .in("quote_id", quoteIds)
+    : { data: [] };
+
   return (
     <div>
       <ObraSectionHeader title={supplier.name} subtitle="Orçamentos e histórico de compras" />
@@ -53,6 +61,7 @@ export default async function SupplierDetailPage({ params }: { params: { id: str
         quotes={quotes ?? []}
         purchases={(purchases ?? []) as never}
         budgetFiles={budgetFiles ?? []}
+        payments={payments ?? []}
         canWrite={ctx.role !== "viewer"}
       />
     </div>

@@ -1,7 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["gru1"],
+  "regions": [
+    "gru1"
+  ],
   "crons": [
-    { "path": "/api/cron/monthly-report?secret=$CRON_SECRET", "schedule": "0 12 1 * *" }
+    {
+      "path": "/api/cron/monthly-report?secret=$CRON_SECRET",
+      "schedule": "0 12 1 * *"
+    },
+    {
+      "path": "/api/cron/payment-reminders?secret=$CRON_SECRET",
+      "schedule": "0 11 * * *"
+    }
   ]
 }

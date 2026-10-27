@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  CalendarClock,
   Camera,
   FolderOpen,
   Images,
@@ -21,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Money } from "@/components/ui/money";
 import { Empty } from "@/components/ui/empty";
+import { fmtDate } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { uploadObraFile } from "@/lib/supabase/obra-storage";
 import { FolderChips, MoveToFolderBar, type ObraFolder } from "@/components/modules/obra-folders";
@@ -45,11 +47,68 @@ export interface GalleryItem {
   duration_seconds?: number | null;
   folder_id: string | null;
 }
+export interface UpcomingPayment {
+  id: string;
+  label: string;
+  amount: number;
+  due_date: string;
+  item_name: string;
+  supplier_name: string | null;
+}
+
 interface Props {
   module: Module;
   spentTotal: number;
   canWrite: boolean;
   suppliers: SupplierOption[];
+  upcomingPayments: UpcomingPayment[];
+  today: string;
+}
+
+function UpcomingPaymentsCard({ payments, today }: { payments: UpcomingPayment[]; today: string }) {
+  const overdue = payments.filter((p) => p.due_date < today).length;
+  const dueToday = payments.filter((p) => p.due_date === today).length;
+  const alert = overdue > 0 || dueToday > 0;
+  return (
+    <Link href="/overview/cotacoes?tab=execucao" className="block">
+      <Card className={`transition-colors hover:bg-bg-elev-2 ${alert ? "border-warning/60" : "hover:border-primary/50"}`}>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+          <CardTitle className="flex items-center gap-1.5 text-sm text-text-muted">
+            <CalendarClock className="h-4 w-4" /> Pagamentos agendados
+          </CardTitle>
+          {alert && (
+            <span className="text-xs font-medium text-warning">
+              {[overdue > 0 && `${overdue} atrasado${overdue > 1 ? "s" : ""}`, dueToday > 0 && `${dueToday} vence${dueToday > 1 ? "m" : ""} hoje`]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-1.5 pt-0">
+          {payments.slice(0, 4).map((p) => {
+            const late = p.due_date < today;
+            const isToday = p.due_date === today;
+            return (
+              <div key={p.id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate">
+                  {p.item_name}
+                  {p.supplier_name && <span className="text-text-muted"> · {p.supplier_name}</span>}
+                  <span className="text-text-muted"> · {p.label}</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className={`text-xs ${late ? "font-medium text-danger" : isToday ? "font-medium text-warning" : "text-text-muted"}`}>
+                    {isToday ? "hoje" : fmtDate(p.due_date, "dd/MM")}
+                  </span>
+                  <Money value={p.amount} size="sm" />
+                </span>
+              </div>
+            );
+          })}
+          {payments.length > 4 && <p className="text-xs text-text-muted">e mais {payments.length - 4}</p>}
+        </CardContent>
+      </Card>
+    </Link>
+  );
 }
 
 export const OBRA_SECTIONS = [
@@ -71,7 +130,7 @@ function statusLabel(s: string): string {
   }
 }
 
-export function ObraDashboard({ module, spentTotal, canWrite, suppliers }: Props) {
+export function ObraDashboard({ module, spentTotal, canWrite, suppliers, upcomingPayments, today }: Props) {
   const router = useRouter();
   const [showQuickAdd, setShowQuickAdd] = useState(false);
 
@@ -109,6 +168,8 @@ export function ObraDashboard({ module, spentTotal, canWrite, suppliers }: Props
           </button>
         )}
       </section>
+
+      {upcomingPayments.length > 0 && <UpcomingPaymentsCard payments={upcomingPayments} today={today} />}
 
       {showQuickAdd && (
         <QuickAddExpenseDialog

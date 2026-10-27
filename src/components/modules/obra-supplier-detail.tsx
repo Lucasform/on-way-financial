@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, FileText, Loader2, MapPin, MessageCircle, Plus, Receipt, ShoppingBag, Star, Trash2, Upload } from "lucide-react";
+import { Building2, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, FileText, Loader2, MapPin, MessageCircle, Play, Plus, Receipt, ShoppingBag, Star, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,15 @@ import { fmtDate, todayISO } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { uploadObraFile } from "@/lib/supabase/obra-storage";
 import { waLink } from "@/lib/utils";
-import { QuantityDialog } from "@/components/modules/quantity-dialog";
+import {
+  callExecution,
+  ExecuteQuoteDialog,
+  QuotePaymentsPanel,
+  QuoteProgressText,
+  quoteStatus,
+  type ExecutionSnapshot,
+  type QuotePayment,
+} from "@/components/modules/quote-execution";
 import { QuickAddExpenseDialog } from "@/components/modules/quick-add-expense-dialog";
 import type { Supplier } from "@/components/modules/obra-suppliers-tab";
 
@@ -28,6 +36,8 @@ export interface QuoteRow {
   unit_price: number;
   quoted_at: string;
   accepted_at: string | null;
+  execution_started_at: string | null;
+  total_amount: number | null;
 }
 
 export interface PurchaseRow {
@@ -57,6 +67,7 @@ interface Props {
   quotes: QuoteRow[];
   purchases: PurchaseRow[];
   budgetFiles: BudgetFile[];
+  payments: QuotePayment[];
   canWrite: boolean;
 }
 
@@ -70,7 +81,7 @@ function fmtFileSize(bytes: number | null): string {
 const CATEGORIES = ["material", "mão-de-obra", "equipamento", "serviço", "outro"];
 const UNITS = ["un", "m", "m2", "m3", "kg", "saco", "litro", "rolo", "barra", "caixa", "hora", "diária"];
 
-export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, quotes: initialQuotes, purchases: initialPurchases, budgetFiles: initialBudgetFiles, canWrite }: Props) {
+export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, quotes: initialQuotes, purchases: initialPurchases, budgetFiles: initialBudgetFiles, payments: initialPayments, canWrite }: Props) {
   const supabase = createSupabaseBrowser();
   const router = useRouter();
   const [supplier, setSupplier] = useState(initial);
@@ -84,8 +95,9 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
   const [uploadingBudget, setUploadingBudget] = useState(false);
   const [removingBudgetId, setRemovingBudgetId] = useState<string | null>(null);
   const [showAddExpense, setShowAddExpense] = useState(false);
-  const [acceptingId, setAcceptingId] = useState<string | null>(null);
-  const [pendingAccept, setPendingAccept] = useState<QuoteRow | null>(null);
+  const [payments, setPayments] = useState(initialPayments);
+  const [executing, setExecuting] = useState<QuoteRow | null>(null);
+  const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null);
   const [showAddQuote, setShowAddQuote] = useState(false);
   const [newQuote, setNewQuote] = useState({ item_name: "", unit: "un", unit_price: "", quoted_at: todayISO() });
   const [savingNewQuote, setSavingNewQuote] = useState(false);
@@ -182,12 +194,15 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
   async function reopenQuote(id: string) {
     if (!canWrite) return;
     if (!confirm("Voltar essa cotação pro estado aberta? Isso não apaga a compra/despesa se ela ainda existir — pra isso, apague em Realizado.")) return;
-    const { error } = await supabase.from("price_quotes").update({ accepted_at: null }).eq("id", id);
+    const { error } = await supabase
+      .from("price_quotes")
+      .update({ accepted_at: null, execution_started_at: null, total_amount: null })
+      .eq("id", id);
     if (error) {
       toast.error("Falha ao reabrir.");
       return;
     }
-    setQuotes((s) => s.map((q) => (q.id === id ? { ...q, accepted_at: null } : q)));
+    setQuotes((s) => s.map((q) => (q.id === id ? { ...q, accepted_at: null, execution_started_at: null, total_amount: null } : q)));
     toast.success("Cotação reaberta.");
   }
 
@@ -243,47 +258,16 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
   }
 
   function acceptQuote(quote: QuoteRow) {
-    if (!canWrite || acceptingId || quote.accepted_at) return;
-    setPendingAccept(quote);
+    if (!canWrite || quoteStatus(quote) !== "aberto") return;
+    setExecuting(quote);
   }
 
-  async function confirmAccept(quote: QuoteRow, quantity: number) {
-    setPendingAccept(null);
-    setAcceptingId(quote.id);
-    try {
-      const res = await fetch("/api/obra/accept-quote", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ quote_id: quote.id, quantity }),
-      });
-      if (res.status === 409) {
-        toast.warning("Essa cotação já tinha sido aceita.");
-        setQuotes((s) => s.map((x) => (x.id === quote.id ? { ...x, accepted_at: x.accepted_at ?? new Date().toISOString() } : x)));
-        return;
-      }
-      if (!res.ok) {
-        toast.error("Falha ao aceitar cotação.");
-        return;
-      }
-      const data = await res.json();
-      setQuotes((s) => s.map((x) => (x.id === quote.id ? { ...x, accepted_at: new Date().toISOString() } : x)));
-      setPurchases((s) => [
-        {
-          id: data.item.id,
-          name: data.item.name,
-          quantity: data.item.quantity,
-          unit: data.item.unit,
-          unit_price: data.item.unit_price,
-          actual_unit_price: data.item.actual_unit_price,
-          status: data.item.status,
-          bought_at: data.item.bought_at,
-        },
-        ...s,
-      ]);
-      toast.success("Cotação aceita: virou custo a fazer.");
-    } finally {
-      setAcceptingId(null);
-    }
+  function applySnapshot(snap: ExecutionSnapshot<QuoteRow>) {
+    setQuotes((s) => s.map((q) => (q.id === snap.quote.id ? snap.quote : q)));
+    setPayments((s) => [...s.filter((p) => p.quote_id !== snap.quote.id), ...snap.payments]);
+    const ids = new Set(snap.items.map((i) => i.id));
+    setPurchases((s) => [...snap.items, ...s.filter((p) => !ids.has(p.id))]);
+    setExpandedQuoteId(quoteStatus(snap.quote) === "execucao" ? snap.quote.id : null);
   }
 
   async function removePurchase(itemId: string) {
@@ -300,12 +284,18 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
         toast.error("Falha ao apagar.");
         return;
       }
-      const data = (await res.json()) as { quote_id: string | null };
+      const data = (await res.json()) as { quote_id: string | null; payment_quote_id?: string | null };
       setPurchases((s) => s.filter((p) => p.id !== itemId));
       if (data.quote_id) {
-        setQuotes((s) => s.map((q) => (q.id === data.quote_id ? { ...q, accepted_at: null } : q)));
+        setQuotes((s) =>
+          s.map((q) => (q.id === data.quote_id ? { ...q, accepted_at: null, execution_started_at: null, total_amount: null } : q)),
+        );
       }
-      toast.success("Removido.");
+      if (data.payment_quote_id) {
+        const snap = await callExecution<QuoteRow>({ action: "get", quote_id: data.payment_quote_id });
+        if (snap) applySnapshot(snap);
+      }
+      toast.success(data.payment_quote_id ? "Pagamento desfeito, voltou pra agendado." : "Removido.");
     } finally {
       setRemovingId(null);
     }
@@ -640,9 +630,9 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
             </div>
           </Card>
         )}
-        {canWrite && quotes.length > 0 && (
+        {canWrite && quotes.some((q) => quoteStatus(q) === "aberto") && (
           <p className="mb-2 text-[11px] text-text-muted">
-            Clique em <Check className="inline h-3 w-3" /> pra aceitar e virar um custo, ou arraste pra baixo.
+            Clique em <Play className="inline h-3 w-3" /> Executar (valor total ou parcial), ou arraste a cotação pra Custos.
           </p>
         )}
         {quotes.length === 0 ? (
@@ -650,23 +640,35 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
         ) : (
           <Card className="divide-y divide-border">
             {quotes.map((q) => {
-              const draggableNow = canWrite && !q.accepted_at;
+              const status = quoteStatus(q);
+              const draggableNow = canWrite && status === "aberto";
               const isEditing = editingQuoteId === q.id;
+              const qPayments = payments.filter((p) => p.quote_id === q.id);
+              const expanded = expandedQuoteId === q.id;
               return (
                 <div key={q.id}>
                   <div
                     draggable={draggableNow}
                     onDragStart={(e) => draggableNow && e.dataTransfer.setData("text/quote-id", q.id)}
-                    onClick={() => openQuote(q)}
-                    className={`flex items-center justify-between gap-3 p-3 text-sm ${canWrite ? "cursor-pointer hover:bg-bg-elev-2" : ""} ${draggableNow ? "active:cursor-grabbing" : ""} ${q.accepted_at ? "opacity-60" : ""}`}
+                    onClick={() => (status === "aberto" ? openQuote(q) : status === "execucao" && setExpandedQuoteId(expanded ? null : q.id))}
+                    className={`flex items-center justify-between gap-3 p-3 text-sm ${canWrite ? "cursor-pointer hover:bg-bg-elev-2" : ""} ${draggableNow ? "active:cursor-grabbing" : ""} ${status === "aceita" ? "opacity-60" : ""}`}
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">{q.item_name}</p>
-                      <p className="text-xs text-text-muted">{fmtDate(q.quoted_at, "dd/MM/yyyy")} · {q.unit}</p>
+                      {status === "execucao" ? (
+                        <QuoteProgressText quote={q} payments={qPayments} />
+                      ) : (
+                        <p className="text-xs text-text-muted">{fmtDate(q.quoted_at, "dd/MM/yyyy")} · {q.unit}</p>
+                      )}
                     </div>
                     <Money value={q.unit_price} size="sm" className="shrink-0" />
-                    {q.accepted_at &&
-                      (canWrite ? (
+                    {status === "execucao" && (
+                      <Badge variant="secondary" className="shrink-0">
+                        em execução {expanded ? <ChevronUp className="ml-0.5 inline h-3 w-3" /> : <ChevronDown className="ml-0.5 inline h-3 w-3" />}
+                      </Badge>
+                    )}
+                    {status === "aceita" &&
+                      (canWrite && qPayments.length === 0 ? (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -681,22 +683,23 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
                       ) : (
                         <Badge variant="secondary">aceita</Badge>
                       ))}
-                    {canWrite && !q.accepted_at && (
+                    {canWrite && status === "aberto" && (
                       <Button
                         variant="outline"
-                        size="icon"
-                        className="h-7 w-7 shrink-0"
-                        disabled={acceptingId === q.id}
+                        size="sm"
+                        className="h-7 shrink-0 px-2 text-xs"
                         onClick={(e) => {
                           e.stopPropagation();
                           acceptQuote(q);
                         }}
-                        aria-label="Aceitar cotação"
                       >
-                        <Check className="h-3.5 w-3.5" />
+                        <Play className="h-3 w-3" /> Executar
                       </Button>
                     )}
                   </div>
+                  {status === "execucao" && expanded && (
+                    <QuotePaymentsPanel quote={q} payments={qPayments} canWrite={canWrite} onChange={applySnapshot} />
+                  )}
                   {isEditing && (
                     <div className="grid gap-2 border-t border-border bg-bg-elev-2 p-3 sm:grid-cols-4">
                       <Input
@@ -867,19 +870,21 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
           allowNewSupplier={false}
           onDone={(r) => {
             setShowAddExpense(false);
-            setQuotes((s) => [r.quote, ...s]);
+            setQuotes((s) => [{ ...r.quote, execution_started_at: null, total_amount: null }, ...s]);
             if (r.item) setPurchases((s) => [r.item!, ...s]);
           }}
           onCancel={() => setShowAddExpense(false)}
         />
       )}
 
-      {pendingAccept && (
-        <QuantityDialog
-          itemName={pendingAccept.item_name}
-          unit={pendingAccept.unit}
-          onConfirm={(quantity) => confirmAccept(pendingAccept, quantity)}
-          onCancel={() => setPendingAccept(null)}
+      {executing && (
+        <ExecuteQuoteDialog
+          quote={executing}
+          onCancel={() => setExecuting(null)}
+          onDone={(snap) => {
+            setExecuting(null);
+            applySnapshot(snap);
+          }}
         />
       )}
     </div>

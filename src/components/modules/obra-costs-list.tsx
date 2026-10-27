@@ -20,6 +20,7 @@ export interface CostRow {
   amount: number;
   bought_at: string | null;
   quote_id: string | null;
+  from_payment: boolean;
 }
 
 interface Props {
@@ -39,7 +40,11 @@ export function ObraCostsList({ costs, suppliers, canWrite }: Props) {
 
   async function remove(c: CostRow) {
     if (!canWrite || busyId) return;
-    const extra = c.quote_id ? " A cotação que gerou esse custo também é apagada." : "";
+    const extra = c.from_payment
+      ? " É um pagamento de cotação: ele volta pra agendado e a cotação fica em execução."
+      : c.quote_id
+        ? " A cotação que gerou esse custo também é apagada."
+        : "";
     if (!(await confirm(`Apagar "${c.name}"?${extra}`, { danger: true }))) return;
     setBusyId(c.id);
     try {

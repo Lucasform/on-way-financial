@@ -46,10 +46,13 @@ export default async function GastoPage(props: { searchParams: Promise<{ periodo
     query = query.gte("bought_at", format(start, "yyyy-MM-dd")).lte("bought_at", format(end, "yyyy-MM-dd"));
   }
 
-  const [{ data: items }, { data: suppliers }] = await Promise.all([
+  const [{ data: items }, { data: suppliers }, { data: paidPayments }] = await Promise.all([
     query,
     supabase.from("suppliers").select("id, name").eq("household_id", ctx.householdId).order("name"),
+    supabase.from("quote_payments").select("item_id").eq("household_id", ctx.householdId).not("item_id", "is", null),
   ]);
+
+  const paymentItemIds = new Set((paidPayments ?? []).map((p) => p.item_id));
 
   const nameById = new Map((suppliers ?? []).map((s) => [s.id, s.name]));
 
@@ -61,6 +64,7 @@ export default async function GastoPage(props: { searchParams: Promise<{ periodo
       amount: Number(i.quantity) * Number(i.actual_unit_price ?? i.unit_price ?? 0),
       bought_at: i.bought_at,
       quote_id: i.quote_id,
+      from_payment: paymentItemIds.has(i.id),
       sortKey: i.bought_at ?? i.created_at,
     }))
     .sort((a, b) => (a.supplier_id ? 1 : 0) - (b.supplier_id ? 1 : 0) || b.sortKey.localeCompare(a.sortKey))

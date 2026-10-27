@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { getObraModule } from "@/lib/obra";
 import { loadActiveContext } from "@/lib/household";
+import { revertPaymentForItem, settleQuote } from "@/lib/quote-execution";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -34,14 +35,24 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   if (!item) return NextResponse.json({ error: "item_not_found" }, { status: 404 });
 
+  const paymentQuoteId = await revertPaymentForItem(supabase, item.id);
+
   const { error: delErr } = await supabase.from("obra_items").delete().eq("id", item.id);
   if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+
+  if (paymentQuoteId) {
+    await settleQuote(supabase, paymentQuoteId);
+    return NextResponse.json({ ok: true, quote_id: null, payment_quote_id: paymentQuoteId });
+  }
 
   if (item.quote_id) {
     if (delete_quote) {
       await supabase.from("price_quotes").delete().eq("id", item.quote_id).eq("household_id", ctx.householdId);
     } else {
-      await supabase.from("price_quotes").update({ accepted_at: null }).eq("id", item.quote_id);
+      await supabase
+        .from("price_quotes")
+        .update({ accepted_at: null, execution_started_at: null, total_amount: null })
+        .eq("id", item.quote_id);
     }
   }
 

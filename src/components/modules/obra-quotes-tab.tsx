@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { ArrowUpDown, Check, Plus, Receipt, Search, Trash2, Trophy } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronUp, Play, Plus, Receipt, Search, Trash2, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,15 @@ import { Label } from "@/components/ui/label";
 import { Money } from "@/components/ui/money";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { fmtDate, todayISO } from "@/lib/dates";
-import { QuantityDialog } from "@/components/modules/quantity-dialog";
+import {
+  ExecuteQuoteDialog,
+  QuotePaymentsPanel,
+  QuoteProgressText,
+  quoteStatus,
+  type ExecutionSnapshot,
+  type QuotePayment,
+  type QuoteStatus,
+} from "@/components/modules/quote-execution";
 import type { Supplier } from "@/components/modules/obra-suppliers-tab";
 
 export interface Quote {
@@ -26,6 +34,8 @@ export interface Quote {
   valid_until: string | null;
   notes: string | null;
   accepted_at: string | null;
+  execution_started_at: string | null;
+  total_amount: number | null;
 }
 
 const UNITS = ["un", "m", "m2", "m3", "kg", "saco", "litro", "rolo", "barra", "caixa", "hora", "diária"];
@@ -44,29 +54,41 @@ interface Props {
   householdId: string;
   suppliers: Supplier[];
   initial: Quote[];
+  initialPayments: QuotePayment[];
+  initialTab?: QuoteStatus;
   canWrite: boolean;
 }
 
-export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Props) {
+export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments, initialTab = "aberto", canWrite }: Props) {
   const supabase = createSupabaseBrowser();
   const [quotes, setQuotes] = useState(initial);
   const [pending, start] = useTransition();
-  const [acceptingId, setAcceptingId] = useState<string | null>(null);
-  const [pendingAccept, setPendingAccept] = useState<Quote | null>(null);
+  const [payments, setPayments] = useState(initialPayments);
+  const [executing, setExecuting] = useState<Quote | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sort, setSort] = useState<SortValue>("item-asc");
   const [supplierQuery, setSupplierQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<"aberto" | "aceita">("aberto");
+  const [activeTab, setActiveTab] = useState<QuoteStatus>(initialTab);
   const [draft, setDraft] = useState<Partial<Quote>>({
     supplier_id: suppliers[0]?.id,
     unit: "un",
     quoted_at: todayISO(),
   });
 
-  const openCount = useMemo(() => quotes.filter((q) => !q.accepted_at).length, [quotes]);
-  const acceptedCount = quotes.length - openCount;
+  const counts = useMemo(() => {
+    const c: Record<QuoteStatus, number> = { aberto: 0, execucao: 0, aceita: 0 };
+    for (const q of quotes) c[quoteStatus(q)]++;
+    return c;
+  }, [quotes]);
+
+  const paymentsByQuote = useMemo(() => {
+    const m = new Map<string, QuotePayment[]>();
+    for (const p of payments) m.set(p.quote_id, [...(m.get(p.quote_id) ?? []), p]);
+    return m;
+  }, [payments]);
 
   const grouped = useMemo(() => {
-    const tabQuotes = quotes.filter((quote) => (activeTab === "aceita" ? quote.accepted_at : !quote.accepted_at));
+    const tabQuotes = quotes.filter((quote) => quoteStatus(quote) === activeTab);
     const q = supplierQuery.trim().toLowerCase();
     const filteredQuotes = q
       ? tabQuotes.filter((quote) => {
@@ -137,34 +159,12 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
     });
   }
 
-  function accept(q: Quote) {
-    if (!canWrite || acceptingId || q.accepted_at) return;
-    setPendingAccept(q);
-  }
-
-  async function confirmAccept(q: Quote, quantity: number) {
-    setPendingAccept(null);
-    setAcceptingId(q.id);
-    try {
-      const res = await fetch("/api/obra/accept-quote", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ quote_id: q.id, quantity }),
-      });
-      if (res.status === 409) {
-        toast.warning("Essa cotação já tinha sido aceita.");
-        setQuotes((s) => s.map((x) => (x.id === q.id ? { ...x, accepted_at: x.accepted_at ?? new Date().toISOString() } : x)));
-        return;
-      }
-      if (!res.ok) {
-        toast.error("Falha ao aceitar cotação.");
-        return;
-      }
-      setQuotes((s) => s.map((x) => (x.id === q.id ? { ...x, accepted_at: new Date().toISOString() } : x)));
-      toast.success("Cotação aceita: virou compra e despesa. Veja em Materiais/Despesas.");
-    } finally {
-      setAcceptingId(null);
-    }
+  function applySnapshot(snap: ExecutionSnapshot<Quote>) {
+    setQuotes((s) => s.map((x) => (x.id === snap.quote.id ? snap.quote : x)));
+    setPayments((s) => [...s.filter((p) => p.quote_id !== snap.quote.id), ...snap.payments]);
+    const status = quoteStatus(snap.quote);
+    setActiveTab(status);
+    setExpandedId(status === "execucao" ? snap.quote.id : null);
   }
 
   function remove(id: string) {
@@ -253,29 +253,27 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
         </Card>
       )}
 
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => setActiveTab("aberto")}
-          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-            activeTab === "aberto"
-              ? "border-primary bg-primary/10 text-primary"
-              : "border-border text-text-muted hover:bg-bg-elev-2"
-          }`}
-        >
-          Em aberto ({openCount})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab("aceita")}
-          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-            activeTab === "aceita"
-              ? "border-primary bg-primary/10 text-primary"
-              : "border-border text-text-muted hover:bg-bg-elev-2"
-          }`}
-        >
-          Aceita ({acceptedCount})
-        </button>
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            ["aberto", "Em aberto"],
+            ["execucao", "Em execução"],
+            ["aceita", "Aceita"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setActiveTab(value)}
+            className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              activeTab === value
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-text-muted hover:bg-bg-elev-2"
+            }`}
+          >
+            {label} ({counts[value]})
+          </button>
+        ))}
       </div>
 
       {quotes.length > 0 && (
@@ -314,14 +312,18 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
               ? "Nenhuma cotação desse fornecedor"
               : activeTab === "aceita"
                 ? "Nenhuma cotação aceita ainda"
-                : "Sem cotações em aberto"
+                : activeTab === "execucao"
+                  ? "Nada em execução"
+                  : "Sem cotações em aberto"
           }
           description={
             supplierQuery.trim()
               ? "Tenta buscar por outro nome."
               : activeTab === "aceita"
-                ? "Aceite uma cotação em aberto pra ela aparecer aqui."
-                : "Registre preços de fornecedores diferentes pra comparar."
+                ? "Cotação paga por inteiro aparece aqui."
+                : activeTab === "execucao"
+                  ? "Cotação com pagamento parcial ou agendado aparece aqui até quitar."
+                  : "Registre preços de fornecedores diferentes pra comparar."
           }
         />
       ) : (
@@ -330,55 +332,74 @@ export function ObraQuotesTab({ householdId, suppliers, initial, canWrite }: Pro
             <Card key={g.key} className="overflow-hidden">
               <div className="border-b border-border px-4 py-3 text-sm font-semibold">{g.name}</div>
               <ul className="divide-y divide-border">
-                {g.list.map((q, idx) => (
-                  <li key={q.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                    <div className="flex items-center gap-2">
-                      {idx === 0 && <Trophy className="h-4 w-4 text-warning" />}
-                      <div>
-                        <p className="font-medium">{supplierName(q.supplier_id)}</p>
-                        <p className="text-[10px] text-text-muted">
-                          {fmtDate(q.quoted_at)}
-                          {q.valid_until && ` · válido até ${fmtDate(q.valid_until)}`}
-                        </p>
+                {g.list.map((q, idx) => {
+                  const status = quoteStatus(q);
+                  const qPayments = paymentsByQuote.get(q.id) ?? [];
+                  const expanded = expandedId === q.id;
+                  const best = status === "aberto" && idx === 0;
+                  return (
+                    <li key={q.id}>
+                      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                        <div className="flex min-w-0 items-center gap-2">
+                          {best && <Trophy className="h-4 w-4 shrink-0 text-warning" />}
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{supplierName(q.supplier_id)}</p>
+                            {status === "execucao" ? (
+                              <QuoteProgressText quote={q} payments={qPayments} />
+                            ) : (
+                              <p className="text-[10px] text-text-muted">
+                                {fmtDate(q.quoted_at)}
+                                {q.valid_until && ` · válido até ${fmtDate(q.valid_until)}`}
+                              </p>
+                            )}
+                          </div>
+                          {best && g.list.length > 1 && <Badge variant="success">melhor preço</Badge>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Money value={Number(q.unit_price)} size="sm" className="num font-medium" />
+                          <span className="text-xs text-text-muted">/{q.unit}</span>
+                          {canWrite && status === "aberto" && (
+                            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setExecuting(q)}>
+                              <Play className="h-3 w-3" /> Executar
+                            </Button>
+                          )}
+                          {status === "execucao" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => setExpandedId(expanded ? null : q.id)}
+                            >
+                              Pagamentos {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            </Button>
+                          )}
+                          {canWrite && status === "aberto" && (
+                            <Button variant="ghost" size="icon" onClick={() => remove(q.id)} aria-label="Apagar cotação">
+                              <Trash2 className="h-4 w-4 text-danger" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                      {idx === 0 && g.list.length > 1 && <Badge variant="success">melhor preço</Badge>}
-                      {q.accepted_at && <Badge variant="secondary">aceita</Badge>}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Money value={Number(q.unit_price)} size="sm" className="num font-medium" />
-                      <span className="text-xs text-text-muted">/{q.unit}</span>
-                      {canWrite && !q.accepted_at && (
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled={acceptingId === q.id}
-                          onClick={() => accept(q)}
-                          aria-label="Aceitar cotação"
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                        </Button>
+                      {status === "execucao" && expanded && (
+                        <QuotePaymentsPanel quote={q} payments={qPayments} canWrite={canWrite} onChange={applySnapshot} />
                       )}
-                      {canWrite && (
-                        <Button variant="ghost" size="icon" onClick={() => remove(q.id)}>
-                          <Trash2 className="h-4 w-4 text-danger" />
-                        </Button>
-                      )}
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             </Card>
           ))}
         </div>
       )}
 
-      {pendingAccept && (
-        <QuantityDialog
-          itemName={pendingAccept.item_name}
-          unit={pendingAccept.unit}
-          onConfirm={(quantity) => confirmAccept(pendingAccept, quantity)}
-          onCancel={() => setPendingAccept(null)}
+      {executing && (
+        <ExecuteQuoteDialog
+          quote={executing}
+          onCancel={() => setExecuting(null)}
+          onDone={(snap) => {
+            setExecuting(null);
+            applySnapshot(snap);
+          }}
         />
       )}
     </div>

@@ -21,19 +21,17 @@ const ROLE_LABEL: Record<string, string> = {
  * Envia o email de convite via Resend.
  * Retorna ok=true se aceito pela API (HTTP 200/202), ok=false caso contrario.
  */
-export async function sendInviteEmail(args: SendInviteArgs): Promise<{ ok: boolean; error?: string }> {
+export async function sendResendEmail(args: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}): Promise<{ ok: boolean; error?: string }> {
   const env = getServerEnv();
   if (!env.RESEND_API_KEY) return { ok: false, error: "resend_not_configured" };
 
-  const role = ROLE_LABEL[args.role] ?? args.role;
-  const inviter = args.inviterName ? args.inviterName : "Alguém";
   const appName = env.NEXT_PUBLIC_APP_NAME ?? "On Obra";
-  const from = `${appName} <${env.INVITE_FROM_EMAIL}>`;
   const replyTo = env.INVITE_REPLY_TO ?? undefined;
-
-  const subject = `${inviter} te convidou para o ${args.householdName} no ${appName}`;
-  const html = buildHtml({ inviter, householdName: args.householdName, role, inviteUrl: args.inviteUrl, appName });
-  const text = `${inviter} te convidou para participar do grupo "${args.householdName}" no ${appName} como ${role}.\n\nAcesse: ${args.inviteUrl}\n\nO convite expira em 7 dias.`;
 
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -43,11 +41,11 @@ export async function sendInviteEmail(args: SendInviteArgs): Promise<{ ok: boole
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from,
+        from: `${appName} <${env.INVITE_FROM_EMAIL}>`,
         to: [args.to],
-        subject,
-        html,
-        text,
+        subject: args.subject,
+        html: args.html,
+        text: args.text,
         ...(replyTo ? { reply_to: replyTo } : {}),
       }),
     });
@@ -59,6 +57,58 @@ export async function sendInviteEmail(args: SendInviteArgs): Promise<{ ok: boole
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "fetch_failed" };
   }
+}
+
+export async function sendInviteEmail(args: SendInviteArgs): Promise<{ ok: boolean; error?: string }> {
+  const env = getServerEnv();
+  const role = ROLE_LABEL[args.role] ?? args.role;
+  const inviter = args.inviterName ? args.inviterName : "Alguém";
+  const appName = env.NEXT_PUBLIC_APP_NAME ?? "On Obra";
+
+  return sendResendEmail({
+    to: args.to,
+    subject: `${inviter} te convidou para o ${args.householdName} no ${appName}`,
+    html: buildHtml({ inviter, householdName: args.householdName, role, inviteUrl: args.inviteUrl, appName }),
+    text: `${inviter} te convidou para participar do grupo "${args.householdName}" no ${appName} como ${role}.\n\nAcesse: ${args.inviteUrl}\n\nO convite expira em 7 dias.`,
+  });
+}
+
+export function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+export function emailLayout(args: {
+  appName: string;
+  title: string;
+  bodyHtml: string;
+  ctaLabel: string;
+  ctaUrl: string;
+  footer: string;
+}): string {
+  const url = escapeHtml(args.ctaUrl);
+  return `<!doctype html>
+<html lang="pt-BR">
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0a;color:#e5e5e5">
+  <div style="max-width:520px;margin:0 auto;padding:40px 24px">
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="display:inline-block;width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#d3540f,#8a2f08);line-height:48px;font-size:24px">🧱</div>
+      <h1 style="font-size:18px;margin:16px 0 4px;color:#fff;font-weight:600">${escapeHtml(args.appName)}</h1>
+    </div>
+    <div style="background:#171717;border:1px solid #262626;border-radius:12px;padding:32px 24px">
+      <h2 style="margin:0 0 16px;font-size:20px;color:#fff">${escapeHtml(args.title)}</h2>
+      ${args.bodyHtml}
+      <div style="text-align:center;margin:28px 0 8px">
+        <a href="${url}" style="display:inline-block;background:#c1440e;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">${escapeHtml(args.ctaLabel)}</a>
+      </div>
+      <p style="margin:24px 0 0;font-size:12px;color:#737373;text-align:center;line-height:1.5">
+        Se o botão não funcionar, copie e cole este link no navegador:<br>
+        <span style="word-break:break-all;color:#a3a3a3">${url}</span>
+      </p>
+    </div>
+    <p style="text-align:center;margin:24px 0 0;font-size:11px;color:#525252;line-height:1.5">${escapeHtml(args.footer)}</p>
+  </div>
+</body>
+</html>`;
 }
 
 function buildHtml(args: {
