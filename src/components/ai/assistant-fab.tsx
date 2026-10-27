@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, Send, Sparkles, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Bot, Check, ClipboardCheck, Send, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,7 @@ function renderInline(text: string): React.ReactNode {
 
 const SUGGESTIONS = [
   "Quanto já gastei na obra?",
-  "Gastei 150 em cimento hoje",
+  "Paguei 150 de cimento na Leroy hoje",
   "O que a Leroy cotou esse mês?",
   "Em que posso economizar agora?",
 ];
@@ -40,16 +41,31 @@ const WELCOME: Msg = {
   role: "assistant",
   content: `Oi! 👋 Sou seu copiloto da obra.
 
-Posso registrar um custo já pago (ex: "gastei 150 em cimento") e responder perguntas sobre os gastos.`,
+Posso registrar despesas e cotações (ex: "paguei 150 de cimento na Leroy") e responder perguntas sobre os gastos. Antes de gravar qualquer coisa, eu te mostro o resumo pra você confirmar.`,
 };
 
+function recentHistory(msgs: Msg[]): Msg[] {
+  const tail = msgs.slice(-24);
+  const firstUser = tail.findIndex((m) => m.role === "user");
+  return firstUser > 0 ? tail.slice(firstUser) : tail;
+}
+
+interface Proposal {
+  token: string;
+  lines: string[];
+}
+
+const YES = /^(sim|s|ok|okay|confirmo|confirma|confirmar|pode|pode sim|isso|isso mesmo|beleza|manda|certo|correto)[.!\s]*$/i;
+const NO = /^(n[aã]o|nao|cancela|cancelar|esquece|deixa)[.!\s]*$/i;
+
 export function AssistantFab() {
+  const router = useRouter();
   const fab = useDraggableFab<HTMLButtonElement>("ai-assistant");
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [pending, setPending] = useState<unknown>(null);
+  const [proposal, setProposal] = useState<Proposal | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -64,34 +80,65 @@ export function AssistantFab() {
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [input]);
 
-  async function send(message: string) {
-    const text = message.trim();
-    if (!text || loading) return;
-    const realMessages = messages.filter((m) => m !== WELCOME);
-    const next: Msg[] = [...realMessages, { role: "user", content: text }];
-    setMessages(next);
-    setInput("");
+  async function post(next: Msg[], confirm?: string) {
     setLoading(true);
-
     try {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: next, pending }),
+        body: JSON.stringify({ messages: recentHistory(next), ...(confirm ? { confirm } : {}) }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error === "no_household" ? "Você precisa de uma família ativa." : "Falha na IA.");
       }
-      const data = (await res.json()) as { reply: string; pending?: unknown };
-      setPending(data.pending ?? null);
+      const data = (await res.json()) as { reply: string; proposal?: Proposal; saved?: boolean };
+      setProposal(data.proposal ?? null);
       setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
+      if (data.saved) router.refresh();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro";
       toast.error(msg);
     } finally {
       setLoading(false);
     }
+  }
+
+  function confirmProposal() {
+    if (!proposal || loading) return;
+    const token = proposal.token;
+    const next: Msg[] = [...messages.filter((m) => m !== WELCOME), { role: "user", content: "Confirmo" }];
+    setMessages(next);
+    setProposal(null);
+    void post(next, token);
+  }
+
+  function cancelProposal() {
+    if (!proposal) return;
+    setProposal(null);
+    setMessages((m) => [
+      ...m.filter((x) => x !== WELCOME),
+      { role: "user", content: "Cancelar" },
+      { role: "assistant", content: "Ok, não registrei nada." },
+    ]);
+  }
+
+  async function send(message: string) {
+    const text = message.trim();
+    if (!text || loading) return;
+    setInput("");
+    if (proposal && YES.test(text)) {
+      confirmProposal();
+      return;
+    }
+    if (proposal && NO.test(text)) {
+      cancelProposal();
+      return;
+    }
+    const next: Msg[] = [...messages.filter((m) => m !== WELCOME), { role: "user", content: text }];
+    setMessages(next);
+    setProposal(null);
+    await post(next);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -102,7 +149,7 @@ export function AssistantFab() {
   function reset() {
     setMessages([WELCOME]);
     setInput("");
-    setPending(null);
+    setProposal(null);
   }
 
   return (
@@ -188,6 +235,30 @@ export function AssistantFab() {
                   {s}
                 </button>
               ))}
+            </div>
+          )}
+
+          {proposal && !loading && (
+            <div className="rounded-2xl border border-primary/40 bg-primary/5 p-3">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-primary">
+                <ClipboardCheck className="h-3.5 w-3.5" /> Confere antes de gravar
+              </p>
+              <ul className="space-y-1.5 text-sm">
+                {proposal.lines.map((l, i) => (
+                  <li key={i} className="leading-snug">
+                    {l}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3 flex gap-2">
+                <Button size="sm" className="flex-1" onClick={confirmProposal}>
+                  <Check className="h-3.5 w-3.5" /> Confirmar
+                </Button>
+                <Button size="sm" variant="ghost" className="flex-1" onClick={cancelProposal}>
+                  Cancelar
+                </Button>
+              </div>
+              <p className="mt-2 text-[11px] text-text-muted">Algo errado? Escreva a correção que eu refaço o resumo.</p>
             </div>
           )}
 

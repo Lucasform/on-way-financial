@@ -2,26 +2,23 @@ import { NextResponse, type NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
+import { ASSISTANT_SYSTEM, buildFinancialContext, SEARCH_COSTS_TOOL, searchCosts } from "@/lib/ai/context";
 import {
   ADD_CHECKLIST_ITEM_TOOL,
-  ADD_MATERIAL_TOOL,
-  ADD_QUOTE_TOOL,
   ADD_SUPPLIER_TOOL,
-  addChecklistItem,
-  addMaterialItem,
-  addQuote,
-  addSupplier,
-  ASSISTANT_SYSTEM,
-  buildFinancialContext,
-  SEARCH_COSTS_TOOL,
-  searchCosts,
-} from "@/lib/ai/context";
-import { createCostFromIntent } from "@/lib/ai/create-transaction";
-import { ParsedSchema, parseCommand, parseFreeText, type ParsedIntent } from "@/lib/ai/parser";
-import { extractTransactionsFromText } from "@/lib/import/ai-extract";
-import { formatBRL } from "@/lib/money";
+  describeAction,
+  executeActions,
+  planAction,
+  REGISTER_EXPENSE_TOOL,
+  signProposal,
+  verifyProposal,
+  WRITE_TOOL_NAMES,
+  type ProposedAction,
+} from "@/lib/ai/proposals";
 import { getServerEnv } from "@/lib/env";
 import { loadActiveContext } from "@/lib/household";
+import { getObraModule } from "@/lib/obra";
+import { createSupabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -33,8 +30,10 @@ const messageSchema = z.object({
 
 const bodySchema = z.object({
   messages: z.array(messageSchema).min(1).max(30),
-  pending: ParsedSchema.nullable().optional(),
+  confirm: z.string().max(20_000).optional(),
 });
+
+const TOOLS = [SEARCH_COSTS_TOOL, REGISTER_EXPENSE_TOOL, ADD_SUPPLIER_TOOL, ADD_CHECKLIST_ITEM_TOOL];
 
 let _client: Anthropic | null = null;
 function client(): Anthropic {
@@ -51,182 +50,85 @@ export async function POST(req: NextRequest) {
   const parsed = bodySchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
+  const db = createSupabaseServer();
+
+  if (parsed.data.confirm) {
+    if (ctx.role === "viewer") return NextResponse.json({ reply: "Seu acesso é só de leitura, não consigo gravar." });
+    const actions = verifyProposal(parsed.data.confirm, ctx.householdId, ctx.userId);
+    if (!actions) {
+      return NextResponse.json({ reply: "Essa proposta expirou. Me manda de novo o que quer registrar." });
+    }
+    const mod = await getObraModule(ctx.householdId);
+    if (!mod) return NextResponse.json({ reply: "Não encontrei a obra ativa." });
+    const { done, failed } = await executeActions(db, ctx.householdId, mod.id, actions);
+    const lines = [];
+    if (done.length) lines.push(`✅ Registrado: ${done.join("; ")}.`);
+    if (failed.length) lines.push(`⚠️ Não consegui gravar: ${failed.join("; ")}. Tenta de novo.`);
+    return NextResponse.json({ reply: lines.join("\n"), saved: done.length > 0 });
+  }
+
   const env = getServerEnv();
-  const last = parsed.data.messages[parsed.data.messages.length - 1];
-  const userText = last?.role === "user" ? last.content.trim() : "";
-
-  // Fase 0: detectar lote de transacoes (mensagem multilinha)
-  if (last && last.role === "user" && looksLikeBatch(last.content)) {
-    try {
-      const { rows } = await extractTransactionsFromText(last.content);
-      if (rows.length >= 2) {
-        let created = 0;
-        let total = 0;
-        const failures: string[] = [];
-        for (const r of rows) {
-          if (r.type === "income") {
-            failures.push(r.description);
-            continue;
-          }
-          const intent: ParsedIntent = {
-            intent: "expense",
-            amount: r.amount,
-            description: r.description,
-            category_hint: r.category_hint ?? null,
-            payment_hint: (r.payment_hint === "other" ? null : r.payment_hint) ?? null,
-            occurred_at: r.occurred_at,
-            module_hint: null,
-            confidence: 1,
-          };
-          const res = await createCostFromIntent({
-            householdId: ctx.householdId,
-            intent,
-            texts: [r.description, last.content],
-          });
-          if (res.ok) {
-            created++;
-            total += r.amount;
-          } else {
-            failures.push(r.description);
-          }
-        }
-        const reply =
-          `✅ ${created} custo${created === 1 ? "" : "s"} registrado${created === 1 ? "" : "s"}. Total: ${formatBRL(total)}.` +
-          (failures.length > 0 ? `\n\n⚠️ ${failures.length} não foi(ram) salvo(s): ${failures.slice(0, 3).join(", ")}` : "");
-        return NextResponse.json({ reply });
-      }
-    } catch (e) {
-      console.error("ai chat batch", e);
-    }
-  }
-
-  // Fase 1: detectar nova transação
-  if (last && last.role === "user") {
-    try {
-      let intent: ParsedIntent | null = null;
-      const cmd = parseCommand(last.content);
-      if (cmd && "intent" in cmd && (cmd.intent === "expense" || cmd.intent === "income")) {
-        intent = cmd;
-      } else if (looksLikeTransaction(last.content) && looksLikeQuote(last.content)) {
-        // Ambíguo: tem cara de preço mas também de cotação recebida (não pago ainda).
-        // Não lança nada sozinho — pergunta antes.
-        return NextResponse.json({
-          reply:
-            "Isso é uma despesa que você já pagou, ou uma cotação/orçamento que te passaram (ainda não pago)? " +
-            "Me confirma que eu registro certinho.",
-        });
-      } else if (looksLikeTransaction(last.content)) {
-        const free = await parseFreeText(last.content);
-        if (
-          (free.intent === "expense" || free.intent === "income") &&
-          free.amount != null &&
-          free.confidence >= 0.5
-        ) {
-          intent = free;
-        }
-      }
-
-      if (intent) {
-        const r = await createCostFromIntent({ householdId: ctx.householdId, intent, texts: [last.content] });
-        return NextResponse.json({ reply: r.reply });
-      }
-    } catch (e) {
-      console.error("ai chat intent detect", e);
-    }
-  }
-
-  // Q&A normal
   const financialContext = await buildFinancialContext({ householdId: ctx.householdId });
-  const system = `${ASSISTANT_SYSTEM}\n\n--- FINANCIAL CONTEXT ---\n${financialContext}`;
+  const system = `${ASSISTANT_SYSTEM}\n\nHoje é ${new Date().toISOString().slice(0, 10)}.\n\n--- FINANCIAL CONTEXT ---\n${financialContext}`;
 
   try {
-    const history: Anthropic.MessageParam[] = parsed.data.messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const history: Anthropic.MessageParam[] = parsed.data.messages.map((m) => ({ role: m.role, content: m.content }));
+    const proposed: ProposedAction[] = [];
+    const canWrite = ctx.role !== "viewer";
 
-    const tools = [SEARCH_COSTS_TOOL, ADD_SUPPLIER_TOOL, ADD_QUOTE_TOOL, ADD_MATERIAL_TOOL, ADD_CHECKLIST_ITEM_TOOL];
+    let res = await client().messages.create({ model: env.ANTHROPIC_MODEL, max_tokens: 800, system, messages: history, tools: TOOLS });
 
-    let res = await client().messages.create({
-      model: env.ANTHROPIC_MODEL,
-      max_tokens: 800,
-      system,
-      messages: history,
-      tools,
-    });
-
-    // Se a IA pediu pra usar uma ferramenta, executa e devolve o resultado pra ela terminar a resposta.
     let rounds = 0;
     while (res.stop_reason === "tool_use" && rounds < 3) {
       rounds++;
-      const toolUse = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-      if (!toolUse) break;
-      let result: string;
-      if (toolUse.name === "search_costs") {
-        result = await searchCosts(ctx.householdId, toolUse.input as Record<string, string>);
-      } else if (toolUse.name === "add_supplier") {
-        result = await addSupplier(ctx.householdId, toolUse.input as { name: string });
-      } else if (toolUse.name === "add_quote") {
-        result = await addQuote(ctx.householdId, toolUse.input as { supplier_name: string; item_name: string; unit_price: number });
-      } else if (toolUse.name === "add_material_item") {
-        result = await addMaterialItem(ctx.householdId, toolUse.input as { name: string });
-      } else if (toolUse.name === "add_checklist_item") {
-        result = await addChecklistItem(ctx.householdId, toolUse.input as { phase_name: string; name: string });
-      } else {
-        result = "Ferramenta desconhecida.";
+      const toolUses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+      if (toolUses.length === 0) break;
+
+      const results: Anthropic.ToolResultBlockParam[] = [];
+      for (const tu of toolUses) {
+        let content: string;
+        if (tu.name === SEARCH_COSTS_TOOL.name) {
+          content = await searchCosts(ctx.householdId, tu.input as Record<string, string>);
+        } else if (WRITE_TOOL_NAMES.has(tu.name)) {
+          if (!canWrite) {
+            content = "O usuário tem acesso só de leitura. Diga que não dá pra registrar.";
+          } else {
+            const plan = await planAction(db, ctx.householdId, tu.name, tu.input as Record<string, unknown>);
+            if ("error" in plan) {
+              content = plan.error;
+            } else {
+              proposed.push(plan.action);
+              content = `Proposta preparada, AINDA NÃO GRAVADA: ${describeAction(plan.action)} O app mostra o cartão com Confirmar/Cancelar.`;
+            }
+          }
+        } else {
+          content = "Ferramenta desconhecida.";
+        }
+        results.push({ type: "tool_result", tool_use_id: tu.id, content });
       }
 
       history.push({ role: "assistant", content: res.content });
-      history.push({
-        role: "user",
-        content: [{ type: "tool_result", tool_use_id: toolUse.id, content: result }],
-      });
-
-      res = await client().messages.create({
-        model: env.ANTHROPIC_MODEL,
-        max_tokens: 800,
-        system,
-        messages: history,
-        tools,
-      });
+      history.push({ role: "user", content: results });
+      res = await client().messages.create({ model: env.ANTHROPIC_MODEL, max_tokens: 800, system, messages: history, tools: TOOLS });
     }
 
-    const first = res.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-    return NextResponse.json({ reply: first?.text ?? "" });
+    const text = res.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+
+    if (proposed.length === 0) return NextResponse.json({ reply: text });
+
+    return NextResponse.json({
+      reply: text || "Confere o resumo abaixo e confirma pra eu registrar.",
+      proposal: {
+        token: signProposal(ctx.householdId, ctx.userId, proposed),
+        lines: proposed.map(describeAction),
+      },
+    });
   } catch (err) {
     console.error("ai chat", err);
     return NextResponse.json({ error: "ai_failed" }, { status: 502 });
   }
-}
-
-function looksLikeBatch(text: string): boolean {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
-  if (lines.length < 2) return false;
-  // Conta linhas com numero (provavel valor)
-  const withNumber = lines.filter((l) => /\d/.test(l)).length;
-  return withNumber >= 2;
-}
-
-function looksLikeTransaction(text: string): boolean {
-  const t = text.toLowerCase();
-  if (!/\d/.test(t)) return false;
-  const verbs = [
-    "gastei", "gasto", "paguei", "comprei", "compra", "torrei",
-    "recebi", "receita", "ganhei", "salário", "salario",
-    "despesa", "investi", "transferi", "saquei",
-    "r$", "reais", "real",
-  ];
-  return verbs.some((v) => t.includes(v));
-}
-
-function looksLikeQuote(text: string): boolean {
-  const t = text.toLowerCase();
-  const phrases = [
-    "cotou", "cotação", "cotacao", "orçou", "orçamento", "orcamento",
-    "passou o preço", "passou preço", "passou o preco", "passou preco",
-    "vai cobrar", "vai custar", "cobra", "cobram",
-    "informou o preço", "informou preço", "informou o preco", "informou preco",
-    "disse que custa", "falou que custa", "preço de", "preco de",
-  ];
-  return phrases.some((p) => t.includes(p));
 }
