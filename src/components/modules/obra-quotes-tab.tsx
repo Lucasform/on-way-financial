@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { ArrowUpDown, ChevronDown, ChevronUp, Play, Plus, Receipt, Search, Trash2, Trophy } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpDown, ChevronDown, ChevronUp, Pencil, Play, Plus, Receipt, Search, Trash2, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +12,7 @@ import { Empty } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Money } from "@/components/ui/money";
+import { useConfirm } from "@/hooks/use-confirm";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { fmtDate, todayISO } from "@/lib/dates";
 import {
@@ -69,6 +71,9 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
   const [sort, setSort] = useState<SortValue>("item-asc");
   const [supplierQuery, setSupplierQuery] = useState("");
   const [activeTab, setActiveTab] = useState<QuoteStatus>(initialTab);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<Partial<Quote>>({});
+  const { confirm, ConfirmDialog } = useConfirm();
   const [draft, setDraft] = useState<Partial<Quote>>({
     supplier_id: suppliers[0]?.id,
     unit: "un",
@@ -167,15 +172,63 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
     setExpandedId(status === "execucao" ? snap.quote.id : null);
   }
 
-  function remove(id: string) {
+  async function remove(q: Quote) {
     if (!canWrite) return;
+    if (!(await confirm(`Apagar a cotação de "${q.item_name}" (${supplierName(q.supplier_id)})?`, { danger: true }))) return;
     start(async () => {
-      const { error } = await supabase.from("price_quotes").delete().eq("id", id);
+      const { error } = await supabase.from("price_quotes").delete().eq("id", q.id);
       if (error) {
         toast.error("Falha ao remover.");
         return;
       }
-      setQuotes((s) => s.filter((x) => x.id !== id));
+      setQuotes((s) => s.filter((x) => x.id !== q.id));
+      toast.success("Cotação apagada.");
+    });
+  }
+
+  function startEdit(q: Quote) {
+    if (editingId === q.id) {
+      setEditingId(null);
+      return;
+    }
+    setEditDraft(q);
+    setEditingId(q.id);
+  }
+
+  function saveEdit(id: string) {
+    const itemName = editDraft.item_name?.trim();
+    const unitPrice = Number(editDraft.unit_price);
+    if (!canWrite || !itemName || !editDraft.supplier_id || !(unitPrice > 0)) {
+      toast.error("Preencha item, fornecedor e um preço maior que zero.");
+      return;
+    }
+    start(async () => {
+      const { data, error } = await supabase
+        .from("price_quotes")
+        .update({
+          item_name: itemName,
+          supplier_id: editDraft.supplier_id,
+          unit: editDraft.unit ?? "un",
+          unit_price: unitPrice,
+          quoted_at: editDraft.quoted_at || todayISO(),
+          valid_until: editDraft.valid_until || null,
+        })
+        .eq("id", id)
+        .is("execution_started_at", null)
+        .is("accepted_at", null)
+        .select("*")
+        .maybeSingle();
+      if (error) {
+        toast.error("Falha ao salvar cotação.");
+        return;
+      }
+      if (!data) {
+        toast.error("Essa cotação já foi executada e não pode mais ser editada.");
+        return;
+      }
+      setQuotes((s) => s.map((x) => (x.id === id ? (data as Quote) : x)));
+      setEditingId(null);
+      toast.success("Cotação atualizada.");
     });
   }
 
@@ -343,7 +396,12 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                         <div className="flex min-w-0 items-center gap-2">
                           {best && <Trophy className="h-4 w-4 shrink-0 text-warning" />}
                           <div className="min-w-0">
-                            <p className="truncate font-medium">{supplierName(q.supplier_id)}</p>
+                            <Link
+                              href={`/overview/fornecedores/${q.supplier_id}`}
+                              className="block truncate font-medium hover:text-primary hover:underline"
+                            >
+                              {supplierName(q.supplier_id)}
+                            </Link>
                             {status === "execucao" ? (
                               <QuoteProgressText quote={q} payments={qPayments} />
                             ) : (
@@ -374,12 +432,97 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                             </Button>
                           )}
                           {canWrite && status === "aberto" && (
-                            <Button variant="ghost" size="icon" onClick={() => remove(q.id)} aria-label="Apagar cotação">
+                            <Button variant="ghost" size="icon" onClick={() => startEdit(q)} aria-label="Editar cotação">
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {canWrite && status === "aberto" && (
+                            <Button variant="ghost" size="icon" onClick={() => remove(q)} disabled={pending} aria-label="Apagar cotação">
                               <Trash2 className="h-4 w-4 text-danger" />
                             </Button>
                           )}
                         </div>
                       </div>
+                      {editingId === q.id && status === "aberto" && (
+                        <div className="grid gap-2 border-t border-border bg-bg-elev-2 p-3 sm:grid-cols-6">
+                          <div className="space-y-1 sm:col-span-2">
+                            <Label htmlFor={`ename-${q.id}`}>Item</Label>
+                            <Input
+                              id={`ename-${q.id}`}
+                              value={editDraft.item_name ?? ""}
+                              onChange={(e) => setEditDraft({ ...editDraft, item_name: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-1 sm:col-span-2">
+                            <Label htmlFor={`esup-${q.id}`}>Fornecedor</Label>
+                            <select
+                              id={`esup-${q.id}`}
+                              value={editDraft.supplier_id ?? ""}
+                              onChange={(e) => setEditDraft({ ...editDraft, supplier_id: e.target.value })}
+                              className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
+                            >
+                              {suppliers.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor={`eunit-${q.id}`}>Unidade</Label>
+                            <select
+                              id={`eunit-${q.id}`}
+                              value={editDraft.unit ?? "un"}
+                              onChange={(e) => setEditDraft({ ...editDraft, unit: e.target.value })}
+                              className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
+                            >
+                              {[...new Set([...UNITS, editDraft.unit ?? "un"])].map((u) => (
+                                <option key={u} value={u}>
+                                  {u}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor={`eprice-${q.id}`}>Preço unitário</Label>
+                            <Input
+                              id={`eprice-${q.id}`}
+                              type="number"
+                              step="0.01"
+                              value={editDraft.unit_price ?? ""}
+                              onChange={(e) =>
+                                setEditDraft({ ...editDraft, unit_price: e.target.value === "" ? undefined : Number(e.target.value) })
+                              }
+                            />
+                          </div>
+                          <div className="space-y-1 sm:col-span-2">
+                            <Label htmlFor={`edate-${q.id}`}>Data da cotação</Label>
+                            <Input
+                              id={`edate-${q.id}`}
+                              type="date"
+                              value={editDraft.quoted_at ?? ""}
+                              onChange={(e) => setEditDraft({ ...editDraft, quoted_at: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-1 sm:col-span-2">
+                            <Label htmlFor={`evalid-${q.id}`}>Válida até</Label>
+                            <Input
+                              id={`evalid-${q.id}`}
+                              type="date"
+                              value={editDraft.valid_until ?? ""}
+                              onChange={(e) => setEditDraft({ ...editDraft, valid_until: e.target.value || null })}
+                            />
+                          </div>
+                          <div className="flex items-end justify-end gap-2 sm:col-span-2">
+                            <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>
+                              Cancelar
+                            </Button>
+                            <Button size="sm" disabled={pending} onClick={() => saveEdit(q.id)}>
+                              Salvar
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                       {status === "execucao" && expanded && (
                         <QuotePaymentsPanel quote={q} payments={qPayments} canWrite={canWrite} onChange={applySnapshot} />
                       )}
@@ -391,6 +534,8 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
           ))}
         </div>
       )}
+
+      {ConfirmDialog}
 
       {executing && (
         <ExecuteQuoteDialog

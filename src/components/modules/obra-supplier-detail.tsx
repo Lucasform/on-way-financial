@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, FileText, Loader2, MapPin, MessageCircle, Play, Plus, Receipt, ShoppingBag, Star, Trash2, Upload } from "lucide-react";
+import { Building2, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, FileText, Loader2, MapPin, MessageCircle, Pencil, Play, Plus, Receipt, ShoppingBag, Star, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -121,6 +121,10 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
   }
 
   async function saveQuote(id: string) {
+    if (!quoteDraft.item_name?.trim() || !(Number(quoteDraft.unit_price) > 0)) {
+      toast.error("Preencha o item e um preço maior que zero.");
+      return;
+    }
     setSavingQuote(true);
     try {
       const { error } = await supabase
@@ -146,7 +150,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
 
   async function removeQuote(id: string) {
     if (!canWrite) return;
-    if (!confirm("Apagar essa cotação?")) return;
+    if (!(await confirm("Apagar essa cotação?", { danger: true }))) return;
     setSavingQuote(true);
     try {
       const { error } = await supabase.from("price_quotes").delete().eq("id", id);
@@ -193,7 +197,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
 
   async function reopenQuote(id: string) {
     if (!canWrite) return;
-    if (!confirm("Voltar essa cotação pro estado aberta? Isso não apaga a compra/despesa se ela ainda existir — pra isso, apague em Realizado.")) return;
+    if (!(await confirm("Voltar essa cotação pra em aberto? O custo lançado não é apagado; pra isso, apague em Custos."))) return;
     const { error } = await supabase
       .from("price_quotes")
       .update({ accepted_at: null, execution_started_at: null, total_amount: null })
@@ -272,7 +276,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
 
   async function removePurchase(itemId: string) {
     if (!canWrite || removingId) return;
-    if (!(await confirm("Apagar esse custo? Se veio de uma cotação aceita, ela volta a poder ser aceita de novo.", { danger: true }))) return;
+    if (!(await confirm("Apagar esse custo já executado? Ele sai do Gasto. Se veio de uma cotação, ela volta pra em aberto (ou o pagamento volta pra agendado).", { danger: true }))) return;
     setRemovingId(itemId);
     try {
       const res = await fetch("/api/obra/revert-purchase", {
@@ -685,6 +689,20 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
                       ))}
                     {canWrite && status === "aberto" && (
                       <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openQuote(q);
+                        }}
+                        aria-label="Editar cotação"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {canWrite && status === "aberto" && (
+                      <Button
                         variant="outline"
                         size="sm"
                         className="h-7 shrink-0 px-2 text-xs"
@@ -717,7 +735,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
                         type="number"
                         step="0.01"
                         value={quoteDraft.unit_price ?? ""}
-                        onChange={(e) => setQuoteDraft({ ...quoteDraft, unit_price: Number(e.target.value) })}
+                        onChange={(e) => setQuoteDraft({ ...quoteDraft, unit_price: e.target.value === "" ? undefined : Number(e.target.value) })}
                         placeholder="Preço"
                       />
                       <Input
