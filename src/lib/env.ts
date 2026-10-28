@@ -4,7 +4,10 @@ const publicSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(20),
   NEXT_PUBLIC_APP_URL: z.string().url(),
-  NEXT_PUBLIC_APP_NAME: z.string().default("On Obra"),
+  NEXT_PUBLIC_APP_NAME: z
+    .string()
+    .transform((s) => s.replace(/﻿/g, "").trim())
+    .default("On Obra"),
 });
 
 const serverSchema = publicSchema.extend({
