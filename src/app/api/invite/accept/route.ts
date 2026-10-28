@@ -106,12 +106,15 @@ export async function POST(req: NextRequest) {
   if (!invite) return NextResponse.json({ error: "invalid" }, { status: 404 });
   if (invite.accepted_at) return NextResponse.json({ error: "already_accepted" }, { status: 409 });
   if (new Date(invite.expires_at) < new Date()) return NextResponse.json({ error: "expired" }, { status: 410 });
+  if (!invite.email || user.email?.trim().toLowerCase() !== invite.email.trim().toLowerCase()) {
+    return NextResponse.json({ error: "wrong_account", invite_email: invite.email }, { status: 403 });
+  }
 
   const { error: insertErr } = await admin
     .from("household_members")
     .upsert(
       { household_id: invite.household_id, user_id: user.id, role: invite.role },
-      { onConflict: "household_id,user_id" },
+      { onConflict: "household_id,user_id", ignoreDuplicates: true },
     );
   if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 });
 

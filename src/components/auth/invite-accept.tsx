@@ -18,7 +18,16 @@ export function InviteAccept({ token }: { token: string }) {
         body: JSON.stringify({ action: "accept", token }),
       });
       if (!res.ok) {
-        toast.error("Convite inválido ou expirado.");
+        const data = (await res.json().catch(() => null)) as { error?: string; invite_email?: string } | null;
+        toast.error(
+          data?.error === "wrong_account"
+            ? `Esse convite é pra ${data.invite_email}. Saia desta conta e entre com esse e-mail pra aceitar.`
+            : data?.error === "already_accepted"
+              ? "Esse convite já foi usado. Peça um novo."
+              : data?.error === "expired"
+                ? "Esse convite expirou. Peça um novo."
+                : "Convite inválido.",
+        );
         return;
       }
       const { household_id } = (await res.json()) as { household_id: string };
