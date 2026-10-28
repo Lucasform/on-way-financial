@@ -65,6 +65,7 @@ export interface UpcomingPayment {
 interface Props {
   module: Module;
   spentTotal: number;
+  planned: { total: number; installments: number; quotes: number };
   canWrite: boolean;
   suppliers: SupplierOption[];
   upcomingPayments: UpcomingPayment[];
@@ -164,6 +165,7 @@ function statusLabel(s: string): string {
 export function ObraDashboard({
   module,
   spentTotal,
+  planned,
   canWrite,
   suppliers,
   upcomingPayments,
@@ -188,12 +190,39 @@ export function ObraDashboard({
       </header>
 
       <section className="grid gap-3 sm:grid-cols-2">
-        <Link href="/overview/gasto" className="block">
-          <Card className="h-full transition-colors hover:border-primary/50 hover:bg-bg-elev-2">
+        <Card className="h-full overflow-hidden">
+          <Link href="/overview/gasto" className="block transition-colors hover:bg-bg-elev-2">
             <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Gasto até o momento</CardTitle></CardHeader>
-            <CardContent className="pt-0"><Money value={spentTotal} size="xl" /></CardContent>
-          </Card>
-        </Link>
+            <CardContent className="pb-4 pt-0"><Money value={spentTotal} size="xl" /></CardContent>
+          </Link>
+          {planned.total > 0 && (
+            <Link
+              href="/overview/pagamentos"
+              className="block border-t border-border px-6 py-3 transition-colors hover:bg-bg-elev-2"
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-xs text-text-muted">Previsto a pagar</span>
+                <Money value={planned.total} size="md" className="font-medium" />
+              </div>
+              <p className="text-[11px] text-text-muted">
+                {planned.installments} parcela{planned.installments > 1 ? "s" : ""} agendada{planned.installments > 1 ? "s" : ""} de{" "}
+                {planned.quotes} cotaç{planned.quotes > 1 ? "ões" : "ão"} em execução
+              </p>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border">
+                <div
+                  className="h-full rounded-full bg-primary"
+                  style={{ width: `${Math.round((spentTotal / (spentTotal + planned.total)) * 100)}%` }}
+                />
+              </div>
+              <p className="mt-1 flex items-baseline justify-between text-[11px] text-text-muted">
+                <span>{Math.round((spentTotal / (spentTotal + planned.total)) * 100)}% já pago</span>
+                <span>
+                  Total comprometido <Money value={spentTotal + planned.total} size="sm" className="text-text" />
+                </span>
+              </p>
+            </Link>
+          )}
+        </Card>
         {canWrite && (
           <button type="button" onClick={() => setShowQuickAdd(true)} className="block w-full text-left">
             <Card className="h-full transition-colors hover:border-primary/50 hover:bg-bg-elev-2">

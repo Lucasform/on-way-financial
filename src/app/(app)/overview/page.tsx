@@ -19,7 +19,7 @@ export default async function OverviewPage() {
   }
 
   const today = todayISO();
-  const [{ data: items }, { data: suppliers }, { data: scheduled }, { data: acts }] = await Promise.all([
+  const [{ data: items }, { data: suppliers }, { data: scheduled }, { data: acts }, { data: pending }] = await Promise.all([
     supabase
       .from("obra_items")
       .select("quantity, unit_price, actual_unit_price")
@@ -43,12 +43,18 @@ export default async function OverviewPage() {
       .lte("due_date", addDaysISO(today, 7))
       .order("due_date", { ascending: true })
       .limit(20),
+    supabase.from("quote_payments").select("quote_id, amount").eq("household_id", ctx.householdId).is("paid_at", null),
   ]);
 
   const spentTotal = (items ?? []).reduce(
     (s, i) => s + Number(i.quantity) * Number(i.actual_unit_price ?? i.unit_price ?? 0),
     0,
   );
+  const planned = {
+    total: (pending ?? []).reduce((s, p) => s + Number(p.amount), 0),
+    installments: (pending ?? []).length,
+    quotes: new Set((pending ?? []).map((p) => p.quote_id)).size,
+  };
 
   type ScheduledRow = {
     id: string;
@@ -80,6 +86,7 @@ export default async function OverviewPage() {
     <ObraDashboard
       module={mod}
       spentTotal={spentTotal}
+      planned={planned}
       canWrite={ctx.role !== "viewer"}
       suppliers={suppliers ?? []}
       upcomingPayments={upcomingPayments}
