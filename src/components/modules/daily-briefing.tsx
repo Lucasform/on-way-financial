@@ -168,7 +168,7 @@ export function DailyBriefingDialog({
         <DialogFooter className="gap-2 sm:gap-2">
           {duePayments.length > 0 && (
             <Button variant="outline" asChild onClick={close}>
-              <Link href="/overview/cotacoes?tab=execucao">Ver pagamentos</Link>
+              <Link href="/overview/pagamentos">Ver pagamentos</Link>
             </Button>
           )}
           <Button onClick={close}>Entendi</Button>

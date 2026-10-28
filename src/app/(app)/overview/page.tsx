@@ -33,7 +33,7 @@ export default async function OverviewPage() {
       .is("paid_at", null)
       .not("due_date", "is", null)
       .order("due_date", { ascending: true })
-      .limit(20),
+      .limit(50),
     supabase
       .from("obra_activities")
       .select("id, title, due_date, assignee")
@@ -57,7 +57,7 @@ export default async function OverviewPage() {
     due_date: string;
     price_quotes: { item_name: string; suppliers: { name: string } | null } | null;
   };
-  const upcomingPayments: UpcomingPayment[] = ((scheduled ?? []) as unknown as ScheduledRow[]).map((p) => ({
+  const allScheduled: UpcomingPayment[] = ((scheduled ?? []) as unknown as ScheduledRow[]).map((p) => ({
     id: p.id,
     label: p.label,
     amount: Number(p.amount),
@@ -65,6 +65,9 @@ export default async function OverviewPage() {
     item_name: p.price_quotes?.item_name ?? "Pagamento",
     supplier_name: p.price_quotes?.suppliers?.name ?? null,
   }));
+  const weekEnd = addDaysISO(today, 7);
+  const upcomingPayments = allScheduled.filter((p) => p.due_date <= weekEnd);
+  const nextPayment = allScheduled.find((p) => p.due_date > weekEnd) ?? null;
 
   const upcomingActivities: UpcomingActivity[] = (acts ?? []).map((a) => ({
     id: a.id,
@@ -80,6 +83,7 @@ export default async function OverviewPage() {
       canWrite={ctx.role !== "viewer"}
       suppliers={suppliers ?? []}
       upcomingPayments={upcomingPayments}
+      nextPayment={nextPayment}
       upcomingActivities={upcomingActivities}
       today={today}
     />

@@ -68,30 +68,48 @@ interface Props {
   canWrite: boolean;
   suppliers: SupplierOption[];
   upcomingPayments: UpcomingPayment[];
+  nextPayment: UpcomingPayment | null;
   upcomingActivities: UpcomingActivity[];
   today: string;
 }
 
-function UpcomingPaymentsCard({ payments, today }: { payments: UpcomingPayment[]; today: string }) {
+function WeekPaymentsCard({
+  payments,
+  nextPayment,
+  today,
+}: {
+  payments: UpcomingPayment[];
+  nextPayment: UpcomingPayment | null;
+  today: string;
+}) {
   const overdue = payments.filter((p) => p.due_date < today).length;
   const dueToday = payments.filter((p) => p.due_date === today).length;
   const alert = overdue > 0 || dueToday > 0;
+  const total = payments.reduce((s, p) => s + p.amount, 0);
   return (
-    <Link href="/overview/cotacoes?tab=execucao" className="block">
+    <Link href="/overview/pagamentos" className="block">
       <Card className={`transition-colors hover:bg-bg-elev-2 ${alert ? "border-warning/60" : "hover:border-primary/50"}`}>
         <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
           <CardTitle className="flex items-center gap-1.5 text-sm text-text-muted">
-            <CalendarClock className="h-4 w-4" /> Pagamentos agendados
+            <CalendarClock className="h-4 w-4" /> Pagamentos da semana
           </CardTitle>
-          {alert && (
+          {alert ? (
             <span className="text-xs font-medium text-warning">
               {[overdue > 0 && `${overdue} atrasado${overdue > 1 ? "s" : ""}`, dueToday > 0 && `${dueToday} vence${dueToday > 1 ? "m" : ""} hoje`]
                 .filter(Boolean)
                 .join(" · ")}
             </span>
+          ) : (
+            payments.length > 0 && <Money value={total} size="sm" tone="muted" />
           )}
         </CardHeader>
         <CardContent className="space-y-1.5 pt-0">
+          {payments.length === 0 && (
+            <p className="text-sm text-text-muted">
+              Nada vence nesta semana.
+              {nextPayment && <> Próximo: {nextPayment.item_name} em {fmtDate(nextPayment.due_date, "dd/MM")}.</>}
+            </p>
+          )}
           {payments.slice(0, 4).map((p) => {
             const late = p.due_date < today;
             const isToday = p.due_date === today;
@@ -112,6 +130,11 @@ function UpcomingPaymentsCard({ payments, today }: { payments: UpcomingPayment[]
             );
           })}
           {payments.length > 4 && <p className="text-xs text-text-muted">e mais {payments.length - 4}</p>}
+          {alert && payments.length > 0 && (
+            <p className="flex justify-end pt-1 text-xs text-text-muted">
+              Total da semana&nbsp;<Money value={total} size="sm" />
+            </p>
+          )}
         </CardContent>
       </Card>
     </Link>
@@ -121,6 +144,7 @@ function UpcomingPaymentsCard({ payments, today }: { payments: UpcomingPayment[]
 export const OBRA_SECTIONS = [
   { href: "/overview/fornecedores", label: "Fornecedores", icon: Store },
   { href: "/overview/cotacoes", label: "Cotações", icon: Receipt },
+  { href: "/overview/pagamentos", label: "Pagamentos", icon: CalendarClock },
   { href: "/overview/atividades", label: "Atividades", icon: ListTodo },
   { href: "/overview/andamento", label: "Andamento", icon: Camera },
   { href: "/overview/documentos", label: "Documentos", icon: FolderOpen },
@@ -137,7 +161,16 @@ function statusLabel(s: string): string {
   }
 }
 
-export function ObraDashboard({ module, spentTotal, canWrite, suppliers, upcomingPayments, upcomingActivities, today }: Props) {
+export function ObraDashboard({
+  module,
+  spentTotal,
+  canWrite,
+  suppliers,
+  upcomingPayments,
+  nextPayment,
+  upcomingActivities,
+  today,
+}: Props) {
   const router = useRouter();
   const [showQuickAdd, setShowQuickAdd] = useState(false);
 
@@ -176,7 +209,9 @@ export function ObraDashboard({ module, spentTotal, canWrite, suppliers, upcomin
         )}
       </section>
 
-      {upcomingPayments.length > 0 && <UpcomingPaymentsCard payments={upcomingPayments} today={today} />}
+      {(upcomingPayments.length > 0 || nextPayment) && (
+        <WeekPaymentsCard payments={upcomingPayments} nextPayment={nextPayment} today={today} />
+      )}
       {upcomingActivities.length > 0 && <TodayActivitiesCard activities={upcomingActivities} today={today} />}
       <PushOptIn />
       <DailyBriefingDialog payments={upcomingPayments} activities={upcomingActivities} today={today} />
@@ -192,7 +227,7 @@ export function ObraDashboard({ module, spentTotal, canWrite, suppliers, upcomin
         />
       )}
 
-      <section className="grid grid-cols-3 gap-2 sm:grid-cols-6 md:hidden">
+      <section className="grid grid-cols-4 gap-2 sm:grid-cols-7 md:hidden">
         {OBRA_SECTIONS.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
