@@ -27,6 +27,12 @@ import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { uploadObraFile } from "@/lib/supabase/obra-storage";
 import { FolderChips, MoveToFolderBar, type ObraFolder } from "@/components/modules/obra-folders";
 import { QuickAddExpenseDialog, type SupplierOption } from "@/components/modules/quick-add-expense-dialog";
+import {
+  DailyBriefingDialog,
+  PushOptIn,
+  TodayActivitiesCard,
+  type UpcomingActivity,
+} from "@/components/modules/daily-briefing";
 
 export interface Module {
   id: string;
@@ -62,6 +68,7 @@ interface Props {
   canWrite: boolean;
   suppliers: SupplierOption[];
   upcomingPayments: UpcomingPayment[];
+  upcomingActivities: UpcomingActivity[];
   today: string;
 }
 
@@ -130,7 +137,7 @@ function statusLabel(s: string): string {
   }
 }
 
-export function ObraDashboard({ module, spentTotal, canWrite, suppliers, upcomingPayments, today }: Props) {
+export function ObraDashboard({ module, spentTotal, canWrite, suppliers, upcomingPayments, upcomingActivities, today }: Props) {
   const router = useRouter();
   const [showQuickAdd, setShowQuickAdd] = useState(false);
 
@@ -170,6 +177,9 @@ export function ObraDashboard({ module, spentTotal, canWrite, suppliers, upcomin
       </section>
 
       {upcomingPayments.length > 0 && <UpcomingPaymentsCard payments={upcomingPayments} today={today} />}
+      {upcomingActivities.length > 0 && <TodayActivitiesCard activities={upcomingActivities} today={today} />}
+      <PushOptIn />
+      <DailyBriefingDialog payments={upcomingPayments} activities={upcomingActivities} today={today} />
 
       {showQuickAdd && (
         <QuickAddExpenseDialog

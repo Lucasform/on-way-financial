@@ -5,6 +5,7 @@ const withPWA = nextPwa({
   disable: process.env.NODE_ENV === "development",
   register: true,
   skipWaiting: true,
+  importScripts: ["/push-sw.js"],
 });
 
 const securityHeaders = [

@@ -1,5 +1,7 @@
 import { ObraDashboard, type UpcomingPayment } from "@/components/modules/obra-dashboard";
+import type { UpcomingActivity } from "@/components/modules/daily-briefing";
 import { todayISO } from "@/lib/dates";
+import { addDaysISO } from "@/lib/installments";
 import { ObraCreatePrompt } from "@/components/modules/obra-create-prompt";
 import { getObraModule } from "@/lib/obra";
 import { loadActiveContext } from "@/lib/household";
@@ -16,7 +18,8 @@ export default async function OverviewPage() {
     return <ObraCreatePrompt householdId={ctx.householdId} canWrite={ctx.role !== "viewer"} />;
   }
 
-  const [{ data: items }, { data: suppliers }, { data: scheduled }] = await Promise.all([
+  const today = todayISO();
+  const [{ data: items }, { data: suppliers }, { data: scheduled }, { data: acts }] = await Promise.all([
     supabase
       .from("obra_items")
       .select("quantity, unit_price, actual_unit_price")
@@ -29,6 +32,15 @@ export default async function OverviewPage() {
       .eq("household_id", ctx.householdId)
       .is("paid_at", null)
       .not("due_date", "is", null)
+      .order("due_date", { ascending: true })
+      .limit(20),
+    supabase
+      .from("obra_activities")
+      .select("id, title, due_date, assignee")
+      .eq("module_id", mod.id)
+      .neq("status", "feito")
+      .not("due_date", "is", null)
+      .lte("due_date", addDaysISO(today, 7))
       .order("due_date", { ascending: true })
       .limit(20),
   ]);
@@ -54,6 +66,13 @@ export default async function OverviewPage() {
     supplier_name: p.price_quotes?.suppliers?.name ?? null,
   }));
 
+  const upcomingActivities: UpcomingActivity[] = (acts ?? []).map((a) => ({
+    id: a.id,
+    title: a.title,
+    due_date: a.due_date!,
+    assignee: a.assignee,
+  }));
+
   return (
     <ObraDashboard
       module={mod}
@@ -61,7 +80,8 @@ export default async function OverviewPage() {
       canWrite={ctx.role !== "viewer"}
       suppliers={suppliers ?? []}
       upcomingPayments={upcomingPayments}
-      today={todayISO()}
+      upcomingActivities={upcomingActivities}
+      today={today}
     />
   );
 }

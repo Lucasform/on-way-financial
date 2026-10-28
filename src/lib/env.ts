@@ -24,6 +24,9 @@ const serverSchema = publicSchema.extend({
   RESEND_API_KEY: z.string().startsWith("re_").optional(),
   INVITE_FROM_EMAIL: z.string().email().default("onboarding@resend.dev"),
   INVITE_REPLY_TO: z.string().email().optional(),
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().min(40).optional(),
+  VAPID_PRIVATE_KEY: z.string().min(20).optional(),
+  VAPID_SUBJECT: z.string().optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverSchema>;
