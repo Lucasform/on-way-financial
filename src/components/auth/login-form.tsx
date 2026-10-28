@@ -26,6 +26,18 @@ export function LoginForm({ next }: { next: string }) {
   // password
   const [password, setPassword] = useState("");
 
+  async function requestAuthEmail(payload: Record<string, string>): Promise<boolean> {
+    const res = await fetch("/api/auth/email", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) return true;
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    toast.error(data?.error ?? "Não consegui enviar o e-mail agora.");
+    return false;
+  }
+
   async function sendPasswordReset() {
     if (!email) {
       toast.error("Digite seu email primeiro.");
@@ -33,15 +45,7 @@ export function LoginForm({ next }: { next: string }) {
     }
     setLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
-      });
-      if (error) throw error;
-      setResetSent(true);
-      toast.success("Email de redefinição enviado!");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro desconhecido";
-      toast.error(`Falha ao enviar: ${msg}`);
+      if (await requestAuthEmail({ kind: "recovery", email })) setResetSent(true);
     } finally {
       setLoading(false);
     }
@@ -52,18 +56,7 @@ export function LoginForm({ next }: { next: string }) {
     if (!email) return;
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-        },
-      });
-      if (error) throw error;
-      setSent(true);
-      toast.success("Link enviado! Confira seu email.");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro desconhecido";
-      toast.error(`Não consegui enviar: ${msg}`);
+      if (await requestAuthEmail({ kind: "magiclink", email, next })) setSent(true);
     } finally {
       setLoading(false);
     }
@@ -96,25 +89,7 @@ export function LoginForm({ next }: { next: string }) {
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-        },
-      });
-      if (error) throw error;
-      if (!data.session) {
-        // Confirm email ligado: sem sessão imediata.
-        setSignupConfirm(true);
-        return;
-      }
-      toast.success("Conta criada! Entrando...");
-      router.push(next);
-      router.refresh();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro desconhecido";
-      toast.error(`Falha ao criar conta: ${msg}`);
+      if (await requestAuthEmail({ kind: "signup", email, password, next })) setSignupConfirm(true);
     } finally {
       setLoading(false);
     }
@@ -241,7 +216,7 @@ export function LoginForm({ next }: { next: string }) {
             {loading ? "Criando..." : "Criar conta"}
           </Button>
           <p className="text-xs text-text-muted">
-            Se &quot;Confirm email&quot; estiver desativado no Supabase, você entra direto.
+            Você recebe um e-mail pra confirmar a conta antes de entrar.
           </p>
         </form>
       </TabsContent>
