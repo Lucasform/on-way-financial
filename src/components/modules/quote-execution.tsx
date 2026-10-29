@@ -1,16 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { CalendarClock, Check, Loader2 } from "lucide-react";
+import { CalendarClock, Check, Loader2, Pencil, X } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
+import { PaymentPlanBuilder } from "@/components/modules/payment-plan-builder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Money } from "@/components/ui/money";
 import { fmtDate, todayISO } from "@/lib/dates";
-import { addDaysISO, planRemainder, toCents, type Frequency, type RemainderSchedule } from "@/lib/installments";
-import { formatBRL } from "@/lib/money";
+import { type PlanResult, toCents } from "@/lib/installments";
+import { formatBRL, parseBRL } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 export interface QuotePayment {
@@ -63,6 +64,7 @@ const ERRORS: Record<string, string> = {
   paid_now_out_of_range: "O valor pago agora precisa ser menor que o total.",
   has_paid_payments: "Já tem pagamento feito. Apague o pagamento no Gasto antes de cancelar.",
   payment_not_found_or_paid: "Esse pagamento já foi pago ou não existe mais.",
+  plan_sum_mismatch: "A soma das parcelas não fecha com o restante. Confira os valores.",
 };
 
 export async function callExecution<Q extends ExecQuote>(body: Record<string, unknown>): Promise<ExecutionSnapshot<Q> | null> {
@@ -79,14 +81,70 @@ export async function callExecution<Q extends ExecQuote>(body: Record<string, un
   return data as ExecutionSnapshot<Q>;
 }
 
-const FREQUENCIES: { value: Frequency; label: string }[] = [
-  { value: "semanal", label: "Toda semana" },
-  { value: "quinzenal", label: "A cada 15 dias" },
-  { value: "mensal", label: "Todo mês" },
-];
+export function AmountEditor({
+  value,
+  disabled,
+  label,
+  onSave,
+}: {
+  value: number;
+  disabled?: boolean;
+  label: string;
+  onSave: (amount: number) => Promise<void> | void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState("");
 
-function parseMoney(v: string): number {
-  return Number(v.replace(/\./g, "").replace(",", ".")) || 0;
+  if (!open) {
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          setDraft(Number(value).toFixed(2).replace(".", ","));
+          setOpen(true);
+        }}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-bg-elev"
+        title="Mudar o valor"
+        aria-label={`Mudar o valor de ${label}`}
+      >
+        <Pencil className="h-3.5 w-3.5 text-text-muted" />
+      </button>
+    );
+  }
+
+  async function save() {
+    const v = parseBRL(draft);
+    if (v == null || v <= 0) {
+      toast.error("Digite um valor maior que zero.");
+      return;
+    }
+    setOpen(false);
+    if (toCents(v) !== toCents(Number(value))) await onSave(v);
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input
+        autoFocus
+        value={draft}
+        inputMode="decimal"
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save();
+          if (e.key === "Escape") setOpen(false);
+        }}
+        className="num h-7 w-24 rounded border border-primary/60 bg-bg-elev px-1.5 text-right text-xs font-medium"
+        aria-label={`Novo valor de ${label}`}
+      />
+      <button type="button" onClick={save} className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-bg-elev" aria-label="Salvar valor">
+        <Check className="h-3.5 w-3.5 text-success" />
+      </button>
+      <button type="button" onClick={() => setOpen(false)} className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-bg-elev" aria-label="Cancelar">
+        <X className="h-3.5 w-3.5 text-text-muted" />
+      </button>
+    </span>
+  );
 }
 
 export function ExecuteQuoteDialog<Q extends ExecQuote>({
@@ -101,35 +159,17 @@ export function ExecuteQuoteDialog<Q extends ExecQuote>({
   const [quantity, setQuantity] = useState("1");
   const [mode, setMode] = useState<"total" | "parcial">("total");
   const [paidNow, setPaidNow] = useState("");
-  const [restType, setRestType] = useState<"single" | "recurring">("single");
-  const [singleDate, setSingleDate] = useState(addDaysISO(todayISO(), 30));
-  const [frequency, setFrequency] = useState<Frequency>("mensal");
-  const [firstDate, setFirstDate] = useState(addDaysISO(todayISO(), 30));
-  const [count, setCount] = useState("2");
+  const [plan, setPlan] = useState<PlanResult | null>(null);
   const [saving, setSaving] = useState(false);
 
   const qty = Number(quantity.replace(",", "."));
   const total = Number.isFinite(qty) && qty > 0 ? toCents(Number(quote.unit_price) * qty) / 100 : 0;
-  const paid = parseMoney(paidNow);
-  const remaining = toCents(total - paid) / 100;
-  const n = Math.floor(Number(count));
-
-  const schedule: RemainderSchedule | null =
-    restType === "single"
-      ? singleDate
-        ? { type: "single", due_date: singleDate }
-        : null
-      : firstDate && n >= 1 && n <= 60
-        ? { type: "recurring", frequency, first_date: firstDate, count: n }
-        : null;
-
-  const preview = useMemo(
-    () => (mode === "parcial" && schedule && remaining > 0 ? planRemainder(remaining, schedule) : []),
-    [mode, schedule?.type, singleDate, frequency, firstDate, n, remaining], // eslint-disable-line react-hooks/exhaustive-deps
-  );
+  const paid = parseBRL(paidNow) ?? 0;
+  const remainingCents = toCents(total) - toCents(paid);
+  const remaining = remainingCents / 100;
 
   const valid =
-    total > 0 && (mode === "total" || (paid >= 0 && toCents(paid) < toCents(total) && schedule !== null && remaining > 0));
+    total > 0 && (mode === "total" || (paid >= 0 && remainingCents > 0 && plan !== null && plan.valid));
 
   async function submit() {
     if (!valid || saving) return;
@@ -139,10 +179,17 @@ export function ExecuteQuoteDialog<Q extends ExecQuote>({
         action: "start",
         quote_id: quote.id,
         quantity: qty,
-        payment: mode === "total" ? { mode: "total" } : { mode: "parcial", paid_now: paid, schedule },
+        payment:
+          mode === "total"
+            ? { mode: "total" }
+            : {
+                mode: "parcial",
+                paid_now: paid,
+                installments: (plan?.slots ?? []).map((s) => ({ label: s.label, amount: s.cents / 100, due_date: s.due_date })),
+              },
       });
       if (!snapshot) return;
-      toast.success(mode === "total" ? "Cotação executada e aceita." : "Cotação em execução, restante agendado.");
+      toast.success(mode === "total" ? "Cotação executada e aceita." : "Cotação em execução, pagamentos agendados.");
       onDone(snapshot);
     } finally {
       setSaving(false);
@@ -209,55 +256,11 @@ export function ExecuteQuoteDialog<Q extends ExecQuote>({
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <Label>Agendar o restante</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" className={pill(restType === "single")} onClick={() => setRestType("single")}>
-                    Numa data
-                  </button>
-                  <button type="button" className={pill(restType === "recurring")} onClick={() => setRestType("recurring")}>
-                    Recorrente
-                  </button>
+              {remainingCents > 0 && (
+                <div className="space-y-2">
+                  <Label>Como paga o restante</Label>
+                  <PaymentPlanBuilder remainingCents={remainingCents} onChange={setPlan} />
                 </div>
-                {restType === "single" ? (
-                  <Input type="date" value={singleDate} onChange={(e) => setSingleDate(e.target.value)} aria-label="Data do pagamento" />
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      value={frequency}
-                      onChange={(e) => setFrequency(e.target.value as Frequency)}
-                      className="col-span-2 h-10 rounded-md border border-border bg-bg-elev px-3 text-sm"
-                      aria-label="Frequência"
-                    >
-                      {FREQUENCIES.map((f) => (
-                        <option key={f.value} value={f.value}>
-                          {f.label}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="space-y-1">
-                      <Label htmlFor="exec-first" className="text-[11px]">1º pagamento</Label>
-                      <Input id="exec-first" type="date" value={firstDate} onChange={(e) => setFirstDate(e.target.value)} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="exec-count" className="text-[11px]">Quantas vezes</Label>
-                      <Input id="exec-count" type="number" min="1" max="60" value={count} onChange={(e) => setCount(e.target.value)} />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {preview.length > 0 && (
-                <ul className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border bg-bg-elev-2 p-2 text-xs">
-                  {preview.map((p) => (
-                    <li key={p.label} className="flex items-center justify-between gap-2">
-                      <span className="text-text-muted">
-                        {fmtDate(p.due_date, "dd/MM/yyyy")} · {p.label}
-                      </span>
-                      <span className="num font-medium">{formatBRL(p.amount)}</span>
-                    </li>
-                  ))}
-                </ul>
               )}
             </>
           )}
@@ -364,6 +367,12 @@ export function QuotePaymentsPanel<Q extends ExecQuote>({
                       aria-label={`Mudar a data de ${p.label}`}
                     />
                   </label>
+                  <AmountEditor
+                    value={Number(p.amount)}
+                    label={p.label}
+                    disabled={busy !== null}
+                    onSave={(amount) => run(p.id, { action: "amount", payment_id: p.id, amount }, "Valor atualizado. O total da cotação foi recalculado.")}
+                  />
                   <Button
                     size="sm"
                     variant="outline"

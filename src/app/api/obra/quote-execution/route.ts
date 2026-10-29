@@ -1,24 +1,20 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest,NextResponse } from "next/server";
 import { z } from "zod";
 
 import { loadActiveContext } from "@/lib/household";
 import { getObraModule } from "@/lib/obra";
-import { cancelExecution, payInstallment, reschedulePayment, startExecution } from "@/lib/quote-execution";
+import { cancelExecution, payInstallment, reschedulePayment, startExecution, updatePaymentAmount } from "@/lib/quote-execution";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-const schedule = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("single"), due_date: isoDate }),
-  z.object({
-    type: z.literal("recurring"),
-    frequency: z.enum(["semanal", "quinzenal", "mensal"]),
-    first_date: isoDate,
-    count: z.number().int().min(1).max(60),
-  }),
-]);
+const installment = z.object({
+  label: z.string().trim().min(1).max(60),
+  amount: z.number().positive().max(10_000_000),
+  due_date: isoDate,
+});
 
 const payment = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("total"), date: isoDate.optional() }),
@@ -26,7 +22,7 @@ const payment = z.discriminatedUnion("mode", [
     mode: z.literal("parcial"),
     paid_now: z.number().min(0).max(10_000_000),
     paid_date: isoDate.optional(),
-    schedule,
+    installments: z.array(installment).min(1).max(240),
   }),
 ]);
 
@@ -39,6 +35,7 @@ const bodySchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("pay"), payment_id: z.string().uuid(), date: isoDate.optional() }),
   z.object({ action: z.literal("reschedule"), payment_id: z.string().uuid(), due_date: isoDate }),
+  z.object({ action: z.literal("amount"), payment_id: z.string().uuid(), amount: z.number().positive().max(10_000_000) }),
   z.object({ action: z.literal("cancel"), quote_id: z.string().uuid() }),
   z.object({ action: z.literal("get"), quote_id: z.string().uuid() }),
 ]);
@@ -81,6 +78,10 @@ export async function POST(req: NextRequest) {
     quoteId = r.quoteId;
   } else if (body.action === "reschedule") {
     const r = await reschedulePayment(db, { householdId: ctx.householdId, paymentId: body.payment_id, dueDate: body.due_date });
+    if (!r) return NextResponse.json({ error: "payment_not_found_or_paid" }, { status: 409 });
+    quoteId = r.quote_id;
+  } else if (body.action === "amount") {
+    const r = await updatePaymentAmount(db, { householdId: ctx.householdId, paymentId: body.payment_id, amount: body.amount });
     if (!r) return NextResponse.json({ error: "payment_not_found_or_paid" }, { status: 409 });
     quoteId = r.quote_id;
   } else if (body.action === "get") {

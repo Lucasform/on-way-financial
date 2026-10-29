@@ -3,7 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { todayISO } from "@/lib/dates";
-import { planRemainder, toCents, type RemainderSchedule } from "@/lib/installments";
+import { type PlannedPayment, toCents } from "@/lib/installments";
 import type { Database } from "@/types/database";
 
 type Db = SupabaseClient<Database>;
@@ -59,7 +59,7 @@ export type StartExecutionInput = {
   quantity: number;
 } & (
   | { mode: "total"; date?: string | null }
-  | { mode: "parcial"; paid_now: number; paid_date?: string | null; schedule: RemainderSchedule }
+  | { mode: "parcial"; paid_now: number; paid_date?: string | null; installments: PlannedPayment[] }
 );
 
 export async function startExecution(db: Db, input: StartExecutionInput): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
@@ -72,6 +72,10 @@ export async function startExecution(db: Db, input: StartExecutionInput): Promis
   if (input.mode === "parcial") {
     const paidCents = toCents(input.paid_now);
     if (paidCents < 0 || paidCents >= totalCents) return { ok: false, error: "paid_now_out_of_range", status: 400 };
+    const plannedCents = input.installments.reduce((s, p) => s + toCents(p.amount), 0);
+    if (plannedCents !== totalCents - paidCents || input.installments.some((p) => toCents(p.amount) <= 0)) {
+      return { ok: false, error: "plan_sum_mismatch", status: 400 };
+    }
   }
 
   // Reivindica a cotação só se ainda estiver em aberto (evita clique duplo / duas abas).
@@ -120,8 +124,7 @@ export async function startExecution(db: Db, input: StartExecutionInput): Promis
     return { ok: true };
   }
 
-  const remaining = (totalCents - toCents(input.paid_now)) / 100;
-  const planned = planRemainder(remaining, input.schedule);
+  const planned = input.installments;
 
   if (input.paid_now > 0) {
     const paidDate = input.paid_date || todayISO();
@@ -152,7 +155,13 @@ export async function startExecution(db: Db, input: StartExecutionInput): Promis
   }
 
   const { error: schedErr } = await db.from("quote_payments").insert(
-    planned.map((p) => ({ household_id: input.householdId, quote_id: quote.id, label: p.label, amount: p.amount, due_date: p.due_date })),
+    planned.map((p) => ({
+      household_id: input.householdId,
+      quote_id: quote.id,
+      label: p.label,
+      amount: toCents(p.amount) / 100,
+      due_date: p.due_date,
+    })),
   );
   if (schedErr) {
     await rollback();
@@ -204,6 +213,27 @@ export async function reschedulePayment(db: Db, args: { householdId: string; pay
     .is("paid_at", null)
     .select("quote_id")
     .maybeSingle();
+  return data;
+}
+
+/**
+ * Muda o valor de uma parcela ainda não paga. O total da cotação passa a ser a soma das parcelas,
+ * então a cotação continua fechando certinho (e vira Aceita se já estiver tudo pago).
+ */
+export async function updatePaymentAmount(db: Db, args: { householdId: string; paymentId: string; amount: number }) {
+  const { data } = await db
+    .from("quote_payments")
+    .update({ amount: toCents(args.amount) / 100 })
+    .eq("id", args.paymentId)
+    .eq("household_id", args.householdId)
+    .is("paid_at", null)
+    .select("quote_id")
+    .maybeSingle();
+  if (!data) return null;
+  const { data: all } = await db.from("quote_payments").select("amount").eq("quote_id", data.quote_id);
+  const totalCents = (all ?? []).reduce((s, p) => s + toCents(Number(p.amount)), 0);
+  await db.from("price_quotes").update({ total_amount: totalCents / 100 }).eq("id", data.quote_id).eq("household_id", args.householdId);
+  await settleQuote(db, data.quote_id);
   return data;
 }
 

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { callExecution } from "@/components/modules/quote-execution";
+import { AmountEditor, callExecution } from "@/components/modules/quote-execution";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
@@ -137,6 +137,23 @@ export function ObraPaymentsTab({ scheduled: initialScheduled, executed: initial
     }
   }
 
+  async function changeAmount(p: ScheduledRow, amount: number) {
+    setBusy(p.id);
+    try {
+      const snap = await callExecution({ action: "amount", payment_id: p.id, amount });
+      if (!snap) return;
+      const fresh = new Map(snap.payments.map((x) => [x.id, x]));
+      setScheduled((s) =>
+        s
+          .filter((x) => x.quote_id !== p.quote_id || !fresh.get(x.id)?.paid_at)
+          .map((x) => (fresh.has(x.id) ? { ...x, amount: Number(fresh.get(x.id)!.amount) } : x)),
+      );
+      toast.success("Valor atualizado. O total da cotação foi recalculado.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
@@ -224,6 +241,12 @@ export function ObraPaymentsTab({ scheduled: initialScheduled, executed: initial
                         <Money value={p.amount} size="sm" className="shrink-0 font-medium" />
                         {canWrite && (
                           <div className="flex shrink-0 items-center gap-1.5">
+                            <AmountEditor
+                              value={p.amount}
+                              label={p.label}
+                              disabled={busy !== null}
+                              onSave={(amount) => changeAmount(p, amount)}
+                            />
                             <label
                               className="relative inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md hover:bg-bg-elev-2"
                               title="Mudar a data"

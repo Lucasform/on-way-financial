@@ -36,7 +36,8 @@ export function parseBRL(input: string): number | null {
     .trim();
   if (!cleaned) return null;
   const hasComma = cleaned.includes(",");
-  const normalized = hasComma ? cleaned.replace(/\./g, "").replace(",", ".") : cleaned;
+  const thousandsOnly = !hasComma && /^\d{1,3}(\.\d{3})+$/.test(cleaned);
+  const normalized = hasComma ? cleaned.replace(/\./g, "").replace(",", ".") : thousandsOnly ? cleaned.replace(/\./g, "") : cleaned;
   const n = Number(normalized);
   return Number.isFinite(n) ? n : null;
 }
