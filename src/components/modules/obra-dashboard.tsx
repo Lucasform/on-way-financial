@@ -1,11 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   CalendarClock,
   Camera,
+  CircleHelp,
   FolderOpen,
   Images,
   ListTodo,
@@ -14,25 +12,29 @@ import {
   Store,
   Trash2,
 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Money } from "@/components/ui/money";
-import { Empty } from "@/components/ui/empty";
-import { fmtDate } from "@/lib/dates";
-import { createSupabaseBrowser } from "@/lib/supabase/client";
-import { uploadObraFile } from "@/lib/supabase/obra-storage";
-import { FolderChips, MoveToFolderBar, type ObraFolder } from "@/components/modules/obra-folders";
-import { QuickAddExpenseDialog, type SupplierOption } from "@/components/modules/quick-add-expense-dialog";
+import { AppTour, useFirstVisitTour } from "@/components/modules/app-tour";
 import {
   DailyBriefingDialog,
   PushOptIn,
   TodayActivitiesCard,
   type UpcomingActivity,
 } from "@/components/modules/daily-briefing";
+import { FolderChips, MoveToFolderBar, type ObraFolder } from "@/components/modules/obra-folders";
+import { QuickAddExpenseDialog, type SupplierOption } from "@/components/modules/quick-add-expense-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty } from "@/components/ui/empty";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Money } from "@/components/ui/money";
+import { fmtDate } from "@/lib/dates";
+import { createSupabaseBrowser } from "@/lib/supabase/client";
+import { uploadObraFile } from "@/lib/supabase/obra-storage";
 
 export interface Module {
   id: string;
@@ -175,6 +177,7 @@ export function ObraDashboard({
 }: Props) {
   const router = useRouter();
   const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [tourOpen, setTourOpen] = useFirstVisitTour();
 
   return (
     <div className="space-y-6">
@@ -186,7 +189,16 @@ export function ObraDashboard({
             {module.end_date && <>· Previsão {module.end_date}</>}
           </p>
         </div>
-        <Badge variant={module.status === "active" ? "success" : "secondary"}>{statusLabel(module.status)}</Badge>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <Badge variant={module.status === "active" ? "success" : "secondary"}>{statusLabel(module.status)}</Badge>
+          <button
+            type="button"
+            onClick={() => setTourOpen(true)}
+            className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-primary"
+          >
+            <CircleHelp className="h-3.5 w-3.5" /> Como usar
+          </button>
+        </div>
       </header>
 
       <section className="grid gap-3 sm:grid-cols-2">
@@ -243,7 +255,8 @@ export function ObraDashboard({
       )}
       {upcomingActivities.length > 0 && <TodayActivitiesCard activities={upcomingActivities} today={today} />}
       <PushOptIn />
-      <DailyBriefingDialog payments={upcomingPayments} activities={upcomingActivities} today={today} />
+      <AppTour canWrite={canWrite} open={tourOpen} onOpenChange={setTourOpen} />
+      {!tourOpen && <DailyBriefingDialog payments={upcomingPayments} activities={upcomingActivities} today={today} />}
 
       {showQuickAdd && (
         <QuickAddExpenseDialog
