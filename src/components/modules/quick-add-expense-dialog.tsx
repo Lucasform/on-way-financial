@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Check, Loader2, Plus, Search } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,13 @@ export interface SupplierOption {
 }
 
 const NEW_SUPPLIER = "__new__";
+
+const norm = (v: string) =>
+  v
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim();
 const SUPPLIER_CATEGORIES = ["material", "mão-de-obra", "equipamento", "serviço", "outro"];
 
 export interface QuickAddResult {
@@ -48,10 +55,27 @@ export function QuickAddExpenseDialog({ suppliers, defaultSupplierId, allowNewSu
   const [options, setOptions] = useState(suppliers);
   const [newSupplier, setNewSupplier] = useState({ name: "", category: "material", phone: "" });
   const [savingSupplier, setSavingSupplier] = useState(false);
+  const [supplierQuery, setSupplierQuery] = useState("");
   const [status, setStatus] = useState<"cotacao" | "executada">("executada");
   const [saving, setSaving] = useState(false);
 
   const creatingSupplier = supplierId === NEW_SUPPLIER;
+  const selectedSupplier = options.find((o) => o.id === supplierId) ?? null;
+  const filteredOptions = useMemo(() => {
+    const q = norm(supplierQuery);
+    return q ? options.filter((o) => norm(o.name).includes(q)) : options;
+  }, [options, supplierQuery]);
+  const exactMatch = options.some((o) => norm(o.name) === norm(supplierQuery));
+
+  function startNewSupplier() {
+    setNewSupplier({ name: supplierQuery.trim(), category: "material", phone: "" });
+    setSupplierId(NEW_SUPPLIER);
+  }
+
+  function pickSupplier(id: string) {
+    setSupplierId(id);
+    setSupplierQuery("");
+  }
   const num = Number(amount.replace(",", "."));
   const valid = name.trim().length > 0 && Number.isFinite(num) && num > 0 && supplierId.length > 0 && !creatingSupplier;
 
@@ -77,6 +101,7 @@ export function QuickAddExpenseDialog({ suppliers, defaultSupplierId, allowNewSu
         s.some((x) => x.id === data.supplier.id) ? s : [...s, data.supplier].sort((a, b) => a.name.localeCompare(b.name)),
       );
       setSupplierId(data.supplier.id);
+      setSupplierQuery("");
       setNewSupplier({ name: "", category: "material", phone: "" });
       toast.success(data.created ? "Fornecedor cadastrado." : "Esse fornecedor já existia, selecionei ele.");
     } finally {
@@ -142,20 +167,71 @@ export function QuickAddExpenseDialog({ suppliers, defaultSupplierId, allowNewSu
           </div>
           <div className="space-y-1">
             <Label htmlFor="qa-supplier">Fornecedor</Label>
-            <select
-              id="qa-supplier"
-              value={supplierId}
-              onChange={(e) => setSupplierId(e.target.value)}
-              className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
-            >
-              <option value="">Selecione...</option>
-              {options.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-              {allowNewSupplier && <option value={NEW_SUPPLIER}>+ Cadastrar novo fornecedor</option>}
-            </select>
+            {selectedSupplier ? (
+              <div className="flex h-10 items-center justify-between gap-2 rounded-md border border-primary/50 bg-primary/5 px-3 text-sm">
+                <span className="flex min-w-0 items-center gap-2">
+                  <Check className="h-4 w-4 shrink-0 text-primary" />
+                  <span className="truncate font-medium">{selectedSupplier.name}</span>
+                </span>
+                {!(defaultSupplierId && !allowNewSupplier) && (
+                  <button type="button" onClick={() => setSupplierId("")} className="shrink-0 text-xs text-primary hover:underline">
+                    trocar
+                  </button>
+                )}
+              </div>
+            ) : (
+              !creatingSupplier && (
+                <div className="overflow-hidden rounded-md border border-border">
+                  <div className="relative border-b border-border">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                    <input
+                      id="qa-supplier"
+                      value={supplierQuery}
+                      onChange={(e) => setSupplierQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter") return;
+                        e.preventDefault();
+                        if (filteredOptions.length === 1) pickSupplier(filteredOptions[0]!.id);
+                        else if (filteredOptions.length === 0 && allowNewSupplier && supplierQuery.trim()) startNewSupplier();
+                      }}
+                      placeholder="Digite pra buscar..."
+                      autoComplete="off"
+                      className="h-10 w-full bg-bg-elev pl-9 pr-3 text-sm outline-none"
+                    />
+                  </div>
+                  <ul className="max-h-44 overflow-y-auto bg-bg-elev text-sm">
+                    {allowNewSupplier && !exactMatch && (
+                      <li>
+                        <button
+                          type="button"
+                          onClick={startNewSupplier}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left font-medium text-primary hover:bg-bg-elev-2"
+                        >
+                          <Plus className="h-4 w-4 shrink-0" />
+                          <span className="truncate">
+                            {supplierQuery.trim() ? `Cadastrar "${supplierQuery.trim()}"` : "Cadastrar novo fornecedor"}
+                          </span>
+                        </button>
+                      </li>
+                    )}
+                    {filteredOptions.map((o) => (
+                      <li key={o.id}>
+                        <button
+                          type="button"
+                          onClick={() => pickSupplier(o.id)}
+                          className="w-full truncate px-3 py-2 text-left hover:bg-bg-elev-2"
+                        >
+                          {o.name}
+                        </button>
+                      </li>
+                    ))}
+                    {filteredOptions.length === 0 && supplierQuery.trim() && (
+                      <li className="px-3 py-2 text-xs text-text-muted">Nenhum fornecedor com esse nome.</li>
+                    )}
+                  </ul>
+                </div>
+              )
+            )}
             {creatingSupplier && (
               <div className="space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-3">
                 <p className="text-xs font-semibold text-primary">Novo fornecedor</p>

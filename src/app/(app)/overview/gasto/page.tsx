@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { ObraCostsList, type CostRow } from "@/components/modules/obra-costs-list";
+import type { CostRow } from "@/components/modules/obra-costs-list";
+import { ObraGastoView } from "@/components/modules/obra-gasto-view";
 import { ObraSectionHeader } from "@/components/modules/obra-section-header";
-import { Card } from "@/components/ui/card";
-import { Money } from "@/components/ui/money";
 import { format, monthRangeISO, previousMonthRange } from "@/lib/dates";
 import { loadActiveContext } from "@/lib/household";
 import { getObraModule } from "@/lib/obra";
@@ -61,6 +60,7 @@ export default async function GastoPage(props: { searchParams: Promise<{ periodo
       id: i.id,
       name: i.name,
       supplier_id: i.supplier_id && nameById.has(i.supplier_id) ? i.supplier_id : null,
+      supplier_label: (i.supplier_id && nameById.get(i.supplier_id)) || i.supplier || "Sem fornecedor",
       amount: Number(i.quantity) * Number(i.actual_unit_price ?? i.unit_price ?? 0),
       bought_at: i.bought_at,
       quote_id: i.quote_id,
@@ -69,15 +69,6 @@ export default async function GastoPage(props: { searchParams: Promise<{ periodo
     }))
     .sort((a, b) => (a.supplier_id ? 1 : 0) - (b.supplier_id ? 1 : 0) || b.sortKey.localeCompare(a.sortKey))
     .map(({ sortKey: _sortKey, ...c }) => c);
-
-  const totals = new Map<string, number>();
-  for (const i of items ?? []) {
-    const label = (i.supplier_id && nameById.get(i.supplier_id)) || i.supplier || "Sem fornecedor";
-    const amount = Number(i.quantity) * Number(i.actual_unit_price ?? i.unit_price ?? 0);
-    totals.set(label, (totals.get(label) ?? 0) + amount);
-  }
-  const rows = [...totals.entries()].sort((a, b) => b[1] - a[1]);
-  const grandTotal = rows.reduce((s, [, v]) => s + v, 0);
 
   return (
     <div>
@@ -131,26 +122,7 @@ export default async function GastoPage(props: { searchParams: Promise<{ periodo
         )}
       </form>
 
-      {rows.length === 0 ? (
-        <Card className="p-8 text-center text-sm text-text-muted">Nada gasto nesse período.</Card>
-      ) : (
-        <Card className="overflow-hidden">
-          <ul className="divide-y divide-border">
-            {rows.map(([name, total]) => (
-              <li key={name} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-                <span className="truncate font-medium">{name}</span>
-                <Money value={total} size="sm" className="shrink-0" />
-              </li>
-            ))}
-          </ul>
-          <div className="flex items-center justify-between border-t border-border bg-bg-elev-2 px-4 py-3 text-sm font-semibold">
-            <span>Total</span>
-            <Money value={grandTotal} size="sm" />
-          </div>
-        </Card>
-      )}
-
-      <ObraCostsList costs={costs} suppliers={suppliers ?? []} canWrite={ctx.role !== "viewer"} />
+      <ObraGastoView costs={costs} suppliers={suppliers ?? []} canWrite={ctx.role !== "viewer"} />
     </div>
   );
 }

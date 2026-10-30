@@ -1,22 +1,23 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { AlertTriangle, Plus, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { toast } from "sonner";
 
+import { QuickAddExpenseDialog, type SupplierOption } from "@/components/modules/quick-add-expense-dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
 import { useConfirm } from "@/hooks/use-confirm";
 import { fmtDate } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
-import { QuickAddExpenseDialog, type SupplierOption } from "@/components/modules/quick-add-expense-dialog";
 
 export interface CostRow {
   id: string;
   name: string;
   supplier_id: string | null;
+  supplier_label: string;
   amount: number;
   bought_at: string | null;
   quote_id: string | null;
