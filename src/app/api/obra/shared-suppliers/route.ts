@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
   const { data: mine } = await db.from("suppliers").select("id, name").eq("household_id", ctx.householdId);
   const dup = (mine ?? []).find((s) => normalizeName(s.name) === normalizeName(source.name));
   if (dup) {
-    await db.from("suppliers").update({ shared: true, shared_source_id: source.id }).eq("id", dup.id);
+    await db.from("suppliers").update({ shared_source_id: source.id }).eq("id", dup.id);
     return NextResponse.json({ supplier: dup, created: false });
   }
 
@@ -139,7 +139,6 @@ export async function POST(req: NextRequest) {
       phone2: source.phone2,
       cnpj: source.cnpj,
       address: source.address,
-      shared: true,
       shared_source_id: source.id,
     })
     .select("id, name")
