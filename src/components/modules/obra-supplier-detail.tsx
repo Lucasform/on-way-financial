@@ -529,7 +529,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
       <section>
         <div className="mb-2 flex items-center justify-between">
           <h3 className="flex items-center gap-1.5 text-sm font-semibold">
-            <FileText className="h-4 w-4" /> PDF do orçamento
+            <FileText className="h-4 w-4" /> Orçamentos e comprovantes
           </h3>
           {canWrite && (
             <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-primary hover:underline">
@@ -550,7 +550,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
           )}
         </div>
         {budgetFiles.length === 0 ? (
-          <Empty icon={FileText} title="Sem PDF ainda" description="Anexe o orçamento que esse fornecedor enviou. Pode subir mais de um." />
+          <Empty icon={FileText} title="Sem arquivos ainda" description="Anexe orçamentos e comprovantes desse fornecedor em PDF. Pode subir mais de um." />
         ) : (
           <Card className="divide-y divide-border">
             {budgetFiles.map((f) => (
