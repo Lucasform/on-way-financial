@@ -176,6 +176,39 @@ export type Database = {
           },
         ]
       }
+      household_partners: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          created_by: string
+          id: string
+          invite_email: string
+          partner_household_id: string | null
+          requester_household_id: string
+          status: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          invite_email: string
+          partner_household_id?: string | null
+          requester_household_id: string
+          status?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          invite_email?: string
+          partner_household_id?: string | null
+          requester_household_id?: string
+          status?: string
+        }
+        Relationships: []
+      }
       household_invites: {
         Row: {
           accepted_at: string | null
@@ -1221,6 +1254,8 @@ export type Database = {
           phone: string | null
           phone2: string | null
           rating: number | null
+          shared: boolean
+          shared_source_id: string | null
           updated_at: string
         }
         Insert: {
@@ -1235,6 +1270,8 @@ export type Database = {
           phone?: string | null
           phone2?: string | null
           rating?: number | null
+          shared?: boolean
+          shared_source_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -1249,6 +1286,8 @@ export type Database = {
           phone?: string | null
           phone2?: string | null
           rating?: number | null
+          shared?: boolean
+          shared_source_id?: string | null
           updated_at?: string
         }
         Relationships: [

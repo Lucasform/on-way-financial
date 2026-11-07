@@ -2,8 +2,9 @@ import { redirect } from "next/navigation";
 
 import { ObraSectionHeader } from "@/components/modules/obra-section-header";
 import { ObraSuppliersTab } from "@/components/modules/obra-suppliers-tab";
-import { getObraModule } from "@/lib/obra";
+import { SupplierTabs } from "@/components/modules/supplier-tabs";
 import { loadActiveContext } from "@/lib/household";
+import { getObraModule } from "@/lib/obra";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export default async function FornecedoresPage() {
   return (
     <div>
       <ObraSectionHeader title="Fornecedores" subtitle="Toque num fornecedor pra ver orçamentos e histórico" />
+      <SupplierTabs active="meus" />
       <ObraSuppliersTab householdId={ctx.householdId} initial={suppliers ?? []} canWrite={ctx.role !== "viewer"} />
     </div>
   );
