@@ -1,7 +1,7 @@
 import "server-only";
 
+import { monthRangeISO, todayISO } from "@/lib/dates";
 import { formatBRL } from "@/lib/money";
-import { monthRangeISO } from "@/lib/dates";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 interface ContextOptions {
@@ -90,6 +90,30 @@ export async function buildFinancialContext(opts: ContextOptions): Promise<strin
     }
   }
 
+  const today = todayISO();
+  const { data: acts } = await admin
+    .from("obra_activities")
+    .select("title, due_date, assignee, status")
+    .eq("module_id", mod.id);
+  const openActs = (acts ?? [])
+    .filter((a) => a.status !== "feito")
+    .sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"));
+  const doneCount = (acts ?? []).length - openActs.length;
+  lines.push("", `## Atividades abertas (${openActs.length}; já feitas: ${doneCount})`);
+  if (openActs.length === 0) lines.push("- nenhuma");
+  const who = (a: { assignee: string | null }) => (a.assignee ? ` | responsável: ${a.assignee}` : "");
+  const groups: [string, typeof openActs][] = [
+    ["Atrasadas (venceram antes de hoje)", openActs.filter((a) => a.due_date && a.due_date < today)],
+    ["Para hoje", openActs.filter((a) => a.due_date === today)],
+    ["Próximas (ainda não venceram)", openActs.filter((a) => a.due_date && a.due_date > today)],
+    ["Sem data", openActs.filter((a) => !a.due_date)],
+  ];
+  for (const [label, list] of groups) {
+    if (list.length === 0) continue;
+    lines.push(`${label}:`);
+    for (const a of list.slice(0, 15)) lines.push(`- ${a.title}${a.due_date ? ` | ${a.due_date}` : ""}${who(a)}`);
+  }
+
   return lines.join("\n");
 }
 
@@ -110,7 +134,8 @@ REGRAS:
     EXECUTADA = paguei, gastei, comprei, foi, saiu, custou, acertei, quitei.
     COTACAO = cotou, orçou, orçamento, passou o preço, cotação, vai cobrar, quanto sai.
     Só pergunte "já foi pago ou é só cotação?" se não tiver nenhuma pista.
-  - Fornecedor é obrigatório. Se não foi dito, pergunte só "De qual fornecedor?". Pode ser um
+  - Fornecedor é obrigatório. Normalmente vem depois de "na", "no", "da", "do", "com", "pro" (ex: "na casa do
+    construtor" = fornecedor Casa do Construtor). Só se não houver nenhum nome, pergunte "De qual fornecedor?". Pode ser um
     fornecedor novo; ele é cadastrado junto ao confirmar (não chame add_supplier antes).
   - Nunca pergunte quantidade, unidade, se o valor é unitário ou detalhes extras. O número que o
     usuário disser É o valor total.
@@ -125,9 +150,22 @@ REGRAS:
 - Exemplos:
   Usuário: "paguei 150 de cimento" -> você: "De qual fornecedor?"
   Usuário: "na leroy" -> você chama register_expense(item "Cimento", 150, "Leroy", executada).
+  Usuário: "paguei 300 de areia na casa do construtor" -> chama register_expense(item "Areia", 300, "Casa do Construtor", executada).
   Usuário: "a leroy cotou a areia a 800" -> chama register_expense(item "Areia", 800, "Leroy", cotacao).
   Usuário: "quero fazer uma cotação de areia no depósito são josé" -> você: "Qual o valor?"
   Usuário: "registra 300 do eletricista" -> você: "Qual o nome do eletricista, e já foi pago ou é só cotação?"
+- ATIVIDADES (tarefas com data e responsável):
+  - Perguntas como "o que tem pra hoje?", "o que está atrasado?", "o que o Daniel tem pra fazer?":
+    responda com a lista "Atividades abertas" do contexto.
+  - Algo a FAZER ("anota", "lembrar de", "precisa", "tem que", "agenda", "marcar"): chame add_activity.
+    Só o título é obrigatório. Data e responsável são opcionais: use se o usuário disser, resolvendo
+    "amanhã", "sexta", "dia 15" a partir de Hoje. Não pergunte nada além disso; chame a ferramenta.
+  - Terminou/fez/concluiu algo que está nas abertas: chame complete_activity com o título.
+  - add_checklist_item é só pra lista de referência por fase. Tarefa com data ou responsável é atividade.
+  - Exemplos:
+    "anota pro Daniel concretar a laje sexta" -> add_activity(title "Concretar a laje", assignee "Daniel", due_date da próxima sexta).
+    "preciso comprar tela de proteção" -> add_activity(title "Comprar tela de proteção").
+    "o Daniel terminou a caixa de inspeção" -> complete_activity(title "caixa de inspeção").
 - Pra perguntas gerais (conceitos, comparações, produtos do mercado), use seu conhecimento.
 - Se faltar dado, peça pro usuário especificar.
 - Sugira ações claras e curtas, em bullet points quando ajudar.

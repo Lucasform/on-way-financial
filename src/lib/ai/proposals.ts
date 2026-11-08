@@ -7,7 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayISO } from "@/lib/dates";
 import { getServerEnv } from "@/lib/env";
 import { formatBRL } from "@/lib/money";
-import { createExpense, normalizeName, type ExpenseStatus } from "@/lib/obra-expense";
+import { createExpense, type ExpenseStatus,normalizeName } from "@/lib/obra-expense";
 import type { Database } from "@/types/database";
 
 type Db = SupabaseClient<Database>;
@@ -38,7 +38,9 @@ export type ProposedAction =
       name: string;
       unit: string | null;
       estimated_value: number | null;
-    };
+    }
+  | { type: "activity"; title: string; due_date: string | null; assignee: string | null; notes: string | null }
+  | { type: "activity_done"; id: string; title: string };
 
 interface ProposalPayload {
   hh: string;
@@ -109,7 +111,57 @@ export const ADD_CHECKLIST_ITEM_TOOL = {
   },
 };
 
-export const WRITE_TOOL_NAMES = new Set([REGISTER_EXPENSE_TOOL.name, ADD_SUPPLIER_TOOL.name, ADD_CHECKLIST_ITEM_TOOL.name]);
+export const ADD_ACTIVITY_TOOL = {
+  name: "add_activity",
+  description:
+    "Prepara uma ATIVIDADE (tarefa da obra com data e responsável, aparece na aba Atividades e no aviso do dia). " +
+    "Use pra tudo que é algo a FAZER: 'anota', 'lembrar de', 'precisa', 'tem que', 'agendar', 'marcar visita'. " +
+    "NÃO grava: o usuário confirma no cartão. Uma chamada por atividade.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      title: { type: "string", description: "O que fazer, curto (ex: Concretar a laje, Comprar cimento)." },
+      due_date: { type: "string", description: "Data YYYY-MM-DD, se o usuário der (resolva 'amanhã', 'sexta' a partir de Hoje)." },
+      assignee: { type: "string", description: "Responsável (nome da pessoa), se o usuário disser." },
+      notes: { type: "string", description: "Detalhe extra, se houver." },
+    },
+    required: ["title"],
+  },
+};
+
+export const COMPLETE_ACTIVITY_TOOL = {
+  name: "complete_activity",
+  description:
+    "Prepara marcar como FEITA uma atividade aberta da lista do contexto, quando o usuário disser que terminou/fez/concluiu. " +
+    "NÃO grava: o usuário confirma no cartão.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      title: { type: "string", description: "Título (ou parte) da atividade aberta, como aparece no contexto." },
+    },
+    required: ["title"],
+  },
+};
+
+export const WRITE_TOOL_NAMES = new Set([
+  REGISTER_EXPENSE_TOOL.name,
+  ADD_SUPPLIER_TOOL.name,
+  ADD_CHECKLIST_ITEM_TOOL.name,
+  ADD_ACTIVITY_TOOL.name,
+  COMPLETE_ACTIVITY_TOOL.name,
+]);
+
+async function obraModuleId(db: Db, householdId: string): Promise<string | null> {
+  const { data } = await db
+    .from("modules")
+    .select("id")
+    .eq("household_id", householdId)
+    .eq("kind", "obra")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return data?.id ?? null;
+}
 
 function str(v: unknown, max: number): string | null {
   if (typeof v !== "string") return null;
@@ -185,6 +237,34 @@ export async function planAction(
     return { action: { type: "checklist", phase_name: phase, category, name, unit: str(input.unit, 20), estimated_value: est } };
   }
 
+  if (toolName === ADD_ACTIVITY_TOOL.name) {
+    const title = str(input.title, 200);
+    if (!title) return { error: "Falta o que é a atividade. Pergunte ao usuário." };
+    return {
+      action: {
+        type: "activity",
+        title,
+        due_date: validDate(input.due_date),
+        assignee: str(input.assignee, 80),
+        notes: str(input.notes, 500),
+      },
+    };
+  }
+
+  if (toolName === COMPLETE_ACTIVITY_TOOL.name) {
+    const wanted = str(input.title, 200);
+    if (!wanted) return { error: "Falta qual atividade. Pergunte ao usuário." };
+    const moduleId = await obraModuleId(db, householdId);
+    if (!moduleId) return { error: "Não há obra cadastrada." };
+    const { data: open } = await db.from("obra_activities").select("id, title").eq("module_id", moduleId).neq("status", "feito");
+    const w = normalizeName(wanted);
+    const exact = (open ?? []).filter((a) => normalizeName(a.title) === w);
+    const partial = exact.length > 0 ? exact : (open ?? []).filter((a) => normalizeName(a.title).includes(w) || w.includes(normalizeName(a.title)));
+    if (partial.length === 0) return { error: `Não achei atividade aberta parecida com "${wanted}". Diga isso ao usuário e mostre as abertas do contexto.` };
+    if (partial.length > 1) return { error: `"${wanted}" bate com mais de uma atividade aberta (${partial.map((a) => a.title).join(", ")}). Pergunte qual.` };
+    return { action: { type: "activity_done", id: partial[0]!.id, title: partial[0]!.title } };
+  }
+
   return { error: "Ferramenta desconhecida." };
 }
 
@@ -207,6 +287,13 @@ export function describeAction(a: ProposedAction): string {
       .join(", ");
     return `Novo fornecedor: ${a.name} (${a.category})${extras ? `, ${extras}` : ""}.`;
   }
+  if (a.type === "activity") {
+    const extras = [a.assignee && `responsável ${a.assignee}`, a.due_date ? `para ${brDate(a.due_date)}` : "sem data"]
+      .filter(Boolean)
+      .join(", ");
+    return `Nova atividade: ${a.title} (${extras}).`;
+  }
+  if (a.type === "activity_done") return `Marcar como feita: ${a.title}.`;
   return `Checklist, fase "${a.phase_name}": ${a.name}${a.estimated_value ? `, ${formatBRL(a.estimated_value)}` : ""}.`;
 }
 
@@ -285,6 +372,33 @@ export async function executeActions(
       });
       if (error) failed.push(`fornecedor ${a.name}`);
       else done.push(`fornecedor ${a.name}`);
+      continue;
+    }
+
+    if (a.type === "activity") {
+      const { error } = await db.from("obra_activities").insert({
+        module_id: moduleId,
+        title: a.title,
+        due_date: a.due_date,
+        assignee: a.assignee,
+        notes: a.notes,
+        status: "pendente",
+      });
+      if (error) failed.push(`atividade ${a.title}`);
+      else done.push(`atividade ${a.title}`);
+      continue;
+    }
+
+    if (a.type === "activity_done") {
+      const { data, error } = await db
+        .from("obra_activities")
+        .update({ status: "feito", done_at: new Date().toISOString() })
+        .eq("id", a.id)
+        .eq("module_id", moduleId)
+        .select("id")
+        .maybeSingle();
+      if (error || !data) failed.push(`concluir ${a.title}`);
+      else done.push(`atividade ${a.title} feita`);
       continue;
     }
 

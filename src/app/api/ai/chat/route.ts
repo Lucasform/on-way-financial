@@ -1,20 +1,23 @@
-import { NextResponse, type NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { type NextRequest,NextResponse } from "next/server";
 import { z } from "zod";
 
 import { ASSISTANT_SYSTEM, buildFinancialContext, SEARCH_COSTS_TOOL, searchCosts } from "@/lib/ai/context";
 import {
+  ADD_ACTIVITY_TOOL,
   ADD_CHECKLIST_ITEM_TOOL,
   ADD_SUPPLIER_TOOL,
+  COMPLETE_ACTIVITY_TOOL,
   describeAction,
   executeActions,
   planAction,
+  type ProposedAction,
   REGISTER_EXPENSE_TOOL,
   signProposal,
   verifyProposal,
   WRITE_TOOL_NAMES,
-  type ProposedAction,
 } from "@/lib/ai/proposals";
+import { fmtDate, todayISO } from "@/lib/dates";
 import { getServerEnv } from "@/lib/env";
 import { loadActiveContext } from "@/lib/household";
 import { getObraModule } from "@/lib/obra";
@@ -33,7 +36,7 @@ const bodySchema = z.object({
   confirm: z.string().max(20_000).optional(),
 });
 
-const TOOLS = [SEARCH_COSTS_TOOL, REGISTER_EXPENSE_TOOL, ADD_SUPPLIER_TOOL, ADD_CHECKLIST_ITEM_TOOL];
+const TOOLS = [SEARCH_COSTS_TOOL, REGISTER_EXPENSE_TOOL, ADD_SUPPLIER_TOOL, ADD_CHECKLIST_ITEM_TOOL, ADD_ACTIVITY_TOOL, COMPLETE_ACTIVITY_TOOL];
 
 const CLAIMS_WRITE =
   /cart[aã]o|(confer|confir)\w*[^.!?\n]{0,40}resumo|resumo[^.!?\n]{0,40}(confer|confir)|\b(registrei|gravei|cadastrei|lancei|anotei)\b|\b(pronto|j[aá]|foi|est[aá]|fica|ficou)[,!.]?\s+(registrad|gravad|cadastrad|lan[cç]ad|anotad)/i;
@@ -77,7 +80,7 @@ export async function POST(req: NextRequest) {
 
   const env = getServerEnv();
   const financialContext = await buildFinancialContext({ householdId: ctx.householdId });
-  const system = `${ASSISTANT_SYSTEM}\n\nHoje é ${new Date().toISOString().slice(0, 10)}.\n\n--- FINANCIAL CONTEXT ---\n${financialContext}`;
+  const system = `${ASSISTANT_SYSTEM}\n\nHoje é ${fmtDate(todayISO(), "EEEE, yyyy-MM-dd")}.\n\n--- FINANCIAL CONTEXT ---\n${financialContext}`;
 
   try {
     const householdId = ctx.householdId;
