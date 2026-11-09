@@ -1,6 +1,22 @@
 "use client";
 
-import { History, Loader2, MessageCircle, Plus, QrCode, Search, Send, Smartphone, Store, Trash2, X } from "lucide-react";
+import {
+  FileText,
+  History,
+  ImageIcon,
+  Loader2,
+  MessageCircle,
+  Paperclip,
+  Plus,
+  QrCode,
+  Search,
+  Send,
+  Smartphone,
+  Store,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -10,6 +26,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useConfirm } from "@/hooks/use-confirm";
+import { createSupabaseBrowser } from "@/lib/supabase/client";
+import { uploadObraFile } from "@/lib/supabase/obra-storage";
 import { cn } from "@/lib/utils";
 
 export interface ConversationListItem {
@@ -293,6 +311,231 @@ function PhoneChatsPicker({ onClose }: { onClose: () => void }) {
   );
 }
 
+
+interface Attachable {
+  key: string;
+  name: string;
+  url: string;
+  mimetype: string | null;
+  group: string;
+  supplierId?: string | null;
+}
+
+type AttachTab = "documentos" | "fornecedores" | "galeria" | "aparelho";
+
+function baseName(url: string) {
+  const last = decodeURIComponent(url.split("/").pop() ?? "arquivo");
+  return last.replace(/^[0-9a-f]{8}-[0-9a-f-]{27}-/i, "");
+}
+
+function AttachmentPicker({
+  householdId,
+  moduleId,
+  supplierId,
+  onClose,
+  onSend,
+}: {
+  householdId: string;
+  moduleId: string;
+  supplierId: string | null;
+  onClose: () => void;
+  onSend: (file: { url: string; name: string; mimetype: string | null; caption: string }) => Promise<boolean>;
+}) {
+  const [tab, setTab] = useState<AttachTab>(supplierId ? "fornecedores" : "documentos");
+  const [items, setItems] = useState<Record<Exclude<AttachTab, "aparelho">, Attachable[]> | null>(null);
+  const [query, setQuery] = useState("");
+  const [chosen, setChosen] = useState<Attachable | null>(null);
+  const [caption, setCaption] = useState("");
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    const supabase = createSupabaseBrowser();
+    (async () => {
+      const [docs, folders, budgets, suppliers, gallery] = await Promise.all([
+        supabase.from("obra_documents").select("id, name, file_url, file_type, folder_id").eq("module_id", moduleId),
+        supabase.from("obra_folders").select("id, name").eq("module_id", moduleId),
+        supabase.from("supplier_budget_files").select("id, name, file_url, file_type, supplier_id").eq("module_id", moduleId),
+        supabase.from("suppliers").select("id, name").eq("household_id", householdId),
+        supabase.from("obra_gallery").select("id, image_url, caption, media_type, folder_id, taken_at").eq("module_id", moduleId),
+      ]);
+      const folderName = new Map((folders.data ?? []).map((f) => [f.id, f.name]));
+      const supplierName = new Map((suppliers.data ?? []).map((x) => [x.id, x.name]));
+      setItems({
+        documentos: (docs.data ?? [])
+          .map((d) => ({
+            key: d.id,
+            name: d.name,
+            url: d.file_url,
+            mimetype: d.file_type,
+            group: (d.folder_id && folderName.get(d.folder_id)) || "Sem pasta",
+          }))
+          .sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name)),
+        fornecedores: (budgets.data ?? [])
+          .map((f) => ({
+            key: f.id,
+            name: f.name,
+            url: f.file_url,
+            mimetype: f.file_type,
+            group: supplierName.get(f.supplier_id) ?? "Fornecedor",
+            supplierId: f.supplier_id,
+          }))
+          .sort((a, b) => Number(b.supplierId === supplierId) - Number(a.supplierId === supplierId) || a.group.localeCompare(b.group)),
+        galeria: (gallery.data ?? [])
+          .map((g) => ({
+            key: g.id,
+            name: g.caption || baseName(g.image_url),
+            url: g.image_url,
+            mimetype: g.media_type === "video" ? "video/mp4" : "image/jpeg",
+            group: (g.folder_id && folderName.get(g.folder_id)) || "Sem pasta",
+          }))
+          .sort((a, b) => a.group.localeCompare(b.group)),
+      });
+    })();
+  }, [householdId, moduleId, supplierId]);
+
+  async function sendChosen(file: { url: string; name: string; mimetype: string | null }) {
+    setSending(true);
+    const ok = await onSend({ ...file, caption: caption.trim() });
+    setSending(false);
+    if (ok) onClose();
+  }
+
+  async function uploadAndSend(file: File) {
+    setSending(true);
+    const supabase = createSupabaseBrowser();
+    const res = await uploadObraFile(supabase, "obra-documents", householdId, moduleId, file);
+    if ("error" in res) {
+      setSending(false);
+      toast.error(`Falha ao subir o arquivo: ${res.error}`);
+      return;
+    }
+    const ok = await onSend({ url: res.url, name: file.name, mimetype: file.type || null, caption: caption.trim() });
+    setSending(false);
+    if (ok) onClose();
+  }
+
+  const q = norm(query);
+  const list = tab === "aparelho" || !items ? [] : items[tab].filter((i) => !q || norm(`${i.name} ${i.group}`).includes(q));
+  const tabs: [AttachTab, string][] = [
+    ["documentos", "Documentos"],
+    ["fornecedores", "Fornecedores"],
+    ["galeria", "Galeria"],
+    ["aparelho", "Do aparelho"],
+  ];
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed left-1/2 top-1/2 z-50 flex max-h-[85dvh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-bg-elev shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <p className="text-sm font-semibold">Enviar arquivo pelo WhatsApp</p>
+          <button type="button" onClick={onClose} aria-label="Fechar" className="text-text-muted hover:text-text">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="grid grid-cols-4 gap-1 border-b border-border p-2">
+          {tabs.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => {
+                setTab(value);
+                setChosen(null);
+              }}
+              className={cn(
+                "rounded-md px-1 py-1.5 text-[11px] font-medium",
+                tab === value ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-bg-elev-2",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "aparelho" ? (
+          <div className="space-y-3 p-4">
+            <label
+              className={cn(
+                "flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed border-border p-6 text-center text-sm text-text-muted hover:bg-bg-elev-2",
+                sending && "pointer-events-none opacity-60",
+              )}
+            >
+              {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
+              {sending ? "Enviando..." : "Escolher arquivo do computador ou celular"}
+              <input
+                type="file"
+                className="hidden"
+                disabled={sending}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) void uploadAndSend(f);
+                }}
+              />
+            </label>
+            <Input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Legenda (opcional)" />
+          </div>
+        ) : (
+          <>
+            <div className="relative border-b border-border">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar arquivo..."
+                className="h-10 w-full bg-bg-elev pl-9 pr-3 text-sm outline-none"
+              />
+            </div>
+            <ul className="flex-1 divide-y divide-border overflow-y-auto">
+              {items === null && (
+                <li className="flex items-center justify-center gap-2 p-6 text-sm text-text-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Carregando arquivos...
+                </li>
+              )}
+              {items !== null && list.length === 0 && <li className="p-6 text-center text-sm text-text-muted">Nenhum arquivo aqui.</li>}
+              {list.map((i) => (
+                <li key={i.key}>
+                  <button
+                    type="button"
+                    onClick={() => setChosen(i)}
+                    className={cn("flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-bg-elev-2", chosen?.key === i.key && "bg-primary/10")}
+                  >
+                    {i.mimetype?.startsWith("image/") || i.mimetype?.startsWith("video/") ? (
+                      <ImageIcon className="h-4 w-4 shrink-0 text-text-muted" />
+                    ) : (
+                      <FileText className="h-4 w-4 shrink-0 text-text-muted" />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm">{i.name}</span>
+                      <span className="block truncate text-[11px] text-text-muted">
+                        {i.group}
+                        {i.supplierId && i.supplierId === supplierId && " · fornecedor desta conversa"}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {chosen && (
+              <div className="space-y-2 border-t border-border p-3">
+                <p className="truncate text-xs text-text-muted">
+                  Enviar: <strong className="text-text">{chosen.name}</strong>
+                </p>
+                <div className="flex gap-2">
+                  <Input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Legenda (opcional)" />
+                  <Button disabled={sending} onClick={() => sendChosen(chosen)} className="shrink-0">
+                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Enviar
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
 function NewConversation({ suppliers }: { suppliers: SupplierOption[] }) {
   const router = useRouter();
   const [phone, setPhone] = useState("");
@@ -356,13 +599,18 @@ function Thread({
   suppliers,
   canWrite,
   connected,
+  householdId,
+  moduleId,
 }: {
   conversation: ConversationListItem;
   messages: ThreadMessage[];
   suppliers: SupplierOption[];
   canWrite: boolean;
   connected: boolean;
+  householdId: string;
+  moduleId: string;
 }) {
+  const [attaching, setAttaching] = useState(false);
   const router = useRouter();
   const { confirm, ConfirmDialog } = useConfirm();
   const [text, setText] = useState("");
@@ -556,6 +804,17 @@ function Thread({
           }}
           className="flex items-end gap-2 border-t border-border p-3"
         >
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            disabled={!connected}
+            onClick={() => setAttaching(true)}
+            aria-label="Enviar arquivo"
+            title="Enviar arquivo (documentos, comprovantes, fotos)"
+          >
+            <Paperclip className="h-4 w-4" />
+          </Button>
           <textarea
             rows={1}
             value={text}
@@ -575,11 +834,35 @@ function Thread({
           </Button>
         </form>
       )}
+      {attaching && (
+        <AttachmentPicker
+          householdId={householdId}
+          moduleId={moduleId}
+          supplierId={conversation.supplierId}
+          onClose={() => setAttaching(false)}
+          onSend={async (file) => {
+            const d = await inbox({
+              action: "send_file",
+              conversation_id: conversation.id,
+              url: file.url,
+              name: file.name,
+              mimetype: file.mimetype,
+              caption: file.caption || null,
+            });
+            if (!d) return false;
+            toast.success("Arquivo enviado pelo WhatsApp.");
+            router.refresh();
+            return true;
+          }}
+        />
+      )}
     </div>
   );
 }
 
 export function ObraConversations({
+  householdId,
+  moduleId,
   configured,
   status,
   conversations,
@@ -588,6 +871,8 @@ export function ObraConversations({
   suppliers,
   canWrite,
 }: {
+  householdId: string;
+  moduleId: string;
   configured: boolean;
   status: Status;
   conversations: ConversationListItem[];
@@ -689,6 +974,8 @@ export function ObraConversations({
               suppliers={suppliers}
               canWrite={canWrite}
               connected={connected}
+              householdId={householdId}
+              moduleId={moduleId}
             />
           </div>
         ) : (

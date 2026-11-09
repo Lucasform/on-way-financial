@@ -55,6 +55,8 @@ export default async function ConversasPage({ searchParams }: { searchParams: { 
     <div>
       <ObraSectionHeader title="Conversas" subtitle="Seu WhatsApp com os fornecedores, dentro do app" />
       <ObraConversations
+        householdId={ctx.householdId}
+        moduleId={mod.id}
         configured={isEvolutionConfigured()}
         status={(connection?.status as "connected" | "connecting" | "disconnected" | undefined) ?? "disconnected"}
         conversations={list}

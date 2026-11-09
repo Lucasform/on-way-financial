@@ -12,7 +12,7 @@ export function isEvolutionConfigured(): boolean {
   return Boolean(process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY);
 }
 
-async function call<T>(path: string, init: { method: "GET" | "POST" | "DELETE"; body?: unknown }): Promise<T> {
+async function call<T>(path: string, init: { method: "GET" | "POST" | "DELETE"; body?: unknown; timeoutMs?: number }): Promise<T> {
   const base = process.env.EVOLUTION_API_URL?.replace(/\/+$/, "");
   const key = process.env.EVOLUTION_API_KEY;
   if (!base || !key) throw new Error("Servidor WhatsApp não configurado.");
@@ -23,7 +23,7 @@ async function call<T>(path: string, init: { method: "GET" | "POST" | "DELETE"; 
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
     cache: "no-store",
     // servidor fora do ar não pode travar a tela nem o webhook
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(init.timeoutMs ?? 15_000),
   });
   const text = await res.text();
   const data = text ? (JSON.parse(text) as unknown) : null;
@@ -201,6 +201,35 @@ export async function sendText(instance: string, phone: string, text: string): P
   const data = await call<{ key?: { id?: string } }>(`/message/sendText/${instance}`, {
     method: "POST",
     body: { number: phone, text },
+  });
+  return data?.key?.id ?? null;
+}
+
+export type MediaKind = "image" | "video" | "document";
+
+export function mediaKindFor(mimetype: string | null | undefined): MediaKind {
+  if (mimetype?.startsWith("image/")) return "image";
+  if (mimetype?.startsWith("video/")) return "video";
+  return "document";
+}
+
+/** Envia um arquivo pelo link público (o servidor baixa e manda). Devolve o id da mensagem no WhatsApp. */
+export async function sendMedia(
+  instance: string,
+  phone: string,
+  file: { url: string; fileName: string; mimetype: string; caption?: string | null },
+): Promise<string | null> {
+  const data = await call<{ key?: { id?: string } }>(`/message/sendMedia/${instance}`, {
+    method: "POST",
+    body: {
+      number: phone,
+      mediatype: mediaKindFor(file.mimetype),
+      mimetype: file.mimetype,
+      media: file.url,
+      fileName: file.fileName,
+      caption: file.caption ?? "",
+    },
+    timeoutMs: 55_000,
   });
   return data?.key?.id ?? null;
 }

@@ -1,10 +1,11 @@
 import { type NextRequest,NextResponse } from "next/server";
 import { z } from "zod";
 
+import { getServerEnv } from "@/lib/env";
 import { loadActiveContext } from "@/lib/household";
 import { normalizeName } from "@/lib/obra-expense";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { EvolutionError, isEvolutionConfigured, listPhoneChats, sendText } from "@/lib/wa/evolution";
+import { EvolutionError, isEvolutionConfigured, listPhoneChats, mediaKindFor, sendMedia, sendText } from "@/lib/wa/evolution";
 import { connectionFor, importHistory, openConversation, recordOutbound } from "@/lib/wa/inbox";
 import { formatPhone, isLidKey, normalizePhone, phoneKeyFromJid, sendTarget } from "@/lib/wa/phone";
 
@@ -23,6 +24,14 @@ const bodySchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("send"), conversation_id: id, text: z.string().trim().min(1).max(4000) }),
   z.object({ action: z.literal("history"), conversation_id: id }),
+  z.object({
+    action: z.literal("send_file"),
+    conversation_id: id,
+    url: z.string().url().max(2000),
+    name: z.string().trim().min(1).max(200),
+    mimetype: z.string().max(120).nullish(),
+    caption: z.string().trim().max(1000).nullish(),
+  }),
   z.object({ action: z.literal("link_supplier"), conversation_id: id, supplier_id: id.nullable() }),
   z.object({
     action: z.literal("create_supplier"),
@@ -35,6 +44,32 @@ const bodySchema = z.discriminatedUnion("action", [
 ]);
 
 const fail = (error: string, status = 400) => NextResponse.json({ error }, { status });
+
+const MIME_BY_EXT: Record<string, string> = {
+  pdf: "application/pdf",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  dwg: "application/acad",
+  zip: "application/zip",
+};
+
+function guessMime(name: string) {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  return MIME_BY_EXT[ext] ?? "application/octet-stream";
+}
+
+function extFor(mime: string) {
+  const ext = Object.entries(MIME_BY_EXT).find(([, m]) => m === mime)?.[0];
+  return ext ? `.${ext}` : "";
+}
 
 export async function POST(req: NextRequest) {
   const ctx = await loadActiveContext();
@@ -153,6 +188,19 @@ export async function POST(req: NextRequest) {
     if (body.action === "history") {
       const count = await importHistory(admin, householdId, instance, conversation.id);
       return NextResponse.json({ count });
+    }
+
+    if (body.action === "send_file") {
+      // só arquivos guardados no app (documentos, comprovantes, galeria) da própria obra
+      const base = `${getServerEnv().NEXT_PUBLIC_SUPABASE_URL.replace(/\/+$/, "")}/storage/v1/object/public/`;
+      const allowed = ["obra-documents", "obra-gallery"].some((bucket) => body.url.startsWith(`${base}${bucket}/${householdId}/`));
+      if (!allowed) return fail("Arquivo inválido.");
+      const mimetype = body.mimetype || guessMime(body.name);
+      const fileName = /\.[a-z0-9]{2,5}$/i.test(body.name) ? body.name : `${body.name}${extFor(mimetype)}`;
+      const waId = await sendMedia(instance, sendTarget(conversation), { url: body.url, fileName, mimetype, caption: body.caption });
+      const label = { image: "[imagem]", video: "[vídeo]", document: "[documento]" }[mediaKindFor(mimetype)];
+      await recordOutbound(admin, householdId, conversation.id, `${label} ${fileName}${body.caption ? `\n${body.caption}` : ""}`, waId);
+      return NextResponse.json({ ok: true });
     }
 
     const waId = await sendText(instance, sendTarget(conversation), body.text);
