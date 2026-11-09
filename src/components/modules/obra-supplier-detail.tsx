@@ -106,6 +106,27 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
   const [payments, setPayments] = useState(initialPayments);
   const [executing, setExecuting] = useState<QuoteRow | null>(null);
   const [cancelTarget, setCancelTarget] = useState<CancelTarget | null>(null);
+  const [openingChat, setOpeningChat] = useState(false);
+
+  async function openChat() {
+    setOpeningChat(true);
+    try {
+      const res = await fetch("/api/whatsapp/inbox", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "start", supplier_id: supplier.id }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { conversation_id?: string; error?: string };
+      if (!res.ok || !data.conversation_id) {
+        toast.error(data.error ?? "Não consegui abrir a conversa.");
+        if (data.error?.includes("Conecte")) router.push("/overview/conversas");
+        return;
+      }
+      router.push(`/overview/conversas?c=${data.conversation_id}`);
+    } finally {
+      setOpeningChat(false);
+    }
+  }
   const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null);
   const [showAddQuote, setShowAddQuote] = useState(false);
   const [newQuote, setNewQuote] = useState({ item_name: "", unit: "un", unit_price: "", quoted_at: todayISO() });
@@ -542,6 +563,16 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
               <a href={waLink(supplier.phone2)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-primary hover:underline">
                 <MessageCircle className="h-3.5 w-3.5" /> {supplier.phone2}
               </a>
+            )}
+            {canWrite && (supplier.phone || supplier.phone2) && (
+              <button
+                type="button"
+                disabled={openingChat}
+                onClick={openChat}
+                className="flex items-center gap-1.5 font-medium text-primary hover:underline disabled:opacity-60"
+              >
+                {openingChat ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />} Conversar pelo app
+              </button>
             )}
             {supplier.address && (
               <p className="flex items-center gap-1.5 text-text-muted">

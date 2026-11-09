@@ -1312,6 +1312,102 @@ export type Database = {
           },
         ]
       }
+      wa_connections: {
+        Row: {
+          household_id: string
+          instance_name: string
+          status: string
+          updated_at: string
+          webhook_secret: string
+        }
+        Insert: {
+          household_id: string
+          instance_name: string
+          status?: string
+          updated_at?: string
+          webhook_secret?: string
+        }
+        Update: {
+          household_id?: string
+          instance_name?: string
+          status?: string
+          updated_at?: string
+          webhook_secret?: string
+        }
+        Relationships: []
+      }
+      wa_conversations: {
+        Row: {
+          contact_name: string | null
+          created_at: string
+          history_imported: boolean
+          household_id: string
+          id: string
+          last_message: string | null
+          last_message_at: string | null
+          phone: string
+          supplier_id: string | null
+          unread: number
+          wa_jid: string | null
+        }
+        Insert: {
+          contact_name?: string | null
+          created_at?: string
+          history_imported?: boolean
+          household_id: string
+          id?: string
+          last_message?: string | null
+          last_message_at?: string | null
+          phone: string
+          supplier_id?: string | null
+          unread?: number
+          wa_jid?: string | null
+        }
+        Update: {
+          contact_name?: string | null
+          created_at?: string
+          history_imported?: boolean
+          household_id?: string
+          id?: string
+          last_message?: string | null
+          last_message_at?: string | null
+          phone?: string
+          supplier_id?: string | null
+          unread?: number
+          wa_jid?: string | null
+        }
+        Relationships: []
+      }
+      wa_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string
+          direction: string
+          household_id: string
+          id: string
+          wa_message_id: string | null
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string
+          direction: string
+          household_id: string
+          id?: string
+          wa_message_id?: string | null
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          direction?: string
+          household_id?: string
+          id?: string
+          wa_message_id?: string | null
+        }
+        Relationships: []
+      }
       telegram_link_tokens: {
         Row: {
           consumed_at: string | null

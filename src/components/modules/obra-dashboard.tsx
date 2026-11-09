@@ -7,6 +7,7 @@ import {
   FolderOpen,
   Images,
   ListTodo,
+  MessageCircle,
   Plus,
   Receipt,
   Store,
@@ -149,6 +150,7 @@ export const OBRA_SECTIONS = [
   { href: "/overview/cotacoes", label: "Cotações", icon: Receipt },
   { href: "/overview/pagamentos", label: "Pagamentos", icon: CalendarClock },
   { href: "/overview/atividades", label: "Atividades", icon: ListTodo },
+  { href: "/overview/conversas", label: "Conversas", icon: MessageCircle },
   { href: "/overview/andamento", label: "Andamento", icon: Camera },
   { href: "/overview/documentos", label: "Documentos", icon: FolderOpen },
   { href: "/overview/galeria", label: "Galeria", icon: Images },
@@ -269,7 +271,7 @@ export function ObraDashboard({
         />
       )}
 
-      <section className="grid grid-cols-4 gap-2 sm:grid-cols-7 md:hidden">
+      <section className="grid grid-cols-4 gap-2 sm:grid-cols-8 md:hidden">
         {OBRA_SECTIONS.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}

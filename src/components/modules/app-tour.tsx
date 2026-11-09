@@ -10,6 +10,7 @@ import {
   Home,
   ListTodo,
   type LucideIcon,
+  MessageCircle,
   Receipt,
   Sparkles,
   Store,
@@ -106,6 +107,17 @@ function steps(canWrite: boolean): Step[] {
       ],
       href: "/overview/atividades",
       cta: "Ver atividades",
+    },
+    {
+      icon: MessageCircle,
+      title: "Conversas",
+      intro: "O seu WhatsApp com os fornecedores, dentro do app.",
+      points: [
+        "Conecte o celular pelo QR Code e traga só as conversas que quiser; as pessoais ficam de fora.",
+        "Cada conversa fica com o nome do fornecedor, e dá pra cadastrar um fornecedor novo a partir do contato.",
+      ],
+      href: "/overview/conversas",
+      cta: "Ver conversas",
     },
     {
       icon: Wallet,
