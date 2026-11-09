@@ -160,6 +160,9 @@ export interface HistoryMessage {
   timestamp: number;
   message?: Record<string, unknown>;
   messageType?: string;
+  pushName?: string | null;
+  /** número real quando o contato vem com código interno (@lid) */
+  altJid?: string | null;
 }
 
 /** Últimas mensagens de uma conversa guardadas no servidor (inclui o que veio antes de conectar o app). */
@@ -177,10 +180,11 @@ export async function fetchHistory(instance: string, jid: string, limit = 30): P
   return records
     .map((r) => {
       const row = r as {
-        key?: { id?: string; fromMe?: boolean };
+        key?: { id?: string; fromMe?: boolean; remoteJidAlt?: string; senderPn?: string };
         messageTimestamp?: number | string;
         message?: Record<string, unknown>;
         messageType?: string;
+        pushName?: string | null;
       };
       const ts = Number(row.messageTimestamp ?? 0);
       return {
@@ -190,6 +194,8 @@ export async function fetchHistory(instance: string, jid: string, limit = 30): P
         timestamp: ts > 1e12 ? ts : ts * 1000,
         message: row.message,
         messageType: row.messageType,
+        pushName: row.pushName ?? null,
+        altJid: row.key?.remoteJidAlt ?? row.key?.senderPn ?? null,
       };
     })
     .filter((m) => m.timestamp > 0)
@@ -232,4 +238,20 @@ export async function sendMedia(
     timeoutMs: 55_000,
   });
   return data?.key?.id ?? null;
+}
+
+/** Nome de perfil de cada contato que o servidor conhece (os nomes da agenda do celular não chegam). */
+export async function findContactNames(instance: string): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  try {
+    const data = await call<unknown>(`/chat/findContacts/${instance}`, { method: "POST", body: { where: {} } });
+    for (const c of (Array.isArray(data) ? data : []) as { remoteJid?: string; id?: string; pushName?: string | null }[]) {
+      const jid = c.remoteJid ?? c.id ?? "";
+      const name = (c.pushName ?? "").trim();
+      if (jid && name && !/^\+?\d+$/.test(name)) names.set(jid, name);
+    }
+  } catch (err) {
+    console.error("[wa] contatos", err);
+  }
+  return names;
 }

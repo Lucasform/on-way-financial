@@ -59,6 +59,8 @@ interface PhoneChat {
   jid: string;
   phoneKey: string;
   name: string | null;
+  phoneLabel: string | null;
+  supplierName: string | null;
   lastText: string | null;
   lastFromMe: boolean;
   updatedAt: string | null;
@@ -238,13 +240,21 @@ function PhoneChatsPicker({ onClose }: { onClose: () => void }) {
 
   const q = norm(query);
   const visible = useMemo(
-    () => (chats ?? []).filter((c) => !q || norm(c.name ?? "").includes(q) || c.phoneKey.includes(q.replace(/\D/g, "") || "§")),
+    () =>
+      (chats ?? []).filter(
+        (c) => !q || norm(`${c.name ?? ""} ${c.supplierName ?? ""} ${c.lastText ?? ""}`).includes(q) || c.phoneKey.includes(q.replace(/\D/g, "") || "§"),
+      ),
     [chats, q],
   );
 
   async function open(c: PhoneChat) {
     setBusy(c.jid);
-    const d = await inbox<{ conversation_id: string }>({ action: "open", jid: c.jid, name: c.name });
+    const d = await inbox<{ conversation_id: string }>({
+      action: "open",
+      jid: c.jid,
+      name: c.supplierName ?? c.name,
+      phone: c.phoneKey.startsWith("lid:") ? null : c.phoneKey,
+    });
     setBusy(null);
     if (!d) return;
     toast.success("Conversa trazida pro app.");
@@ -290,9 +300,18 @@ function PhoneChatsPicker({ onClose }: { onClose: () => void }) {
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-medium">{c.name ?? c.phoneKey.replace(/^lid:/, "contato ")}</p>
+                    <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+                      {c.supplierName && <Store className="h-3 w-3 shrink-0 text-primary" />}
+                      <span className="truncate">{c.supplierName ?? c.name ?? c.phoneLabel ?? "Contato sem nome"}</span>
+                    </p>
                     <span className="shrink-0 text-[10px] text-text-muted">{fmtWhen(c.updatedAt)}</span>
                   </div>
+                  {(c.supplierName || c.name) && c.phoneLabel && (
+                    <p className="truncate text-[11px] text-text-muted">
+                      {c.supplierName && c.name && c.name !== c.supplierName ? `${c.name} · ` : ""}
+                      {c.phoneLabel}
+                    </p>
+                  )}
                   <p className="truncate text-xs text-text-muted">
                     {c.lastFromMe && "Você: "}
                     {c.lastText}
@@ -344,7 +363,8 @@ function AttachmentPicker({
   const [tab, setTab] = useState<AttachTab>(supplierId ? "fornecedores" : "documentos");
   const [items, setItems] = useState<Record<Exclude<AttachTab, "aparelho">, Attachable[]> | null>(null);
   const [query, setQuery] = useState("");
-  const [chosen, setChosen] = useState<Attachable | null>(null);
+  const [chosen, setChosen] = useState<Attachable[]>([]);
+  const [progress, setProgress] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -393,25 +413,52 @@ function AttachmentPicker({
     })();
   }, [householdId, moduleId, supplierId]);
 
-  async function sendChosen(file: { url: string; name: string; mimetype: string | null }) {
-    setSending(true);
-    const ok = await onSend({ ...file, caption: caption.trim() });
-    setSending(false);
-    if (ok) onClose();
+  function toggle(i: Attachable) {
+    setChosen((cur) => (cur.some((x) => x.key === i.key) ? cur.filter((x) => x.key !== i.key) : [...cur, i]));
   }
 
-  async function uploadAndSend(file: File) {
+  /** Envia um por vez, na ordem escolhida; a legenda vai no primeiro. Para no primeiro erro. */
+  async function sendAll(files: { url: string; name: string; mimetype: string | null }[]) {
+    let sent = 0;
+    for (const [n, f] of files.entries()) {
+      setProgress(`Enviando ${n + 1} de ${files.length}...`);
+      const ok = await onSend({ ...f, caption: n === 0 ? caption.trim() : "" });
+      if (!ok) break;
+      sent++;
+    }
+    return sent;
+  }
+
+  async function sendChosen() {
+    if (chosen.length === 0) return;
+    setSending(true);
+    const sent = await sendAll(chosen);
+    setSending(false);
+    setProgress(null);
+    if (sent > 0) toast.success(sent === 1 ? "Arquivo enviado pelo WhatsApp." : `${sent} arquivos enviados pelo WhatsApp.`);
+    if (sent === chosen.length) onClose();
+    else setChosen((cur) => cur.slice(sent));
+  }
+
+  async function uploadAndSend(files: File[]) {
+    if (files.length === 0) return;
     setSending(true);
     const supabase = createSupabaseBrowser();
-    const res = await uploadObraFile(supabase, "obra-documents", householdId, moduleId, file);
-    if ("error" in res) {
-      setSending(false);
-      toast.error(`Falha ao subir o arquivo: ${res.error}`);
-      return;
+    const uploaded: { url: string; name: string; mimetype: string | null }[] = [];
+    for (const [n, file] of files.entries()) {
+      setProgress(`Subindo ${n + 1} de ${files.length}...`);
+      const res = await uploadObraFile(supabase, "obra-documents", householdId, moduleId, file);
+      if ("error" in res) {
+        toast.error(`Falha ao subir "${file.name}": ${res.error}`);
+        continue;
+      }
+      uploaded.push({ url: res.url, name: file.name, mimetype: file.type || null });
     }
-    const ok = await onSend({ url: res.url, name: file.name, mimetype: file.type || null, caption: caption.trim() });
+    const sent = await sendAll(uploaded);
     setSending(false);
-    if (ok) onClose();
+    setProgress(null);
+    if (sent > 0) toast.success(sent === 1 ? "Arquivo enviado pelo WhatsApp." : `${sent} arquivos enviados pelo WhatsApp.`);
+    if (sent === files.length) onClose();
   }
 
   const q = norm(query);
@@ -438,10 +485,7 @@ function AttachmentPicker({
             <button
               key={value}
               type="button"
-              onClick={() => {
-                setTab(value);
-                setChosen(null);
-              }}
+              onClick={() => setTab(value)}
               className={cn(
                 "rounded-md px-1 py-1.5 text-[11px] font-medium",
                 tab === value ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-bg-elev-2",
@@ -461,15 +505,16 @@ function AttachmentPicker({
               )}
             >
               {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
-              {sending ? "Enviando..." : "Escolher arquivo do computador ou celular"}
+              {sending ? (progress ?? "Enviando...") : "Escolher arquivos do computador ou celular (pode marcar vários)"}
               <input
                 type="file"
+                multiple
                 className="hidden"
                 disabled={sending}
                 onChange={(e) => {
-                  const f = e.target.files?.[0];
+                  const files = Array.from(e.target.files ?? []);
                   e.target.value = "";
-                  if (f) void uploadAndSend(f);
+                  void uploadAndSend(files);
                 }}
               />
             </label>
@@ -497,9 +542,19 @@ function AttachmentPicker({
                 <li key={i.key}>
                   <button
                     type="button"
-                    onClick={() => setChosen(i)}
-                    className={cn("flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-bg-elev-2", chosen?.key === i.key && "bg-primary/10")}
+                    onClick={() => toggle(i)}
+                    className={cn(
+                      "flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-bg-elev-2",
+                      chosen.some((x) => x.key === i.key) && "bg-primary/10",
+                    )}
                   >
+                    <input
+                      type="checkbox"
+                      readOnly
+                      tabIndex={-1}
+                      checked={chosen.some((x) => x.key === i.key)}
+                      className="h-4 w-4 shrink-0 accent-primary"
+                    />
                     {i.mimetype?.startsWith("image/") || i.mimetype?.startsWith("video/") ? (
                       <ImageIcon className="h-4 w-4 shrink-0 text-text-muted" />
                     ) : (
@@ -516,15 +571,33 @@ function AttachmentPicker({
                 </li>
               ))}
             </ul>
-            {chosen && (
+            {chosen.length > 0 && (
               <div className="space-y-2 border-t border-border p-3">
-                <p className="truncate text-xs text-text-muted">
-                  Enviar: <strong className="text-text">{chosen.name}</strong>
+                <p className="flex items-center justify-between gap-2 text-xs text-text-muted">
+                  <span className="truncate">
+                    {chosen.length === 1 ? (
+                      <>
+                        Enviar: <strong className="text-text">{chosen[0]!.name}</strong>
+                      </>
+                    ) : (
+                      <>
+                        <strong className="text-text">{chosen.length} arquivos</strong> marcados (de todas as abas)
+                      </>
+                    )}
+                  </span>
+                  <button type="button" onClick={() => setChosen([])} className="shrink-0 hover:text-text">
+                    limpar
+                  </button>
                 </p>
                 <div className="flex gap-2">
-                  <Input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Legenda (opcional)" />
-                  <Button disabled={sending} onClick={() => sendChosen(chosen)} className="shrink-0">
-                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Enviar
+                  <Input
+                    value={caption}
+                    onChange={(e) => setCaption(e.target.value)}
+                    placeholder={chosen.length > 1 ? "Legenda (vai no primeiro)" : "Legenda (opcional)"}
+                  />
+                  <Button disabled={sending} onClick={sendChosen} className="shrink-0">
+                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    {sending ? (progress ?? "Enviando") : chosen.length > 1 ? `Enviar ${chosen.length}` : "Enviar"}
                   </Button>
                 </div>
               </div>
@@ -850,7 +923,6 @@ function Thread({
               caption: file.caption || null,
             });
             if (!d) return false;
-            toast.success("Arquivo enviado pelo WhatsApp.");
             router.refresh();
             return true;
           }}

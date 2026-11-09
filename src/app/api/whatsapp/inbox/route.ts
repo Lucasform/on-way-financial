@@ -5,9 +5,18 @@ import { getServerEnv } from "@/lib/env";
 import { loadActiveContext } from "@/lib/household";
 import { normalizeName } from "@/lib/obra-expense";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { EvolutionError, isEvolutionConfigured, listPhoneChats, mediaKindFor, sendMedia, sendText } from "@/lib/wa/evolution";
+import {
+  EvolutionError,
+  fetchHistory,
+  findContactNames,
+  isEvolutionConfigured,
+  listPhoneChats,
+  mediaKindFor,
+  sendMedia,
+  sendText,
+} from "@/lib/wa/evolution";
 import { connectionFor, importHistory, openConversation, recordOutbound } from "@/lib/wa/inbox";
-import { formatPhone, isLidKey, normalizePhone, phoneKeyFromJid, sendTarget } from "@/lib/wa/phone";
+import { contactName, formatPhone, isLidKey, normalizePhone, phoneKeyFromJid, samePhone, sendTarget } from "@/lib/wa/phone";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -15,7 +24,12 @@ export const maxDuration = 60;
 const id = z.string().uuid();
 const bodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("phone_chats") }),
-  z.object({ action: z.literal("open"), jid: z.string().min(5).max(120), name: z.string().max(120).nullish() }),
+  z.object({
+    action: z.literal("open"),
+    jid: z.string().min(5).max(120),
+    name: z.string().max(120).nullish(),
+    phone: z.string().regex(/^\d{10,15}$/).nullish(),
+  }),
   z.object({
     action: z.literal("start"),
     phone: z.string().max(40).optional(),
@@ -142,17 +156,50 @@ export async function POST(req: NextRequest) {
 
   try {
     if (body.action === "phone_chats") {
-      const [chats, { data: inApp }] = await Promise.all([
+      const [allChats, contactNames, { data: inApp }, { data: suppliers }] = await Promise.all([
         listPhoneChats(instance),
+        findContactNames(instance),
         admin.from("wa_conversations").select("phone, wa_jid").eq("household_id", householdId),
+        admin.from("suppliers").select("name, phone, phone2").eq("household_id", householdId),
       ]);
       const taken = new Set((inApp ?? []).flatMap((c) => [c.phone, c.wa_jid].filter(Boolean) as string[]));
-      return NextResponse.json({ chats: chats.filter((c) => !taken.has(c.jid) && !taken.has(c.phoneKey)).slice(0, 300) });
+      const chats = allChats.filter((c) => !taken.has(c.jid) && !taken.has(c.phoneKey)).slice(0, 300);
+      for (const c of chats) c.name = c.name ?? contactNames.get(c.jid) ?? null;
+
+      // contato sem nome ou com número escondido: as últimas mensagens costumam trazer o nome e o número real
+      const unresolved = chats.filter((c) => !c.name || isLidKey(c.phoneKey)).slice(0, 60);
+      for (let i = 0; i < unresolved.length; i += 8) {
+        await Promise.all(
+          unresolved.slice(i, i + 8).map(async (c) => {
+            try {
+              const history = await fetchHistory(instance, c.jid, 20);
+              const inbound = history.filter((m) => !m.fromMe).reverse();
+              c.name = c.name ?? contactName(inbound.find((m) => contactName(m.pushName))?.pushName) ?? null;
+              const alt = phoneKeyFromJid(history.find((m) => m.altJid)?.altJid ?? null);
+              if (alt && !isLidKey(alt) && isLidKey(c.phoneKey)) c.phoneKey = alt;
+            } catch {
+              // sem histórico: fica como está
+            }
+          }),
+        );
+      }
+
+      return NextResponse.json({
+        chats: chats.map((c) => {
+          const supplier = (suppliers ?? []).find((s) => samePhone(s.phone, c.phoneKey) || samePhone(s.phone2, c.phoneKey));
+          return {
+            ...c,
+            supplierName: supplier?.name ?? null,
+            phoneLabel: isLidKey(c.phoneKey) ? null : formatPhone(c.phoneKey),
+          };
+        }),
+      });
     }
 
     if (body.action === "open") {
-      const phoneKey = phoneKeyFromJid(body.jid);
-      if (!phoneKey) return fail("Conversa inválida.");
+      const fromJid = phoneKeyFromJid(body.jid);
+      if (!fromJid) return fail("Conversa inválida.");
+      const phoneKey = isLidKey(fromJid) && body.phone ? body.phone : fromJid;
       const conversationId = await openConversation(admin, householdId, instance, { jid: body.jid, phoneKey, name: body.name ?? null });
       return NextResponse.json({ conversation_id: conversationId });
     }
