@@ -741,6 +741,8 @@ export type Database = {
           bought_at: string | null
           brand: string | null
           category: string
+          cancel_reason: string | null
+          cancelled_at: string | null
           created_at: string
           expected_date: string | null
           id: string
@@ -764,6 +766,8 @@ export type Database = {
           bought_at?: string | null
           brand?: string | null
           category: string
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           created_at?: string
           expected_date?: string | null
           id?: string
@@ -787,6 +791,8 @@ export type Database = {
           bought_at?: string | null
           brand?: string | null
           category?: string
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           created_at?: string
           expected_date?: string | null
           id?: string
@@ -1042,6 +1048,8 @@ export type Database = {
       price_quotes: {
         Row: {
           accepted_at: string | null
+          cancel_reason: string | null
+          cancelled_at: string | null
           execution_started_at: string | null
           total_amount: number | null
           created_at: string
@@ -1058,6 +1066,8 @@ export type Database = {
         }
         Insert: {
           accepted_at?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           execution_started_at?: string | null
           total_amount?: number | null
           created_at?: string
@@ -1074,6 +1084,8 @@ export type Database = {
         }
         Update: {
           accepted_at?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           execution_started_at?: string | null
           total_amount?: number | null
           created_at?: string

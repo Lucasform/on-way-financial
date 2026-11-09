@@ -1,10 +1,22 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { ArrowUpDown, Ban, ChevronDown, ChevronUp, Pencil, Play, Plus, Receipt, Search, Trash2, Trophy } from "lucide-react";
 import Link from "next/link";
-import { ArrowUpDown, ChevronDown, ChevronUp, Pencil, Play, Plus, Receipt, Search, Trash2, Trophy } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import type { Supplier } from "@/components/modules/obra-suppliers-tab";
+import {
+  callExecution,
+  CancelPurchaseDialog,
+  ExecuteQuoteDialog,
+  type ExecutionSnapshot,
+  type QuotePayment,
+  QuotePaymentsPanel,
+  QuoteProgressText,
+  type QuoteStatus,
+  quoteStatus,
+} from "@/components/modules/quote-execution";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,18 +25,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Money } from "@/components/ui/money";
 import { useConfirm } from "@/hooks/use-confirm";
-import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { fmtDate, todayISO } from "@/lib/dates";
-import {
-  ExecuteQuoteDialog,
-  QuotePaymentsPanel,
-  QuoteProgressText,
-  quoteStatus,
-  type ExecutionSnapshot,
-  type QuotePayment,
-  type QuoteStatus,
-} from "@/components/modules/quote-execution";
-import type { Supplier } from "@/components/modules/obra-suppliers-tab";
+import { createSupabaseBrowser } from "@/lib/supabase/client";
 
 export interface Quote {
   id: string;
@@ -38,6 +40,8 @@ export interface Quote {
   accepted_at: string | null;
   execution_started_at: string | null;
   total_amount: number | null;
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
 }
 
 const UNITS = ["un", "m", "m2", "m3", "kg", "saco", "litro", "rolo", "barra", "caixa", "hora", "diária"];
@@ -67,6 +71,7 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
   const [pending, start] = useTransition();
   const [payments, setPayments] = useState(initialPayments);
   const [executing, setExecuting] = useState<Quote | null>(null);
+  const [cancelling, setCancelling] = useState<Quote | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sort, setSort] = useState<SortValue>("item-asc");
   const [supplierQuery, setSupplierQuery] = useState("");
@@ -81,7 +86,7 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
   });
 
   const counts = useMemo(() => {
-    const c: Record<QuoteStatus, number> = { aberto: 0, execucao: 0, aceita: 0 };
+    const c: Record<QuoteStatus, number> = { aberto: 0, execucao: 0, aceita: 0, cancelada: 0 };
     for (const q of quotes) c[quoteStatus(q)]++;
     return c;
   }, [quotes]);
@@ -312,6 +317,7 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
             ["aberto", "Em aberto"],
             ["execucao", "Em execução"],
             ["aceita", "Aceita"],
+            ["cancelada", "Canceladas"],
           ] as const
         ).map(([value, label]) => (
           <button
@@ -363,7 +369,9 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
           title={
             supplierQuery.trim()
               ? "Nenhuma cotação desse fornecedor"
-              : activeTab === "aceita"
+              : activeTab === "cancelada"
+                ? "Nenhuma compra cancelada"
+                : activeTab === "aceita"
                 ? "Nenhuma cotação aceita ainda"
                 : activeTab === "execucao"
                   ? "Nada em execução"
@@ -372,7 +380,9 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
           description={
             supplierQuery.trim()
               ? "Tenta buscar por outro nome."
-              : activeTab === "aceita"
+              : activeTab === "cancelada"
+                ? "Compra cancelada com reembolso aparece aqui, fora do gasto."
+                : activeTab === "aceita"
                 ? "Cotação paga por inteiro aparece aqui."
                 : activeTab === "execucao"
                   ? "Cotação com pagamento parcial ou agendado aparece aqui até quitar."
@@ -402,7 +412,12 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                             >
                               {supplierName(q.supplier_id)}
                             </Link>
-                            {status === "execucao" ? (
+                            {status === "cancelada" ? (
+                              <p className="text-[10px] text-danger">
+                                cancelada{q.cancelled_at && ` em ${fmtDate(q.cancelled_at)}`}
+                                {q.cancel_reason && ` · ${q.cancel_reason}`}
+                              </p>
+                            ) : status === "execucao" ? (
                               <QuoteProgressText quote={q} payments={qPayments} />
                             ) : (
                               <p className="text-[10px] text-text-muted">
@@ -429,6 +444,17 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                               onClick={() => setExpandedId(expanded ? null : q.id)}
                             >
                               Pagamentos {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            </Button>
+                          )}
+                          {canWrite && (status === "aceita" || status === "execucao") && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setCancelling(q)}
+                              aria-label="Cancelar compra (reembolso)"
+                              title="Cancelar compra (reembolso)"
+                            >
+                              <Ban className="h-4 w-4 text-danger" />
                             </Button>
                           )}
                           {canWrite && status === "aberto" && (
@@ -536,6 +562,22 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
       )}
 
       {ConfirmDialog}
+
+      {cancelling && (
+        <CancelPurchaseDialog
+          title={`${cancelling.item_name} · ${supplierName(cancelling.supplier_id)}`}
+          amount={Number(cancelling.total_amount ?? cancelling.unit_price)}
+          hasSchedule={quoteStatus(cancelling) === "execucao"}
+          onCancel={() => setCancelling(null)}
+          onConfirm={async ({ date, reason }) => {
+            const snap = await callExecution<Quote>({ action: "cancel_purchase", quote_id: cancelling.id, date, reason });
+            if (!snap) return;
+            setCancelling(null);
+            applySnapshot(snap);
+            toast.success("Compra cancelada. Saiu do gasto e foi pra Canceladas.");
+          }}
+        />
+      )}
 
       {executing && (
         <ExecuteQuoteDialog

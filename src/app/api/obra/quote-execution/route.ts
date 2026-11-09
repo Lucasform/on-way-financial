@@ -1,9 +1,17 @@
 import { type NextRequest,NextResponse } from "next/server";
 import { z } from "zod";
 
+import { todayISO } from "@/lib/dates";
 import { loadActiveContext } from "@/lib/household";
 import { getObraModule } from "@/lib/obra";
-import { cancelExecution, payInstallment, reschedulePayment, startExecution, updatePaymentAmount } from "@/lib/quote-execution";
+import {
+  cancelExecution,
+  cancelPurchase,
+  payInstallment,
+  reschedulePayment,
+  startExecution,
+  updatePaymentAmount,
+} from "@/lib/quote-execution";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -38,6 +46,13 @@ const bodySchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("amount"), payment_id: z.string().uuid(), amount: z.number().positive().max(10_000_000) }),
   z.object({ action: z.literal("cancel"), quote_id: z.string().uuid() }),
   z.object({ action: z.literal("get"), quote_id: z.string().uuid() }),
+  z.object({
+    action: z.literal("cancel_purchase"),
+    quote_id: z.string().uuid().optional(),
+    item_id: z.string().uuid().optional(),
+    date: isoDate.optional(),
+    reason: z.string().trim().max(300).optional(),
+  }),
 ]);
 
 async function snapshot(db: ReturnType<typeof createSupabaseServer>, householdId: string, quoteId: string) {
@@ -46,7 +61,7 @@ async function snapshot(db: ReturnType<typeof createSupabaseServer>, householdId
     db.from("quote_payments").select("*").eq("quote_id", quoteId).order("due_date", { ascending: true }),
     db
       .from("obra_items")
-      .select("id, name, quantity, unit, unit_price, actual_unit_price, status, bought_at")
+      .select("id, name, quantity, unit, unit_price, actual_unit_price, status, bought_at, cancelled_at, cancel_reason")
       .eq("quote_id", quoteId)
       .order("created_at", { ascending: false }),
   ]);
@@ -84,6 +99,19 @@ export async function POST(req: NextRequest) {
     const r = await updatePaymentAmount(db, { householdId: ctx.householdId, paymentId: body.payment_id, amount: body.amount });
     if (!r) return NextResponse.json({ error: "payment_not_found_or_paid" }, { status: 409 });
     quoteId = r.quote_id;
+  } else if (body.action === "cancel_purchase") {
+    if (!body.quote_id && !body.item_id) return NextResponse.json({ error: "invalid" }, { status: 400 });
+    const r = await cancelPurchase(db, {
+      householdId: ctx.householdId,
+      moduleId: mod.id,
+      quoteId: body.quote_id,
+      itemId: body.item_id,
+      date: body.date ?? todayISO(),
+      reason: body.reason || null,
+    });
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+    if (!r.quoteId) return NextResponse.json({ ok: true, quote: null, payments: [], items: [] });
+    quoteId = r.quoteId;
   } else if (body.action === "get") {
     quoteId = body.quote_id;
   } else {

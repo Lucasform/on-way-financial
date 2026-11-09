@@ -40,8 +40,12 @@ async function createPaidItem(
 
 /** Recalcula: quitada vira aceita; deixou de estar quitada volta pra em execução. */
 export async function settleQuote(db: Db, quoteId: string) {
-  const { data: quote } = await db.from("price_quotes").select("id, total_amount, accepted_at, execution_started_at").eq("id", quoteId).maybeSingle();
-  if (!quote?.execution_started_at || quote.total_amount == null) return;
+  const { data: quote } = await db
+    .from("price_quotes")
+    .select("id, total_amount, accepted_at, execution_started_at, cancelled_at")
+    .eq("id", quoteId)
+    .maybeSingle();
+  if (!quote?.execution_started_at || quote.total_amount == null || quote.cancelled_at) return;
   const { data: payments } = await db.from("quote_payments").select("amount, paid_at").eq("quote_id", quoteId);
   const paid = (payments ?? []).filter((p) => p.paid_at).reduce((s, p) => s + toCents(Number(p.amount)), 0);
   const settled = paid >= toCents(Number(quote.total_amount));
@@ -260,4 +264,57 @@ export async function revertPaymentForItem(db: Db, itemId: string): Promise<stri
     .select("quote_id")
     .maybeSingle();
   return payment?.quote_id ?? null;
+}
+
+/**
+ * Cancela uma compra já executada (devolução/reembolso) sem apagar o histórico: os custos viram
+ * 'cancelled' e saem do gasto, as parcelas ainda não pagas somem e a cotação fica Cancelada.
+ * Custo avulso (sem cotação) é cancelado sozinho.
+ */
+export async function cancelPurchase(
+  db: Db,
+  args: { householdId: string; moduleId: string; quoteId?: string; itemId?: string; date: string; reason: string | null },
+): Promise<{ ok: true; quoteId: string | null } | { ok: false; error: string; status: number }> {
+  let quoteId = args.quoteId ?? null;
+  if (!quoteId && args.itemId) {
+    const { data: item } = await db
+      .from("obra_items")
+      .select("id, quote_id, status")
+      .eq("id", args.itemId)
+      .eq("module_id", args.moduleId)
+      .maybeSingle();
+    if (!item) return { ok: false, error: "item_not_found", status: 404 };
+    if (!item.quote_id) {
+      if (item.status !== "done") return { ok: false, error: "not_executed", status: 409 };
+      const { error } = await db
+        .from("obra_items")
+        .update({ status: "cancelled", cancelled_at: args.date, cancel_reason: args.reason })
+        .eq("id", item.id);
+      if (error) return { ok: false, error: error.message, status: 500 };
+      return { ok: true, quoteId: null };
+    }
+    quoteId = item.quote_id;
+  }
+  if (!quoteId) return { ok: false, error: "invalid", status: 400 };
+
+  const quote = await loadQuote(db, args.householdId, quoteId);
+  if (!quote) return { ok: false, error: "quote_not_found", status: 404 };
+  if (quote.cancelled_at) return { ok: false, error: "already_cancelled", status: 409 };
+  if (!quote.accepted_at && !quote.execution_started_at) return { ok: false, error: "not_executed", status: 409 };
+
+  const { error: itemsErr } = await db
+    .from("obra_items")
+    .update({ status: "cancelled", cancelled_at: args.date, cancel_reason: args.reason })
+    .eq("quote_id", quote.id)
+    .eq("module_id", args.moduleId)
+    .eq("status", "done");
+  if (itemsErr) return { ok: false, error: itemsErr.message, status: 500 };
+  await db.from("quote_payments").delete().eq("quote_id", quote.id).is("paid_at", null);
+  const { error } = await db
+    .from("price_quotes")
+    .update({ cancelled_at: args.date, cancel_reason: args.reason })
+    .eq("id", quote.id)
+    .eq("household_id", args.householdId);
+  if (error) return { ok: false, error: error.message, status: 500 };
+  return { ok: true, quoteId: quote.id };
 }

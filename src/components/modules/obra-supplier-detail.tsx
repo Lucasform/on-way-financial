@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, FileText, Loader2, MapPin, MessageCircle, Pencil, Play, Plus, Receipt, ShoppingBag, Star, Trash2, Upload } from "lucide-react";
+import { Ban, Building2, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, FileText, Loader2, MapPin, MessageCircle, Pencil, Play, Plus, Receipt, ShoppingBag, Star, Trash2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import type { Supplier } from "@/components/modules/obra-suppliers-tab";
 import { QuickAddExpenseDialog } from "@/components/modules/quick-add-expense-dialog";
 import {
   callExecution,
+  CancelPurchaseDialog,
   ExecuteQuoteDialog,
   type ExecutionSnapshot,
   type QuotePayment,
@@ -38,6 +39,8 @@ export interface QuoteRow {
   accepted_at: string | null;
   execution_started_at: string | null;
   total_amount: number | null;
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
 }
 
 export interface PurchaseRow {
@@ -49,7 +52,12 @@ export interface PurchaseRow {
   actual_unit_price: number | null;
   status: string;
   bought_at: string | null;
+  quote_id?: string | null;
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
 }
+
+type CancelTarget = { kind: "quote"; quote: QuoteRow } | { kind: "item"; item: PurchaseRow };
 
 export interface BudgetFile {
   id: string;
@@ -97,6 +105,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [payments, setPayments] = useState(initialPayments);
   const [executing, setExecuting] = useState<QuoteRow | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<CancelTarget | null>(null);
   const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null);
   const [showAddQuote, setShowAddQuote] = useState(false);
   const [newQuote, setNewQuote] = useState({ item_name: "", unit: "un", unit_price: "", quoted_at: todayISO() });
@@ -222,6 +231,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
 
   async function toggleDone(p: PurchaseRow) {
     if (!canWrite) return;
+    if (p.status === "cancelled") return;
     const done = p.status === "done";
     const nextStatus = done ? "todo" : "done";
     const nextBoughtAt = done ? null : todayISO();
@@ -417,10 +427,27 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
     });
   }
 
-  const purchaseTotal = purchases.reduce(
-    (s, p) => s + Number(p.quantity) * Number(p.actual_unit_price ?? p.unit_price ?? 0),
-    0,
-  );
+  const purchaseTotal = purchases
+    .filter((p) => p.status !== "cancelled")
+    .reduce((s, p) => s + Number(p.quantity) * Number(p.actual_unit_price ?? p.unit_price ?? 0), 0);
+
+  async function confirmCancel(target: CancelTarget, date: string, reason: string) {
+    const snap = await callExecution<QuoteRow>({
+      action: "cancel_purchase",
+      ...(target.kind === "quote" ? { quote_id: target.quote.id } : { item_id: target.item.id }),
+      date,
+      reason,
+    });
+    if (!snap) return;
+    setCancelTarget(null);
+    if (snap.quote) applySnapshot(snap);
+    else if (target.kind === "item") {
+      setPurchases((s) =>
+        s.map((x) => (x.id === target.item.id ? { ...x, status: "cancelled", cancelled_at: date, cancel_reason: reason || null } : x)),
+      );
+    }
+    toast.success("Compra cancelada. Saiu do gasto e ficou no histórico.");
+  }
 
   return (
     <div className="space-y-4">
@@ -671,6 +698,25 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
                         em execução {expanded ? <ChevronUp className="ml-0.5 inline h-3 w-3" /> : <ChevronDown className="ml-0.5 inline h-3 w-3" />}
                       </Badge>
                     )}
+                    {status === "cancelada" && (
+                      <Badge variant="secondary" className="shrink-0 text-danger">
+                        cancelada{q.cancelled_at && ` ${fmtDate(q.cancelled_at, "dd/MM")}`}
+                      </Badge>
+                    )}
+                    {canWrite && (status === "aceita" || status === "execucao") && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCancelTarget({ kind: "quote", quote: q });
+                        }}
+                        className="shrink-0 rounded-md p-1 text-text-muted hover:text-danger"
+                        aria-label="Cancelar compra (reembolso)"
+                        title="Cancelar compra (reembolso)"
+                      >
+                        <Ban className="h-4 w-4" />
+                      </button>
+                    )}
                     {status === "aceita" &&
                       (canWrite && qPayments.length === 0 ? (
                         <button
@@ -795,12 +841,15 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
               const total = Number(p.quantity) * Number(p.actual_unit_price ?? p.unit_price ?? 0);
               const isEditing = editingPurchaseId === p.id;
               const done = p.status === "done";
+              const cancelled = p.status === "cancelled";
               return (
                 <div key={p.id}>
                 <div
-                  className={`flex items-center justify-between gap-3 p-3 text-sm ${canWrite ? "hover:bg-bg-elev-2" : ""} ${done ? "opacity-60" : ""}`}
+                  className={`flex items-center justify-between gap-3 p-3 text-sm ${canWrite ? "hover:bg-bg-elev-2" : ""} ${done || cancelled ? "opacity-60" : ""}`}
                 >
-                  {canWrite ? (
+                  {cancelled ? (
+                    <Ban className="h-5 w-5 shrink-0 text-danger" />
+                  ) : canWrite ? (
                     <button
                       type="button"
                       onClick={() => toggleDone(p)}
@@ -814,12 +863,35 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
                   )}
                   <div className="min-w-0 flex-1 cursor-pointer" onClick={() => openPurchase(p)}>
                     <p className={`truncate font-medium ${done ? "line-through" : ""}`}>{p.name}</p>
-                    <p className="text-xs text-text-muted">
-                      {Number(p.quantity)} {p.unit}
-                      {done && p.bought_at && <> · feito em {fmtDate(p.bought_at, "dd/MM/yyyy")}</>}
-                    </p>
+                    {cancelled ? (
+                      <p className="text-xs text-danger">
+                        cancelado · reembolso{p.cancelled_at && ` em ${fmtDate(p.cancelled_at, "dd/MM/yyyy")}`}
+                        {p.cancel_reason && <span className="text-text-muted"> · {p.cancel_reason}</span>}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-text-muted">
+                        {Number(p.quantity)} {p.unit}
+                        {done && p.bought_at && <> · feito em {fmtDate(p.bought_at, "dd/MM/yyyy")}</>}
+                      </p>
+                    )}
                   </div>
-                  <Money value={total} size="sm" className="shrink-0" />
+                  <Money value={total} size="sm" className={`shrink-0 ${cancelled ? "line-through" : ""}`} />
+                  {canWrite && done && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const q = p.quote_id ? quotes.find((x) => x.id === p.quote_id) : undefined;
+                        setCancelTarget(q ? { kind: "quote", quote: q } : { kind: "item", item: p });
+                      }}
+                      aria-label="Cancelar compra (reembolso)"
+                      title="Cancelar compra (reembolso)"
+                    >
+                      <Ban className="h-3.5 w-3.5 text-text-muted" />
+                    </Button>
+                  )}
                   {canWrite && (
                     <Button
                       variant="ghost"
@@ -894,6 +966,20 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
             else if (r.item) setPurchases((s) => [r.item!, ...s]);
           }}
           onCancel={() => setShowAddExpense(false)}
+        />
+      )}
+
+      {cancelTarget && (
+        <CancelPurchaseDialog
+          title={cancelTarget.kind === "quote" ? cancelTarget.quote.item_name : cancelTarget.item.name}
+          amount={
+            cancelTarget.kind === "quote"
+              ? Number(cancelTarget.quote.total_amount ?? cancelTarget.quote.unit_price)
+              : Number(cancelTarget.item.quantity) * Number(cancelTarget.item.actual_unit_price ?? cancelTarget.item.unit_price ?? 0)
+          }
+          hasSchedule={cancelTarget.kind === "quote" && quoteStatus(cancelTarget.quote) === "execucao"}
+          onCancel={() => setCancelTarget(null)}
+          onConfirm={({ date, reason }) => confirmCancel(cancelTarget, date, reason)}
         />
       )}
 

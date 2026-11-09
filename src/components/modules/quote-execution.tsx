@@ -32,6 +32,8 @@ export interface ExecQuote {
   accepted_at: string | null;
   execution_started_at?: string | null;
   total_amount?: number | null;
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
 }
 
 export interface ExecutionItem {
@@ -43,6 +45,8 @@ export interface ExecutionItem {
   actual_unit_price: number | null;
   status: string;
   bought_at: string | null;
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
 }
 
 export interface ExecutionSnapshot<Q extends ExecQuote = ExecQuote> {
@@ -51,9 +55,10 @@ export interface ExecutionSnapshot<Q extends ExecQuote = ExecQuote> {
   items: ExecutionItem[];
 }
 
-export type QuoteStatus = "aberto" | "execucao" | "aceita";
+export type QuoteStatus = "aberto" | "execucao" | "aceita" | "cancelada";
 
 export function quoteStatus(q: ExecQuote): QuoteStatus {
+  if (q.cancelled_at) return "cancelada";
   if (q.accepted_at) return "aceita";
   if (q.execution_started_at) return "execucao";
   return "aberto";
@@ -65,6 +70,8 @@ const ERRORS: Record<string, string> = {
   has_paid_payments: "Já tem pagamento feito. Apague o pagamento no Gasto antes de cancelar.",
   payment_not_found_or_paid: "Esse pagamento já foi pago ou não existe mais.",
   plan_sum_mismatch: "A soma das parcelas não fecha com o restante. Confira os valores.",
+  already_cancelled: "Essa compra já foi cancelada.",
+  not_executed: "Só dá pra cancelar uma compra que já foi executada.",
 };
 
 export async function callExecution<Q extends ExecQuote>(body: Record<string, unknown>): Promise<ExecutionSnapshot<Q> | null> {
@@ -409,5 +416,75 @@ export function QuoteProgressText({ quote, payments }: { quote: ExecQuote; payme
     <span className="text-[11px] text-text-muted">
       pago {formatBRL(paid)} de {formatBRL(Number(quote.total_amount ?? 0))}
     </span>
+  );
+}
+
+export function CancelPurchaseDialog({
+  title,
+  amount,
+  hasSchedule,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  amount?: number;
+  hasSchedule?: boolean;
+  onCancel: () => void;
+  onConfirm: (args: { date: string; reason: string }) => Promise<void>;
+}) {
+  const [date, setDate] = useState(todayISO());
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function confirm() {
+    if (saving || !date) return;
+    setSaving(true);
+    try {
+      await onConfirm({ date, reason: reason.trim() });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
+      <div className="fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-border bg-bg-elev p-5 shadow-2xl">
+        <p className="text-sm font-semibold">Cancelar compra (reembolso)</p>
+        <p className="mb-4 truncate text-xs text-text-muted">
+          {title}
+          {amount != null && <> · {formatBRL(amount)}</>}
+        </p>
+        <div className="space-y-3">
+          <ul className="space-y-1 text-xs text-text-muted">
+            <li>- Sai do Gasto e dos totais, mas continua no histórico do fornecedor como cancelada.</li>
+            {hasSchedule && <li>- As parcelas que ainda não foram pagas são removidas.</li>}
+          </ul>
+          <div className="space-y-1">
+            <Label htmlFor="cancel-date">Data do cancelamento/reembolso</Label>
+            <Input id="cancel-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="cancel-reason">Motivo (opcional)</Label>
+            <Input
+              id="cancel-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Ex: produto devolvido, estorno no cartão"
+              maxLength={300}
+            />
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={onCancel}>
+            Voltar
+          </Button>
+          <Button variant="destructive" size="sm" disabled={saving || !date} onClick={confirm}>
+            {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Cancelar compra
+          </Button>
+        </div>
+      </div>
+    </>
   );
 }

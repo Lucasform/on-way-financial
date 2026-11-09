@@ -1,8 +1,8 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest,NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getObraModule } from "@/lib/obra";
 import { loadActiveContext } from "@/lib/household";
+import { getObraModule } from "@/lib/obra";
 import { revertPaymentForItem, settleQuote } from "@/lib/quote-execution";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
@@ -29,11 +29,17 @@ export async function POST(req: NextRequest) {
 
   const { data: item } = await supabase
     .from("obra_items")
-    .select("id, quote_id")
+    .select("id, quote_id, status")
     .eq("id", item_id)
     .eq("module_id", mod.id)
     .maybeSingle();
   if (!item) return NextResponse.json({ error: "item_not_found" }, { status: 404 });
+
+  if (item.status === "cancelled") {
+    const { error } = await supabase.from("obra_items").delete().eq("id", item.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, quote_id: null });
+  }
 
   const paymentQuoteId = await revertPaymentForItem(supabase, item.id);
 

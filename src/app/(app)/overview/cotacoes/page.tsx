@@ -8,7 +8,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-const TABS = ["aberto", "execucao", "aceita"] as const;
+const TABS = ["aberto", "execucao", "aceita", "cancelada"] as const;
 
 export default async function CotacoesPage({ searchParams }: { searchParams: { tab?: string } }) {
   const ctx = (await loadActiveContext())!;
