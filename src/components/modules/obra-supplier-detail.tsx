@@ -1,10 +1,21 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Building2, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, FileText, Loader2, MapPin, MessageCircle, Pencil, Play, Plus, Receipt, ShoppingBag, Star, Trash2, Upload } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import type { Supplier } from "@/components/modules/obra-suppliers-tab";
+import { QuickAddExpenseDialog } from "@/components/modules/quick-add-expense-dialog";
+import {
+  callExecution,
+  ExecuteQuoteDialog,
+  type ExecutionSnapshot,
+  type QuotePayment,
+  QuotePaymentsPanel,
+  QuoteProgressText,
+  quoteStatus,
+} from "@/components/modules/quote-execution";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -17,17 +28,6 @@ import { fmtDate, todayISO } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { uploadObraFile } from "@/lib/supabase/obra-storage";
 import { waLink } from "@/lib/utils";
-import {
-  callExecution,
-  ExecuteQuoteDialog,
-  QuotePaymentsPanel,
-  QuoteProgressText,
-  quoteStatus,
-  type ExecutionSnapshot,
-  type QuotePayment,
-} from "@/components/modules/quote-execution";
-import { QuickAddExpenseDialog } from "@/components/modules/quick-add-expense-dialog";
-import type { Supplier } from "@/components/modules/obra-suppliers-tab";
 
 export interface QuoteRow {
   id: string;
@@ -888,8 +888,10 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
           allowNewSupplier={false}
           onDone={(r) => {
             setShowAddExpense(false);
-            setQuotes((s) => [{ ...r.quote, execution_started_at: null, total_amount: null }, ...s]);
-            if (r.item) setPurchases((s) => [r.item!, ...s]);
+            const quote = { execution_started_at: null, total_amount: null, ...r.quote } as QuoteRow;
+            setQuotes((s) => [quote, ...s]);
+            if (r.payments) applySnapshot({ quote, payments: r.payments, items: r.items ?? [] });
+            else if (r.item) setPurchases((s) => [r.item!, ...s]);
           }}
           onCancel={() => setShowAddExpense(false)}
         />

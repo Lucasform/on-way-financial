@@ -4,9 +4,13 @@ import { Check, Loader2, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { PaymentPlanBuilder } from "@/components/modules/payment-plan-builder";
+import type { QuotePayment } from "@/components/modules/quote-execution";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { type PlanResult, toCents } from "@/lib/installments";
+import { formatBRL, parseBRL } from "@/lib/money";
 
 export interface SupplierOption {
   id: string;
@@ -23,9 +27,32 @@ const norm = (v: string) =>
     .trim();
 const SUPPLIER_CATEGORIES = ["material", "mão-de-obra", "equipamento", "serviço", "outro"];
 
+type ExpenseItem = {
+  id: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  unit_price: number | null;
+  actual_unit_price: number | null;
+  status: string;
+  bought_at: string | null;
+};
+
 export interface QuickAddResult {
   supplier: SupplierOption;
-  quote: { id: string; item_name: string; unit: string; unit_price: number; quoted_at: string; accepted_at: string | null };
+  quote: {
+    id: string;
+    item_name: string;
+    unit: string;
+    unit_price: number;
+    quoted_at: string;
+    accepted_at: string | null;
+    execution_started_at?: string | null;
+    total_amount?: number | null;
+  };
+  /** só na despesa parcelada: o plano de pagamento e os custos já pagos (entrada) */
+  payments?: QuotePayment[];
+  items?: ExpenseItem[];
   item: {
     id: string;
     name: string;
@@ -56,7 +83,9 @@ export function QuickAddExpenseDialog({ suppliers, defaultSupplierId, allowNewSu
   const [newSupplier, setNewSupplier] = useState({ name: "", category: "material", phone: "" });
   const [savingSupplier, setSavingSupplier] = useState(false);
   const [supplierQuery, setSupplierQuery] = useState("");
-  const [status, setStatus] = useState<"cotacao" | "executada">("executada");
+  const [status, setStatus] = useState<"cotacao" | "executada" | "parcelada">("executada");
+  const [paidNow, setPaidNow] = useState("");
+  const [plan, setPlan] = useState<PlanResult | null>(null);
   const [saving, setSaving] = useState(false);
 
   const creatingSupplier = supplierId === NEW_SUPPLIER;
@@ -77,7 +106,10 @@ export function QuickAddExpenseDialog({ suppliers, defaultSupplierId, allowNewSu
     setSupplierQuery("");
   }
   const num = Number(amount.replace(",", "."));
-  const valid = name.trim().length > 0 && Number.isFinite(num) && num > 0 && supplierId.length > 0 && !creatingSupplier;
+  const paid = parseBRL(paidNow) ?? 0;
+  const remainingCents = Number.isFinite(num) && num > 0 ? toCents(num) - toCents(paid) : 0;
+  const baseValid = name.trim().length > 0 && Number.isFinite(num) && num > 0 && supplierId.length > 0 && !creatingSupplier;
+  const valid = baseValid && (status !== "parcelada" || (paid >= 0 && remainingCents > 0 && plan !== null && plan.valid));
 
   async function saveSupplier() {
     if (!newSupplier.name.trim() || savingSupplier) return;
@@ -121,13 +153,30 @@ export function QuickAddExpenseDialog({ suppliers, defaultSupplierId, allowNewSu
           amount: num,
           supplier_id: supplierId,
           status,
+          ...(status === "parcelada"
+            ? {
+                payment: {
+                  paid_now: paid,
+                  installments: (plan?.slots ?? []).map((sl) => ({ label: sl.label, amount: sl.cents / 100, due_date: sl.due_date })),
+                },
+              }
+            : {}),
         }),
       });
       if (!res.ok) {
-        toast.error("Falha ao registrar.");
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        toast.error(
+          data?.error === "plan_sum_mismatch"
+            ? "A soma das parcelas não fecha com o valor. Confira."
+            : data?.error === "paid_now_out_of_range"
+              ? "O valor pago agora precisa ser menor que o total."
+              : "Falha ao registrar.",
+        );
         return;
       }
-      toast.success(status === "executada" ? "Custo registrado." : "Cotação registrada.");
+      toast.success(
+        status === "executada" ? "Custo registrado." : status === "parcelada" ? "Despesa parcelada registrada, parcelas agendadas." : "Cotação registrada.",
+      );
       onDone((await res.json()) as QuickAddResult);
     } finally {
       setSaving(false);
@@ -137,7 +186,7 @@ export function QuickAddExpenseDialog({ suppliers, defaultSupplierId, allowNewSu
   return (
     <>
       <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
-      <div className="fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-border bg-bg-elev p-5 shadow-2xl">
+      <div className={`fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[calc(100%-2rem)] ${status === "parcelada" ? "max-w-md" : "max-w-sm"} -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-border bg-bg-elev p-5 shadow-2xl`}>
         <p className="mb-3 text-sm font-semibold">Adicionar despesa</p>
 
         <div className="space-y-3">
@@ -277,36 +326,63 @@ export function QuickAddExpenseDialog({ suppliers, defaultSupplierId, allowNewSu
           </div>
           <div className="space-y-1">
             <Label>Situação</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setStatus("cotacao")}
-                className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
-                  status === "cotacao"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-text-muted hover:bg-bg-elev-2"
-                }`}
-              >
-                Cotação
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatus("executada")}
-                className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
-                  status === "executada"
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-text-muted hover:bg-bg-elev-2"
-                }`}
-              >
-                Executada
-              </button>
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  ["cotacao", "Cotação"],
+                  ["executada", "Executada"],
+                  ["parcelada", "Parcelada"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStatus(value)}
+                  className={`rounded-md border px-2 py-2 text-sm font-medium transition-colors ${
+                    status === value ? "border-primary bg-primary/10 text-primary" : "border-border text-text-muted hover:bg-bg-elev-2"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
             <p className="text-[11px] text-text-muted">
               {status === "executada"
-                ? "Já foi gasto: entra direto como custo feito no fornecedor."
-                : "Só um preço cotado, ainda não gasto."}
+                ? "Já foi pago inteiro: entra direto como custo feito no fornecedor."
+                : status === "parcelada"
+                  ? "Pagou uma parte (ou nada ainda) e o resto fica agendado. Vai pra Pagamentos e a cotação fica Em execução."
+                  : "Só um preço cotado, ainda não gasto."}
             </p>
           </div>
+
+          {status === "parcelada" && (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="qa-paid">Quanto pagou agora</Label>
+                <Input
+                  id="qa-paid"
+                  inputMode="decimal"
+                  placeholder="0,00 (deixe vazio se não pagou nada)"
+                  value={paidNow}
+                  onChange={(e) => setPaidNow(e.target.value)}
+                />
+                {Number.isFinite(num) && num > 0 && (
+                  <p className="text-[11px] text-text-muted">
+                    Restante: <strong className="text-text">{formatBRL(Math.max(remainingCents, 0) / 100)}</strong>
+                  </p>
+                )}
+              </div>
+              {remainingCents > 0 ? (
+                <div className="space-y-2">
+                  <Label>Como paga o restante</Label>
+                  <PaymentPlanBuilder remainingCents={remainingCents} onChange={setPlan} />
+                </div>
+              ) : (
+                Number.isFinite(num) &&
+                num > 0 && <p className="text-[11px] text-warning">Pagou tudo agora? Então use Executada.</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="mt-4 flex justify-end gap-2">
