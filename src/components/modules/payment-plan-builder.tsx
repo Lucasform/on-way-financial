@@ -46,14 +46,29 @@ const newId = () => `b${++seq}`;
 
 function preset(type: BlockType, auto: boolean, id = newId()): UiBlock {
   const today = todayISO();
-  const base = { id, type, amount: "", auto, frequency: "mensal" as Frequency, first_date: addDaysISO(today, 30), count: "12" };
+  const base = {
+    id,
+    type,
+    amount: "",
+    auto,
+    frequency: "mensal" as Frequency,
+    first_date: addDaysISO(today, 30),
+    count: "12",
+  };
   switch (type) {
     case "entrada":
       return { ...base, label: "entrada", date: today };
     case "parcelas":
       return { ...base, label: "parcela", date: today };
     case "intercaladas":
-      return { ...base, label: "intercalada", date: today, frequency: "semestral", first_date: addMonthsClamped(today, 6), count: "2" };
+      return {
+        ...base,
+        label: "intercalada",
+        date: today,
+        frequency: "semestral",
+        first_date: addMonthsClamped(today, 6),
+        count: "2",
+      };
     case "final":
       return { ...base, label: "parcela final", date: addMonthsClamped(today, 12) };
     case "unico":
@@ -82,11 +97,30 @@ function toPlanBlock(b: UiBlock): PlanBlock {
 
 const centsToInput = (c: number) => (c / 100).toFixed(2).replace(".", ",");
 
-export function PaymentPlanBuilder({ remainingCents, onChange }: { remainingCents: number; onChange: (r: PlanResult) => void }) {
+export function PaymentPlanBuilder({
+  remainingCents,
+  onChange,
+}: {
+  remainingCents: number;
+  onChange: (r: PlanResult) => void;
+}) {
+  const [mode, setModeState] = useState<"single" | "recurring" | "custom">("single");
   const [blocks, setBlocks] = useState<UiBlock[]>(() => [preset("unico", true)]);
   const [overrides, setOverrides] = useState<Record<string, number>>({});
 
-  const plan = useMemo(() => buildPlan(remainingCents, blocks.map(toPlanBlock), overrides), [remainingCents, blocks, overrides]);
+  function setMode(next: "single" | "recurring" | "custom") {
+    if (next === mode) return;
+    setModeState(next);
+    setOverrides({});
+    if (next === "single") setBlocks([preset("unico", true)]);
+    if (next === "recurring") setBlocks([{ ...preset("parcelas", true), count: "2" }]);
+    if (next === "custom") setBlocks((s) => s.map((b) => ({ ...b, auto: true })).slice(0, 1));
+  }
+
+  const plan = useMemo(
+    () => buildPlan(remainingCents, blocks.map(toPlanBlock), overrides),
+    [remainingCents, blocks, overrides],
+  );
 
   useEffect(() => {
     onChange(plan);
@@ -94,7 +128,9 @@ export function PaymentPlanBuilder({ remainingCents, onChange }: { remainingCent
 
   function update(id: string, patch: Partial<UiBlock>) {
     setBlocks((s) => s.map((b) => (b.id === id ? { ...b, ...patch } : b)));
-    setOverrides((o) => Object.fromEntries(Object.entries(o).filter(([k]) => !k.startsWith(`${id}:`))));
+    setOverrides((o) =>
+      Object.fromEntries(Object.entries(o).filter(([k]) => !k.startsWith(`${id}:`))),
+    );
   }
 
   function changeType(b: UiBlock, type: BlockType) {
@@ -112,9 +148,13 @@ export function PaymentPlanBuilder({ remainingCents, onChange }: { remainingCent
   function removeBlock(id: string) {
     setBlocks((s) => {
       const next = s.filter((b) => b.id !== id);
-      return next.some((b) => b.auto) || next.length === 0 ? next : next.map((b, i) => (i === 0 ? { ...b, auto: true } : b));
+      return next.some((b) => b.auto) || next.length === 0
+        ? next
+        : next.map((b, i) => (i === 0 ? { ...b, auto: true } : b));
     });
-    setOverrides((o) => Object.fromEntries(Object.entries(o).filter(([k]) => !k.startsWith(`${id}:`))));
+    setOverrides((o) =>
+      Object.fromEntries(Object.entries(o).filter(([k]) => !k.startsWith(`${id}:`))),
+    );
   }
 
   function setSlotAmount(key: string, currentCents: number, raw: string) {
@@ -134,107 +174,237 @@ export function PaymentPlanBuilder({ remainingCents, onChange }: { remainingCent
 
   const select = "h-9 w-full rounded-md border border-border bg-bg-elev px-2 text-sm";
 
+  const pill = (active: boolean) =>
+    cn(
+      "rounded-md border px-2 py-2 text-sm font-medium transition-colors",
+      active
+        ? "border-primary bg-primary/10 text-primary"
+        : "border-border text-text-muted hover:bg-bg-elev-2",
+    );
+  const first = blocks[0];
+
   return (
     <div className="space-y-3">
-      {blocks.map((b) => {
-        const rec = isRecurring(b.type);
-        return (
-          <div key={b.id} className="space-y-2 rounded-lg border border-border p-3">
-            <div className="flex items-center gap-2">
-              <select
-                value={b.type}
-                onChange={(e) => changeType(b, e.target.value as BlockType)}
-                className={select}
-                aria-label="Tipo de pagamento"
-              >
-                {BLOCK_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-              {blocks.length > 1 && (
-                <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => removeBlock(b.id)} aria-label="Tirar este pagamento">
-                  <Trash2 className="h-4 w-4 text-danger" />
-                </Button>
-              )}
-            </div>
+      <div className="grid grid-cols-3 gap-2">
+        <button type="button" className={pill(mode === "single")} onClick={() => setMode("single")}>
+          Numa data
+        </button>
+        <button
+          type="button"
+          className={pill(mode === "recurring")}
+          onClick={() => setMode("recurring")}
+        >
+          Recorrente
+        </button>
+        <button type="button" className={pill(mode === "custom")} onClick={() => setMode("custom")}>
+          Personalizado
+        </button>
+      </div>
+      <p className="text-[11px] text-text-muted">
+        {mode === "single"
+          ? "O que falta é pago de uma vez, na data escolhida."
+          : mode === "recurring"
+            ? "O que falta é dividido em parcelas iguais. Dá pra ajustar o valor de uma parcela na lista abaixo."
+            : "Misture entrada, parcelas fixas, intercaladas (ex.: semestrais) e parcela final."}
+      </p>
 
-            {rec ? (
-              <div className="grid grid-cols-2 gap-2">
+      {mode === "single" && first && (
+        <div className="space-y-1">
+          <Label htmlFor={`${first.id}-date`} className="text-[11px]">
+            Data do pagamento
+          </Label>
+          <Input
+            id={`${first.id}-date`}
+            type="date"
+            value={first.date}
+            onChange={(e) => update(first.id, { date: e.target.value })}
+          />
+        </div>
+      )}
+
+      {mode === "recurring" && first && (
+        <div className="grid grid-cols-2 gap-2">
+          <select
+            value={first.frequency}
+            onChange={(e) => update(first.id, { frequency: e.target.value as Frequency })}
+            className={cn(select, "col-span-2 h-10")}
+            aria-label="Frequência"
+          >
+            {(Object.keys(FREQUENCY_LABELS) as Frequency[]).map((f) => (
+              <option key={f} value={f}>
+                {FREQUENCY_LABELS[f]}
+              </option>
+            ))}
+          </select>
+          <div className="space-y-1">
+            <Label htmlFor={`${first.id}-rfirst`} className="text-[11px]">
+              1º pagamento
+            </Label>
+            <Input
+              id={`${first.id}-rfirst`}
+              type="date"
+              value={first.first_date}
+              onChange={(e) => update(first.id, { first_date: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`${first.id}-rcount`} className="text-[11px]">
+              Quantas vezes
+            </Label>
+            <Input
+              id={`${first.id}-rcount`}
+              type="number"
+              min="1"
+              max="240"
+              value={first.count}
+              onChange={(e) => update(first.id, { count: e.target.value })}
+            />
+          </div>
+        </div>
+      )}
+
+      {mode === "custom" &&
+        blocks.map((b) => {
+          const rec = isRecurring(b.type);
+          return (
+            <div key={b.id} className="space-y-2 rounded-lg border border-border p-3">
+              <div className="flex items-center gap-2">
                 <select
-                  value={b.frequency}
-                  onChange={(e) => update(b.id, { frequency: e.target.value as Frequency })}
-                  className={cn(select, "col-span-2")}
-                  aria-label="Frequência"
+                  value={b.type}
+                  onChange={(e) => changeType(b, e.target.value as BlockType)}
+                  className={select}
+                  aria-label="Tipo de pagamento"
                 >
-                  {(Object.keys(FREQUENCY_LABELS) as Frequency[]).map((f) => (
-                    <option key={f} value={f}>
-                      {FREQUENCY_LABELS[f]}
+                  {BLOCK_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
                     </option>
                   ))}
                 </select>
-                <div className="space-y-1">
-                  <Label htmlFor={`${b.id}-first`} className="text-[11px]">1º pagamento</Label>
-                  <Input id={`${b.id}-first`} type="date" value={b.first_date} onChange={(e) => update(b.id, { first_date: e.target.value })} />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor={`${b.id}-count`} className="text-[11px]">Quantas vezes</Label>
-                  <Input id={`${b.id}-count`} type="number" min="1" max="240" value={b.count} onChange={(e) => update(b.id, { count: e.target.value })} />
-                </div>
+                {blocks.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={() => removeBlock(b.id)}
+                    aria-label="Tirar este pagamento"
+                  >
+                    <Trash2 className="h-4 w-4 text-danger" />
+                  </Button>
+                )}
               </div>
-            ) : (
-              <div className="space-y-1">
-                <Label htmlFor={`${b.id}-date`} className="text-[11px]">Data</Label>
-                <Input id={`${b.id}-date`} type="date" value={b.date} onChange={(e) => update(b.id, { date: e.target.value })} />
-              </div>
-            )}
 
-            <div className="space-y-1">
-              <Label htmlFor={`${b.id}-amount`} className="text-[11px]">{rec ? "Valor de cada" : "Valor"}</Label>
-              {b.auto ? (
-                <p className="flex h-9 items-center rounded-md border border-dashed border-primary/50 px-3 text-xs text-primary">
-                  Automático: completa o que falta
-                </p>
+              {rec ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={b.frequency}
+                    onChange={(e) => update(b.id, { frequency: e.target.value as Frequency })}
+                    className={cn(select, "col-span-2")}
+                    aria-label="Frequência"
+                  >
+                    {(Object.keys(FREQUENCY_LABELS) as Frequency[]).map((f) => (
+                      <option key={f} value={f}>
+                        {FREQUENCY_LABELS[f]}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="space-y-1">
+                    <Label htmlFor={`${b.id}-first`} className="text-[11px]">
+                      1º pagamento
+                    </Label>
+                    <Input
+                      id={`${b.id}-first`}
+                      type="date"
+                      value={b.first_date}
+                      onChange={(e) => update(b.id, { first_date: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`${b.id}-count`} className="text-[11px]">
+                      Quantas vezes
+                    </Label>
+                    <Input
+                      id={`${b.id}-count`}
+                      type="number"
+                      min="1"
+                      max="240"
+                      value={b.count}
+                      onChange={(e) => update(b.id, { count: e.target.value })}
+                    />
+                  </div>
+                </div>
               ) : (
-                <Input
-                  id={`${b.id}-amount`}
-                  inputMode="decimal"
-                  placeholder="0,00"
-                  value={b.amount}
-                  onChange={(e) => update(b.id, { amount: e.target.value })}
-                />
+                <div className="space-y-1">
+                  <Label htmlFor={`${b.id}-date`} className="text-[11px]">
+                    Data
+                  </Label>
+                  <Input
+                    id={`${b.id}-date`}
+                    type="date"
+                    value={b.date}
+                    onChange={(e) => update(b.id, { date: e.target.value })}
+                  />
+                </div>
               )}
-              <label className="flex cursor-pointer items-center gap-2 pt-1 text-[11px] text-text-muted">
-                <input type="checkbox" checked={b.auto} onChange={() => setAuto(b.id)} className="h-3.5 w-3.5 accent-primary" />
-                Calcular automático com o que faltar
-              </label>
-            </div>
-          </div>
-        );
-      })}
 
-      <div className="flex flex-wrap gap-1.5">
-        {BLOCK_TYPES.map((t) => (
-          <button
-            key={t.value}
-            type="button"
-            onClick={() => addBlock(t.value)}
-            className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[11px] text-text-muted hover:bg-bg-elev-2 hover:text-text"
-          >
-            <Plus className="h-3 w-3" /> {t.label}
-          </button>
-        ))}
-      </div>
+              <div className="space-y-1">
+                <Label htmlFor={`${b.id}-amount`} className="text-[11px]">
+                  {rec ? "Valor de cada" : "Valor"}
+                </Label>
+                {b.auto ? (
+                  <p className="border-primary/50 flex h-9 items-center rounded-md border border-dashed px-3 text-xs text-primary">
+                    Automático: completa o que falta
+                  </p>
+                ) : (
+                  <Input
+                    id={`${b.id}-amount`}
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    value={b.amount}
+                    onChange={(e) => update(b.id, { amount: e.target.value })}
+                  />
+                )}
+                <label className="flex cursor-pointer items-center gap-2 pt-1 text-[11px] text-text-muted">
+                  <input
+                    type="checkbox"
+                    checked={b.auto}
+                    onChange={() => setAuto(b.id)}
+                    className="h-3.5 w-3.5 accent-primary"
+                  />
+                  Calcular automático com o que faltar
+                </label>
+              </div>
+            </div>
+          );
+        })}
+
+      {mode === "custom" && (
+        <div className="flex flex-wrap gap-1.5">
+          {BLOCK_TYPES.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              onClick={() => addBlock(t.value)}
+              className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[11px] text-text-muted hover:bg-bg-elev-2 hover:text-text"
+            >
+              <Plus className="h-3 w-3" /> {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {plan.slots.length > 0 && (
         <div className="rounded-lg border border-border bg-bg-elev-2">
           <p className="border-b border-border px-3 py-2 text-[11px] text-text-muted">
-            {plan.slots.length} pagamento{plan.slots.length > 1 ? "s" : ""}. Toque no valor pra ajustar uma parcela.
+            {plan.slots.length} pagamento{plan.slots.length > 1 ? "s" : ""}. Toque no valor pra
+            ajustar uma parcela.
           </p>
           <ul className="max-h-56 divide-y divide-border overflow-y-auto">
             {plan.slots.map((s) => (
-              <li key={s.key} className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs">
+              <li
+                key={s.key}
+                className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs"
+              >
                 <span className="min-w-0 truncate text-text-muted">
                   {s.due_date ? fmtDate(s.due_date, "dd/MM/yyyy") : "sem data"} · {s.label}
                 </span>
@@ -242,7 +412,11 @@ export function PaymentPlanBuilder({ remainingCents, onChange }: { remainingCent
                   {s.overridden && (
                     <button
                       type="button"
-                      onClick={() => setOverrides((o) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== s.key)))}
+                      onClick={() =>
+                        setOverrides((o) =>
+                          Object.fromEntries(Object.entries(o).filter(([k]) => k !== s.key)),
+                        )
+                      }
                       aria-label="Desfazer ajuste"
                       title="Desfazer ajuste"
                       className="text-text-muted hover:text-text"
@@ -258,7 +432,11 @@ export function PaymentPlanBuilder({ remainingCents, onChange }: { remainingCent
                     onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
                     className={cn(
                       "num h-7 w-24 rounded border bg-bg-elev px-1.5 text-right font-medium",
-                      s.cents <= 0 ? "border-danger text-danger" : s.overridden ? "border-primary/60" : "border-border",
+                      s.cents <= 0
+                        ? "border-danger text-danger"
+                        : s.overridden
+                          ? "border-primary/60"
+                          : "border-border",
                     )}
                     aria-label={`Valor de ${s.label}`}
                   />
@@ -268,20 +446,30 @@ export function PaymentPlanBuilder({ remainingCents, onChange }: { remainingCent
           </ul>
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2 text-xs">
             <span className="text-text-muted">
-              Agendado <strong className="text-text">{formatBRL(plan.totalCents / 100)}</strong> de {formatBRL(remainingCents / 100)}
+              Agendado <strong className="text-text">{formatBRL(plan.totalCents / 100)}</strong> de{" "}
+              {formatBRL(remainingCents / 100)}
             </span>
             {plan.diffCents === 0 ? (
               <span className="font-medium text-success">Fechou certinho</span>
             ) : (
               <span className="flex items-center gap-2">
-                <span className={cn("font-medium", plan.diffCents > 0 ? "text-warning" : "text-danger")}>
-                  {plan.diffCents > 0 ? `Falta ${formatBRL(plan.diffCents / 100)}` : `Passou ${formatBRL(-plan.diffCents / 100)}`}
+                <span
+                  className={cn("font-medium", plan.diffCents > 0 ? "text-warning" : "text-danger")}
+                >
+                  {plan.diffCents > 0
+                    ? `Falta ${formatBRL(plan.diffCents / 100)}`
+                    : `Passou ${formatBRL(-plan.diffCents / 100)}`}
                 </span>
-                {plan.slots.length > 0 && plan.slots[plan.slots.length - 1]!.cents + plan.diffCents > 0 && (
-                  <button type="button" onClick={fixOnLast} className="text-primary underline-offset-2 hover:underline">
-                    acertar na última
-                  </button>
-                )}
+                {plan.slots.length > 0 &&
+                  plan.slots[plan.slots.length - 1]!.cents + plan.diffCents > 0 && (
+                    <button
+                      type="button"
+                      onClick={fixOnLast}
+                      className="text-primary underline-offset-2 hover:underline"
+                    >
+                      acertar na última
+                    </button>
+                  )}
               </span>
             )}
           </div>
