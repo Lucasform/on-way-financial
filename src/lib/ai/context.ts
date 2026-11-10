@@ -114,7 +114,105 @@ export async function buildFinancialContext(opts: ContextOptions): Promise<strin
     for (const a of list.slice(0, 15)) lines.push(`- ${a.title}${a.due_date ? ` | ${a.due_date}` : ""}${who(a)}`);
   }
 
+  const [{ data: convs }, { data: supplierRows }] = await Promise.all([
+    admin
+      .from("wa_conversations")
+      .select("contact_name, phone, supplier_id, last_message_at")
+      .eq("household_id", opts.householdId)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(25),
+    admin.from("suppliers").select("id, name").eq("household_id", opts.householdId),
+  ]);
+  if ((convs ?? []).length > 0) {
+    const sName = new Map((supplierRows ?? []).map((x) => [x.id, x.name]));
+    lines.push("", "## Conversas do WhatsApp no app (use read_whatsapp_conversation pra ler)");
+    for (const c of convs ?? []) {
+      const who = (c.supplier_id && sName.get(c.supplier_id)) || c.contact_name || c.phone;
+      const tag = c.supplier_id && sName.get(c.supplier_id) ? " (fornecedor)" : "";
+      lines.push(`- ${who}${tag}${c.last_message_at ? ` | última mensagem ${c.last_message_at.slice(0, 10)}` : ""}`);
+    }
+  }
+
   return lines.join("\n");
+}
+
+export const READ_CONVERSATION_TOOL = {
+  name: "read_whatsapp_conversation",
+  description:
+    "Lê as mensagens de uma conversa do WhatsApp que está no app (lista em 'Conversas do WhatsApp no app'). " +
+    "Use sempre que o usuário pedir algo com base numa conversa: 'o que o Daniel falou', 'na conversa com a Hidráulica', " +
+    "'resume a conversa', 'lança o que ele cobrou'. Depois de ler, responda ou use as outras ferramentas (despesa, atividade...).",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      name: { type: "string", description: "Nome do fornecedor ou contato da conversa, como aparece na lista (ou parte dele)." },
+      limit: { type: "number", description: "Quantas mensagens recentes ler (padrão 80, máximo 200)." },
+    },
+    required: ["name"],
+  },
+};
+
+const msgTime = new Intl.DateTimeFormat("pt-BR", {
+  timeZone: "America/Sao_Paulo",
+  day: "2-digit",
+  month: "2-digit",
+  year: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** Mensagens de uma conversa do WhatsApp da obra, em texto, pra IA ler. */
+export async function readConversation(householdId: string, args: { name?: string; limit?: number }): Promise<string> {
+  const admin = createSupabaseAdmin();
+  const wanted = norm(args.name ?? "");
+  if (!wanted) return "Diga de qual conversa (nome do fornecedor ou contato).";
+  const [{ data: convs }, { data: supplierRows }] = await Promise.all([
+    admin.from("wa_conversations").select("id, contact_name, phone, supplier_id").eq("household_id", householdId),
+    admin.from("suppliers").select("id, name").eq("household_id", householdId),
+  ]);
+  const sName = new Map((supplierRows ?? []).map((x) => [x.id, x.name]));
+  const titled = (convs ?? []).map((c) => ({
+    ...c,
+    title: (c.supplier_id && sName.get(c.supplier_id)) || c.contact_name || c.phone,
+  }));
+  const digits = wanted.replace(/\D/g, "");
+  const exact = titled.filter((c) => norm(c.title) === wanted);
+  const matches =
+    exact.length > 0
+      ? exact
+      : titled.filter(
+          (c) =>
+            norm(c.title).includes(wanted) ||
+            norm(c.contact_name ?? "").includes(wanted) ||
+            (digits.length >= 4 && c.phone.includes(digits)),
+        );
+  if (matches.length === 0) {
+    return `Não achei conversa com "${args.name}". Conversas no app: ${titled.map((c) => c.title).join(", ") || "nenhuma"}.`;
+  }
+  if (matches.length > 1) return `Mais de uma conversa bate com "${args.name}": ${matches.map((c) => c.title).join(", ")}. Pergunte qual.`;
+
+  const conv = matches[0]!;
+  const limit = Math.min(Math.max(Number(args.limit) || 80, 10), 200);
+  const { data: msgs } = await admin
+    .from("wa_messages")
+    .select("direction, content, created_at")
+    .eq("conversation_id", conv.id)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  const rows = (msgs ?? []).reverse();
+  if (rows.length === 0) return `A conversa com ${conv.title} ainda não tem mensagens no app.`;
+  return [
+    `Conversa com ${conv.title}${conv.supplier_id ? " (fornecedor cadastrado)" : ""}, ${rows.length} mensagens mais recentes:`,
+    ...rows.map((m) => `[${msgTime.format(new Date(m.created_at))}] ${m.direction === "out" ? "Você" : conv.title}: ${m.content}`),
+  ].join("\n");
+}
+
+function norm(v: string) {
+  return v
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 }
 
 export const ASSISTANT_SYSTEM = `Você é o ON AI, assistente do app On Obra (controle de custos da obra).
@@ -166,6 +264,14 @@ REGRAS:
     "anota pro Daniel concretar a laje sexta" -> add_activity(title "Concretar a laje", assignee "Daniel", due_date da próxima sexta).
     "preciso comprar tela de proteção" -> add_activity(title "Comprar tela de proteção").
     "o Daniel terminou a caixa de inspeção" -> complete_activity(title "caixa de inspeção").
+- CONVERSAS DO WHATSAPP: quando o pedido depender do que foi falado com um fornecedor ou contato ("o que o Daniel
+  disse", "resume a conversa com a Hidráulica", "lança o que ele cobrou", "cria as tarefas que combinamos"), chame
+  read_whatsapp_conversation com o nome antes de responder. Depois use o que leu: responda, ou chame register_expense /
+  add_activity / outras ferramentas com os dados da conversa (o usuário ainda confirma no cartão). Cite datas e valores
+  como aparecem nas mensagens; se algo não estiver claro na conversa, pergunte.
+  - Valor cobrado na conversa só é EXECUTADA se a conversa mostrar que já foi pago ("paguei", "fiz o pix",
+    comprovante). Se ainda vai pagar ("pago segunda", "te passo amanhã") ou só foi cobrado, use cotacao e avise
+    que dá pra executar/parcelar quando pagar.
 - Pra perguntas gerais (conceitos, comparações, produtos do mercado), use seu conhecimento.
 - Se faltar dado, peça pro usuário especificar.
 - Sugira ações claras e curtas, em bullet points quando ajudar.

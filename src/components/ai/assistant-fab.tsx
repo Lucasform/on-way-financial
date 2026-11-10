@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Bot, Check, ClipboardCheck, Send, Sparkles, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -72,6 +72,23 @@ export function AssistantFab() {
   useEffect(() => {
     if (open) endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, open]);
+
+  // outras telas (ex.: Conversas) abrem o assistente já com o começo do pedido escrito
+  useEffect(() => {
+    function onAsk(e: Event) {
+      const text = (e as CustomEvent<{ text?: string }>).detail?.text ?? "";
+      setOpen(true);
+      setInput(text);
+      setTimeout(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(text.length, text.length);
+      }, 50);
+    }
+    window.addEventListener("onobra:ask-ai", onAsk);
+    return () => window.removeEventListener("onobra:ask-ai", onAsk);
+  }, []);
 
   useEffect(() => {
     const el = textareaRef.current;

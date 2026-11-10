@@ -2,7 +2,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import { type NextRequest,NextResponse } from "next/server";
 import { z } from "zod";
 
-import { ASSISTANT_SYSTEM, buildFinancialContext, SEARCH_COSTS_TOOL, searchCosts } from "@/lib/ai/context";
+import {
+  ASSISTANT_SYSTEM,
+  buildFinancialContext,
+  READ_CONVERSATION_TOOL,
+  readConversation,
+  SEARCH_COSTS_TOOL,
+  searchCosts,
+} from "@/lib/ai/context";
 import {
   ADD_ACTIVITY_TOOL,
   ADD_CHECKLIST_ITEM_TOOL,
@@ -36,7 +43,7 @@ const bodySchema = z.object({
   confirm: z.string().max(20_000).optional(),
 });
 
-const TOOLS = [SEARCH_COSTS_TOOL, REGISTER_EXPENSE_TOOL, ADD_SUPPLIER_TOOL, ADD_CHECKLIST_ITEM_TOOL, ADD_ACTIVITY_TOOL, COMPLETE_ACTIVITY_TOOL];
+const TOOLS = [SEARCH_COSTS_TOOL, READ_CONVERSATION_TOOL, REGISTER_EXPENSE_TOOL, ADD_SUPPLIER_TOOL, ADD_CHECKLIST_ITEM_TOOL, ADD_ACTIVITY_TOOL, COMPLETE_ACTIVITY_TOOL];
 
 const CLAIMS_WRITE =
   /cart[aã]o|(confer|confir)\w*[^.!?\n]{0,40}resumo|resumo[^.!?\n]{0,40}(confer|confir)|\b(registrei|gravei|cadastrei|lancei|anotei)\b|\b(pronto|j[aá]|foi|est[aá]|fica|ficou)[,!.]?\s+(registrad|gravad|cadastrad|lan[cç]ad|anotad)/i;
@@ -90,6 +97,7 @@ export async function POST(req: NextRequest) {
 
     async function runTool(tu: Anthropic.ToolUseBlock): Promise<string> {
       if (tu.name === SEARCH_COSTS_TOOL.name) return searchCosts(householdId, tu.input as Record<string, string>);
+      if (tu.name === READ_CONVERSATION_TOOL.name) return readConversation(householdId, tu.input as { name?: string; limit?: number });
       if (!WRITE_TOOL_NAMES.has(tu.name)) return "Ferramenta desconhecida.";
       if (!canWrite) return "O usuário tem acesso só de leitura. Diga que não dá pra registrar.";
       const plan = await planAction(db, householdId, tu.name, tu.input as Record<string, unknown>);

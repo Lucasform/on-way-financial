@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Copy,
   FileText,
   History,
   ImageIcon,
@@ -12,6 +13,7 @@ import {
   Search,
   Send,
   Smartphone,
+  Sparkles,
   Store,
   Trash2,
   Upload,
@@ -106,7 +108,10 @@ function useAutoRefresh(everyMs: number, enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
     const t = setInterval(() => {
-      if (document.visibilityState === "visible") router.refresh();
+      if (document.visibilityState !== "visible") return;
+      // não atualiza com texto selecionado (a seleção sumiria antes de copiar)
+      if ((window.getSelection()?.toString() ?? "").trim()) return;
+      router.refresh();
     }, everyMs);
     return () => clearInterval(t);
   }, [router, everyMs, enabled]);
@@ -743,8 +748,22 @@ function Thread({
               )}
             </p>
           </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 px-2 text-xs"
+              title="Pedir algo à IA com base nesta conversa"
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent("onobra:ask-ai", { detail: { text: `Com base na conversa com ${conversation.title}, ` } }),
+                )
+              }
+            >
+              <Sparkles className="h-3.5 w-3.5" /> Perguntar à IA
+            </Button>
           {canWrite && (
-            <div className="flex shrink-0 items-center gap-1">
+            <>
               <Button
                 size="icon"
                 variant="ghost"
@@ -776,8 +795,9 @@ function Thread({
               >
                 <Trash2 className="h-4 w-4 text-danger" />
               </Button>
-            </div>
+            </>
           )}
+          </div>
         </div>
         {canWrite && (
           <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -858,13 +878,30 @@ function Thread({
           <div key={m.id} className={cn("flex flex-col", m.direction === "out" ? "items-end" : "items-start")}>
             <div
               className={cn(
-                "max-w-[85%] whitespace-pre-line break-words rounded-2xl px-3.5 py-2 text-sm",
+                "max-w-[85%] select-text whitespace-pre-line break-words rounded-2xl px-3.5 py-2 text-sm",
                 m.direction === "out" ? "bg-primary text-primary-foreground" : "bg-bg-elev text-text shadow-sm",
               )}
             >
               {m.content}
             </div>
-            <span className="mt-0.5 px-1 text-[10px] text-text-muted">{fmtWhen(m.created_at)}</span>
+            <span className="mt-0.5 flex items-center gap-2 px-1 text-[10px] text-text-muted">
+              {fmtWhen(m.created_at)}
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(m.content);
+                    toast.success("Mensagem copiada.");
+                  } catch {
+                    toast.error("Não consegui copiar. Selecione o texto e copie.");
+                  }
+                }}
+                className="inline-flex items-center gap-0.5 hover:text-text"
+                aria-label="Copiar mensagem"
+              >
+                <Copy className="h-3 w-3" /> copiar
+              </button>
+            </span>
           </div>
         ))}
       </div>
