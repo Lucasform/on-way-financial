@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { AmountEditor, callExecution } from "@/components/modules/quote-execution";
+import { AmountEditor, callExecution, DateButton } from "@/components/modules/quote-execution";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
@@ -221,7 +221,8 @@ export function ObraPaymentsTab({ scheduled: initialScheduled, executed: initial
                     const late = p.due_date !== null && p.due_date < today;
                     const isToday = p.due_date === today;
                     return (
-                      <li key={p.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm">
+                      <li key={p.id} className="flex flex-col gap-2 px-4 py-3 text-sm sm:flex-row sm:items-center sm:gap-3">
+                        <div className="flex min-w-0 flex-1 items-start gap-3">
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium">
                             {p.item_name}
@@ -239,30 +240,23 @@ export function ObraPaymentsTab({ scheduled: initialScheduled, executed: initial
                           </p>
                         </div>
                         <Money value={p.amount} size="sm" className="shrink-0 font-medium" />
+                        </div>
                         {canWrite && (
-                          <div className="flex shrink-0 items-center gap-1.5">
+                          <div className="flex shrink-0 items-center justify-end gap-1.5">
                             <AmountEditor
                               value={p.amount}
                               label={p.label}
                               disabled={busy !== null}
                               onSave={(amount) => changeAmount(p, amount)}
                             />
-                            <label
-                              className="relative inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md hover:bg-bg-elev-2"
-                              title="Mudar a data"
-                            >
-                              <CalendarClock className="h-3.5 w-3.5 text-text-muted" />
-                              <input
-                                type="date"
-                                value={p.due_date ?? ""}
-                                disabled={busy !== null}
-                                onChange={(e) => e.target.value && reschedule(p, e.target.value)}
-                                className="absolute inset-0 cursor-pointer opacity-0"
-                                aria-label={`Mudar a data de ${p.label}`}
-                              />
-                            </label>
-                            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={busy !== null} onClick={() => pay(p)}>
-                              {busy === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Pagar"}
+                            <DateButton
+                              value={p.due_date}
+                              label={p.label}
+                              disabled={busy !== null}
+                              onChange={(date) => reschedule(p, date)}
+                            />
+                            <Button size="sm" variant="outline" className="h-8 min-w-16 px-3 text-xs" disabled={busy !== null} onClick={() => pay(p)}>
+                              {busy === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Pagar"}
                             </Button>
                           </div>
                         )}

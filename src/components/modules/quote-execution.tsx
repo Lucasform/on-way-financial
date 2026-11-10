@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarClock, Check, Loader2, Pencil, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { PaymentPlanBuilder } from "@/components/modules/payment-plan-builder";
@@ -88,6 +88,57 @@ export async function callExecution<Q extends ExecQuote>(body: Record<string, un
   return data as ExecutionSnapshot<Q>;
 }
 
+/**
+ * Botão de calendário que abre o seletor de data. O campo de data fica escondido e sem receber toque:
+ * no celular ele tem largura mínima própria e, por cima do botão vizinho, roubava o clique do "Pagar".
+ */
+export function DateButton({
+  value,
+  disabled,
+  label,
+  onChange,
+}: {
+  value: string | null;
+  disabled?: boolean;
+  label: string;
+  onChange: (date: string) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <span className="relative inline-flex h-8 w-8 shrink-0 overflow-hidden">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          const el = ref.current;
+          if (!el) return;
+          try {
+            el.showPicker();
+          } catch {
+            el.focus();
+            el.click();
+          }
+        }}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-bg-elev disabled:opacity-50"
+        title="Mudar a data"
+        aria-label={`Mudar a data de ${label}`}
+      >
+        <CalendarClock className="h-4 w-4 text-text-muted" />
+      </button>
+      <input
+        ref={ref}
+        type="date"
+        tabIndex={-1}
+        aria-hidden
+        value={value ?? ""}
+        disabled={disabled}
+        onChange={(e) => e.target.value && onChange(e.target.value)}
+        className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+      />
+    </span>
+  );
+}
+
 export function AmountEditor({
   value,
   disabled,
@@ -111,7 +162,7 @@ export function AmountEditor({
           setDraft(Number(value).toFixed(2).replace(".", ","));
           setOpen(true);
         }}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-bg-elev"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-bg-elev"
         title="Mudar o valor"
         aria-label={`Mudar o valor de ${label}`}
       >
@@ -337,7 +388,8 @@ export function QuotePaymentsPanel<Q extends ExecQuote>({
           const overdue = !p.paid_at && p.due_date !== null && p.due_date < today;
           const dueToday = !p.paid_at && p.due_date === today;
           return (
-            <li key={p.id} className="flex flex-wrap items-center gap-2 text-sm">
+            <li key={p.id} className="flex flex-col gap-1.5 text-sm sm:flex-row sm:items-center sm:gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
               <span
                 className={cn(
                   "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
@@ -358,22 +410,15 @@ export function QuotePaymentsPanel<Q extends ExecQuote>({
                       : "sem data"}
                 </p>
               </div>
+              </div>
               {canWrite && !p.paid_at && (
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <label className="relative inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md hover:bg-bg-elev" title="Mudar a data">
-                    <CalendarClock className="h-3.5 w-3.5 text-text-muted" />
-                    <input
-                      type="date"
-                      value={p.due_date ?? ""}
-                      disabled={busy !== null}
-                      onChange={(e) =>
-                        e.target.value &&
-                        run(p.id, { action: "reschedule", payment_id: p.id, due_date: e.target.value }, "Data atualizada.")
-                      }
-                      className="absolute inset-0 cursor-pointer opacity-0"
-                      aria-label={`Mudar a data de ${p.label}`}
-                    />
-                  </label>
+                <div className="flex shrink-0 items-center justify-end gap-1.5">
+                  <DateButton
+                    value={p.due_date}
+                    label={p.label}
+                    disabled={busy !== null}
+                    onChange={(date) => run(p.id, { action: "reschedule", payment_id: p.id, due_date: date }, "Data atualizada.")}
+                  />
                   <AmountEditor
                     value={Number(p.amount)}
                     label={p.label}
@@ -383,11 +428,11 @@ export function QuotePaymentsPanel<Q extends ExecQuote>({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 px-2 text-xs"
+                    className="h-8 min-w-16 px-3 text-xs"
                     disabled={busy !== null}
                     onClick={() => run(p.id, { action: "pay", payment_id: p.id }, "Pagamento registrado.")}
                   >
-                    {busy === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Pagar"}
+                    {busy === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Pagar"}
                   </Button>
                 </div>
               )}
