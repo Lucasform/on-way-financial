@@ -107,9 +107,9 @@ export function DailyBriefingDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] overflow-y-auto">
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle>Hoje na obra</DialogTitle>
+          <DialogTitle className="pr-6">Hoje na obra</DialogTitle>
           <DialogDescription>{fmtDate(today, "EEEE, dd/MM")}</DialogDescription>
         </DialogHeader>
 
@@ -121,12 +121,12 @@ export function DailyBriefingDialog({
               </span>
               <Money value={total} size="sm" />
             </p>
-            <ul className="space-y-1.5">
+            <ul className="max-h-48 space-y-2 overflow-y-auto pr-1">
               {duePayments.map((p) => {
                 const w = whenLabel(p.due_date, today);
                 return (
-                  <li key={p.id} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="min-w-0 truncate">
+                  <li key={p.id} className="flex items-start justify-between gap-3 text-sm">
+                    <span className="line-clamp-2 min-w-0 break-words">
                       {p.item_name}
                       {p.supplier_name && <span className="text-text-muted"> · {p.supplier_name}</span>}
                     </span>
@@ -146,12 +146,12 @@ export function DailyBriefingDialog({
             <p className="flex items-center gap-1.5 text-sm font-semibold">
               <ListTodo className="h-4 w-4" /> Atividades
             </p>
-            <ul className="space-y-1.5">
+            <ul className="max-h-48 space-y-2 overflow-y-auto pr-1">
               {dueActivities.map((a) => {
                 const w = whenLabel(a.due_date, today);
                 return (
-                  <li key={a.id} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="min-w-0 truncate">
+                  <li key={a.id} className="flex items-start justify-between gap-3 text-sm">
+                    <span className="line-clamp-2 min-w-0 break-words">
                       {a.title}
                       {a.assignee && <span className="text-text-muted"> · {a.assignee}</span>}
                     </span>
