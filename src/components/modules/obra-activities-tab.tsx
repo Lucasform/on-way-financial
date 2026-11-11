@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CalendarClock, Check, ListTodo, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, Check, ListTodo, Plus, Repeat, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useConfirm } from "@/hooks/use-confirm";
+import { ACTIVITY_RECURRENCES, asRecurrence, RECURRENCE_LABELS } from "@/lib/activity-recurrence";
 import { fmtDate, todayISO } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { ObraChecklistTab, type ChecklistItem } from "@/components/modules/obra-checklist-tab";
@@ -21,6 +22,9 @@ export interface Activity {
   status: string;
   done_at: string | null;
   assignee: string | null;
+  recurrence: string | null;
+  recurrence_until: string | null;
+  recurrence_source_id: string | null;
 }
 
 interface Props {
@@ -31,9 +35,83 @@ interface Props {
   canWrite: boolean;
 }
 
-const EMPTY_DRAFT = { title: "", due_date: "", notes: "", assignee: "" };
+const EMPTY_DRAFT = {
+  title: "",
+  due_date: "",
+  notes: "",
+  assignee: "",
+  recurrence: "",
+  recurrence_until: "",
+};
+type Draft = typeof EMPTY_DRAFT;
 
-export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklist, memberNames, canWrite }: Props) {
+/** Campos de repetição prontos pra gravar. Repetir sem data começa hoje. */
+function recurrenceFields(d: Draft, today: string) {
+  const recurrence = asRecurrence(d.recurrence);
+  const due = d.due_date || (recurrence ? today : null);
+  return {
+    due_date: due,
+    recurrence,
+    recurrence_until: recurrence && d.recurrence_until ? d.recurrence_until : null,
+    recurrence_anchor: recurrence ? due : null,
+  };
+}
+
+function recurrenceText(a: { recurrence: string | null; recurrence_until: string | null }) {
+  const r = asRecurrence(a.recurrence);
+  if (!r) return null;
+  return `${RECURRENCE_LABELS[r]}${a.recurrence_until ? ` até ${fmtDate(a.recurrence_until, "dd/MM/yy")}` : ""}`;
+}
+
+function RecurrenceInputs({ draft, onChange }: { draft: Draft; onChange: (d: Draft) => void }) {
+  return (
+    <>
+      <label className="relative flex items-center">
+        <Repeat className="pointer-events-none absolute left-2.5 h-4 w-4 text-text-muted" />
+        <select
+          value={draft.recurrence}
+          onChange={(e) =>
+            onChange({
+              ...draft,
+              recurrence: e.target.value,
+              recurrence_until: e.target.value ? draft.recurrence_until : "",
+            })
+          }
+          aria-label="Repetir"
+          className="focus:border-primary/60 h-10 w-full appearance-none rounded-md border border-border bg-bg-elev pl-8 pr-3 text-base outline-none sm:text-sm"
+        >
+          <option value="">Não repete</option>
+          {ACTIVITY_RECURRENCES.map((r) => (
+            <option key={r} value={r}>
+              {RECURRENCE_LABELS[r]}
+            </option>
+          ))}
+        </select>
+      </label>
+      {draft.recurrence && (
+        <label className="flex items-center gap-2 text-xs text-text-muted sm:col-span-2">
+          <span className="shrink-0">Repetir até</span>
+          <Input
+            type="date"
+            value={draft.recurrence_until}
+            min={draft.due_date || undefined}
+            onChange={(e) => onChange({ ...draft, recurrence_until: e.target.value })}
+            aria-label="Repetir até (opcional)"
+          />
+          <span className="shrink-0">(opcional)</span>
+        </label>
+      )}
+    </>
+  );
+}
+
+export function ObraActivitiesTab({
+  moduleId,
+  initialActivities,
+  initialChecklist,
+  memberNames,
+  canWrite,
+}: Props) {
   const supabase = createSupabaseBrowser();
   const [subTab, setSubTab] = useState<"tarefas" | "referencia">("tarefas");
   const [activities, setActivities] = useState(initialActivities);
@@ -43,7 +121,9 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
   const [editDraft, setEditDraft] = useState(EMPTY_DRAFT);
 
   const assigneeOptions = useMemo(() => {
-    const names = [...memberNames, ...activities.map((a) => a.assignee ?? "")].map((n) => n.trim()).filter(Boolean);
+    const names = [...memberNames, ...activities.map((a) => a.assignee ?? "")]
+      .map((n) => n.trim())
+      .filter(Boolean);
     return [...new Set(names)].sort((a, b) => a.localeCompare(b));
   }, [memberNames, activities]);
   const [pending, start] = useTransition();
@@ -53,10 +133,16 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
 
   const { overdue, upcoming, noDate, done } = useMemo(() => {
     const open = activities.filter((a) => a.status !== "feito");
-    const overdue = open.filter((a) => a.due_date && a.due_date < today).sort((a, b) => a.due_date!.localeCompare(b.due_date!));
-    const upcoming = open.filter((a) => a.due_date && a.due_date >= today).sort((a, b) => a.due_date!.localeCompare(b.due_date!));
+    const overdue = open
+      .filter((a) => a.due_date && a.due_date < today)
+      .sort((a, b) => a.due_date!.localeCompare(b.due_date!));
+    const upcoming = open
+      .filter((a) => a.due_date && a.due_date >= today)
+      .sort((a, b) => a.due_date!.localeCompare(b.due_date!));
     const noDate = open.filter((a) => !a.due_date);
-    const done = activities.filter((a) => a.status === "feito").sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? ""));
+    const done = activities
+      .filter((a) => a.status === "feito")
+      .sort((a, b) => (b.done_at ?? "").localeCompare(a.done_at ?? ""));
     return { overdue, upcoming, noDate, done };
   }, [activities, today]);
 
@@ -83,9 +169,9 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
         .insert({
           module_id: moduleId,
           title: draft.title.trim(),
-          due_date: draft.due_date || null,
           notes: draft.notes.trim() || null,
           assignee: draft.assignee.trim() || null,
+          ...recurrenceFields(draft, today),
         })
         .select("*")
         .single();
@@ -104,15 +190,39 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
     const nowDone = a.status !== "feito";
     const nextStatus = nowDone ? "feito" : "pendente";
     const nextDoneAt = nowDone ? today : null;
-    setActivities((s) => s.map((x) => (x.id === a.id ? { ...x, status: nextStatus, done_at: nextDoneAt } : x)));
+    setActivities((s) =>
+      s.map((x) => (x.id === a.id ? { ...x, status: nextStatus, done_at: nextDoneAt } : x)),
+    );
     start(async () => {
       const { error } = await supabase
         .from("obra_activities")
         .update({ status: nextStatus, done_at: nextDoneAt })
         .eq("id", a.id);
       if (error) {
-        setActivities((s) => s.map((x) => (x.id === a.id ? { ...x, status: a.status, done_at: a.done_at } : x)));
+        setActivities((s) =>
+          s.map((x) => (x.id === a.id ? { ...x, status: a.status, done_at: a.done_at } : x)),
+        );
         toast.error("Falha ao atualizar.");
+        return;
+      }
+      if (!a.recurrence) return;
+      if (!nowDone) {
+        // o banco apagou a próxima ocorrência que ainda estava aberta
+        setActivities((s) =>
+          s.filter((x) => !(x.recurrence_source_id === a.id && x.status !== "feito")),
+        );
+        return;
+      }
+      const { data: next } = await supabase
+        .from("obra_activities")
+        .select("*")
+        .eq("recurrence_source_id", a.id)
+        .maybeSingle();
+      if (next) {
+        setActivities((s) => (s.some((x) => x.id === next.id) ? s : [...s, next as Activity]));
+        toast.success(`Próxima: ${fmtDate(next.due_date ?? today, "dd/MM/yyyy")}.`);
+      } else {
+        toast.success("Feito. Era a última repetição.");
       }
     });
   }
@@ -131,7 +241,14 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
       setEditingId(null);
       return;
     }
-    setEditDraft({ title: a.title, due_date: a.due_date ?? "", notes: a.notes ?? "", assignee: a.assignee ?? "" });
+    setEditDraft({
+      title: a.title,
+      due_date: a.due_date ?? "",
+      notes: a.notes ?? "",
+      assignee: a.assignee ?? "",
+      recurrence: a.recurrence ?? "",
+      recurrence_until: a.recurrence_until ?? "",
+    });
     setEditingId(a.id);
   }
 
@@ -139,9 +256,9 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
     start(async () => {
       const payload = {
         title: editDraft.title.trim(),
-        due_date: editDraft.due_date || null,
         notes: editDraft.notes.trim() || null,
         assignee: editDraft.assignee.trim() || null,
+        ...recurrenceFields(editDraft, today),
       };
       const { error } = await supabase.from("obra_activities").update(payload).eq("id", id);
       if (error) {
@@ -173,12 +290,19 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
             {checked && <Check className="h-3.5 w-3.5" />}
           </button>
           <div className="min-w-0 flex-1 cursor-pointer" onClick={() => openEdit(a)}>
-            <p className={cn("truncate", checked ? "text-text-muted line-through" : "")}>{a.title}</p>
+            <p className={cn("truncate", checked ? "text-text-muted line-through" : "")}>
+              {a.title}
+            </p>
             {a.notes && <p className="truncate text-xs text-text-muted">{a.notes}</p>}
+            {recurrenceText(a) && (
+              <p className="flex items-center gap-1 truncate text-[11px] text-primary">
+                <Repeat className="h-3 w-3 shrink-0" /> {recurrenceText(a)}
+              </p>
+            )}
           </div>
           {a.assignee && (
             <span
-              className="flex max-w-[9rem] shrink-0 items-center gap-1.5 rounded-full bg-primary/10 py-0.5 pl-0.5 pr-2 text-xs font-medium text-primary"
+              className="bg-primary/10 flex max-w-[9rem] shrink-0 items-center gap-1.5 rounded-full py-0.5 pl-0.5 pr-2 text-xs font-medium text-primary"
               title={`Responsável: ${a.assignee}`}
             >
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-semibold uppercase text-white">
@@ -188,7 +312,12 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
             </span>
           )}
           {a.due_date && (
-            <span className={cn("shrink-0 text-xs", overdueNow ? "font-medium text-danger" : "text-text-muted")}>
+            <span
+              className={cn(
+                "shrink-0 text-xs",
+                overdueNow ? "font-medium text-danger" : "text-text-muted",
+              )}
+            >
               {fmtDate(a.due_date, "dd/MM/yyyy")}
             </span>
           )}
@@ -231,9 +360,18 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
               onChange={(e) => setEditDraft({ ...editDraft, notes: e.target.value })}
               placeholder="Nota (opcional)"
             />
+            <RecurrenceInputs draft={editDraft} onChange={setEditDraft} />
             <div className="flex justify-end gap-2 sm:col-span-5">
-              <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>Cancelar</Button>
-              <Button size="sm" disabled={pending || !editDraft.title.trim()} onClick={() => saveEdit(a.id)}>Salvar</Button>
+              <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                disabled={pending || !editDraft.title.trim()}
+                onClick={() => saveEdit(a.id)}
+              >
+                Salvar
+              </Button>
             </div>
           </div>
         )}
@@ -245,13 +383,16 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
     if (rows.length === 0) return null;
     return (
       <div>
-        <p className={cn("mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide", muted ? "text-text-muted" : "text-text")}>
+        <p
+          className={cn(
+            "mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide",
+            muted ? "text-text-muted" : "text-text",
+          )}
+        >
           {title} ({rows.length})
         </p>
         <Card className="divide-y divide-border overflow-hidden p-0">
-          <ul className="divide-y divide-border">
-            {rows.map((a) => renderRow(a))}
-          </ul>
+          <ul className="divide-y divide-border">{rows.map((a) => renderRow(a))}</ul>
         </Card>
       </div>
     );
@@ -272,7 +413,9 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
           onClick={() => setSubTab("tarefas")}
           className={cn(
             "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-            subTab === "tarefas" ? "border-primary bg-primary/10 text-primary" : "border-border text-text-muted hover:bg-bg-elev-2",
+            subTab === "tarefas"
+              ? "bg-primary/10 border-primary text-primary"
+              : "border-border text-text-muted hover:bg-bg-elev-2",
           )}
         >
           Tarefas
@@ -282,7 +425,9 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
           onClick={() => setSubTab("referencia")}
           className={cn(
             "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-            subTab === "referencia" ? "border-primary bg-primary/10 text-primary" : "border-border text-text-muted hover:bg-bg-elev-2",
+            subTab === "referencia"
+              ? "bg-primary/10 border-primary text-primary"
+              : "border-border text-text-muted hover:bg-bg-elev-2",
           )}
         >
           Referência
@@ -323,10 +468,15 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
                   onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
                   placeholder="Nota (opcional)"
                 />
+                <RecurrenceInputs draft={draft} onChange={setDraft} />
               </div>
               <div className="mt-2 flex justify-end gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setShowAdd(false)}>Cancelar</Button>
-                <Button size="sm" disabled={pending || !draft.title.trim()} onClick={submitAdd}>Salvar</Button>
+                <Button variant="ghost" size="sm" onClick={() => setShowAdd(false)}>
+                  Cancelar
+                </Button>
+                <Button size="sm" disabled={pending || !draft.title.trim()} onClick={submitAdd}>
+                  Salvar
+                </Button>
               </div>
             </Card>
           )}
@@ -346,9 +496,15 @@ export function ObraActivitiesTab({ moduleId, initialActivities, initialChecklis
       ) : (
         <div className="space-y-3">
           <p className="flex items-center gap-1.5 px-1 text-xs text-text-muted">
-            <CalendarClock className="h-3.5 w-3.5" /> Lembrete do que existe. Clique na seta pra virar tarefa real, com data.
+            <CalendarClock className="h-3.5 w-3.5" /> Lembrete do que existe. Clique na seta pra
+            virar tarefa real, com data.
           </p>
-          <ObraChecklistTab moduleId={moduleId} initial={initialChecklist} canWrite={canWrite} onPromote={addActivity} />
+          <ObraChecklistTab
+            moduleId={moduleId}
+            initial={initialChecklist}
+            canWrite={canWrite}
+            onPromote={addActivity}
+          />
         </div>
       )}
     </div>

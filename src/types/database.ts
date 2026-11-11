@@ -424,6 +424,10 @@ export type Database = {
           id: string
           module_id: string
           notes: string | null
+          recurrence: string | null
+          recurrence_anchor: string | null
+          recurrence_source_id: string | null
+          recurrence_until: string | null
           status: string
           title: string
           updated_at: string
@@ -436,6 +440,10 @@ export type Database = {
           id?: string
           module_id: string
           notes?: string | null
+          recurrence?: string | null
+          recurrence_anchor?: string | null
+          recurrence_source_id?: string | null
+          recurrence_until?: string | null
           status?: string
           title: string
           updated_at?: string
@@ -448,6 +456,10 @@ export type Database = {
           id?: string
           module_id?: string
           notes?: string | null
+          recurrence?: string | null
+          recurrence_anchor?: string | null
+          recurrence_source_id?: string | null
+          recurrence_until?: string | null
           status?: string
           title?: string
           updated_at?: string

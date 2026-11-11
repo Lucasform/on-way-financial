@@ -37,7 +37,9 @@ export async function buildFinancialContext(opts: ContextOptions): Promise<strin
 
   const { data: items } = await admin
     .from("obra_items")
-    .select("name, quantity, unit_price, actual_unit_price, status, supplier, bought_at, suppliers:suppliers(name)")
+    .select(
+      "name, quantity, unit_price, actual_unit_price, status, supplier, bought_at, suppliers:suppliers(name)",
+    )
     .eq("module_id", mod.id);
 
   type ItemRow = {
@@ -51,7 +53,8 @@ export async function buildFinancialContext(opts: ContextOptions): Promise<strin
     suppliers: { name: string } | null;
   };
   const rows = (items ?? []) as unknown as ItemRow[];
-  const amountOf = (r: ItemRow) => Number(r.quantity) * Number(r.actual_unit_price ?? r.unit_price ?? 0);
+  const amountOf = (r: ItemRow) =>
+    Number(r.quantity) * Number(r.actual_unit_price ?? r.unit_price ?? 0);
 
   const done = rows.filter((r) => r.status === "done");
   const todo = rows.filter((r) => r.status === "todo");
@@ -82,7 +85,9 @@ export async function buildFinancialContext(opts: ContextOptions): Promise<strin
   }
 
   if (opts.includeTransactions !== false && done.length > 0) {
-    const recent = [...done].sort((a, b) => (b.bought_at ?? "").localeCompare(a.bought_at ?? "")).slice(0, 15);
+    const recent = [...done]
+      .sort((a, b) => (b.bought_at ?? "").localeCompare(a.bought_at ?? ""))
+      .slice(0, 15);
     lines.push("", "## Últimos 15 custos registrados");
     for (const r of recent) {
       const supplierLabel = r.suppliers?.name || r.supplier || "—";
@@ -93,7 +98,7 @@ export async function buildFinancialContext(opts: ContextOptions): Promise<strin
   const today = todayISO();
   const { data: acts } = await admin
     .from("obra_activities")
-    .select("title, due_date, assignee, status")
+    .select("title, due_date, assignee, status, recurrence")
     .eq("module_id", mod.id);
   const openActs = (acts ?? [])
     .filter((a) => a.status !== "feito")
@@ -101,9 +106,13 @@ export async function buildFinancialContext(opts: ContextOptions): Promise<strin
   const doneCount = (acts ?? []).length - openActs.length;
   lines.push("", `## Atividades abertas (${openActs.length}; já feitas: ${doneCount})`);
   if (openActs.length === 0) lines.push("- nenhuma");
-  const who = (a: { assignee: string | null }) => (a.assignee ? ` | responsável: ${a.assignee}` : "");
+  const who = (a: { assignee: string | null }) =>
+    a.assignee ? ` | responsável: ${a.assignee}` : "";
   const groups: [string, typeof openActs][] = [
-    ["Atrasadas (venceram antes de hoje)", openActs.filter((a) => a.due_date && a.due_date < today)],
+    [
+      "Atrasadas (venceram antes de hoje)",
+      openActs.filter((a) => a.due_date && a.due_date < today),
+    ],
     ["Para hoje", openActs.filter((a) => a.due_date === today)],
     ["Próximas (ainda não venceram)", openActs.filter((a) => a.due_date && a.due_date > today)],
     ["Sem data", openActs.filter((a) => !a.due_date)],
@@ -111,7 +120,10 @@ export async function buildFinancialContext(opts: ContextOptions): Promise<strin
   for (const [label, list] of groups) {
     if (list.length === 0) continue;
     lines.push(`${label}:`);
-    for (const a of list.slice(0, 15)) lines.push(`- ${a.title}${a.due_date ? ` | ${a.due_date}` : ""}${who(a)}`);
+    for (const a of list.slice(0, 15))
+      lines.push(
+        `- ${a.title}${a.due_date ? ` | ${a.due_date}` : ""}${who(a)}${a.recurrence ? ` | repete: ${a.recurrence}` : ""}`,
+      );
   }
 
   const [{ data: convs }, { data: supplierRows }] = await Promise.all([
@@ -129,7 +141,9 @@ export async function buildFinancialContext(opts: ContextOptions): Promise<strin
     for (const c of convs ?? []) {
       const who = (c.supplier_id && sName.get(c.supplier_id)) || c.contact_name || c.phone;
       const tag = c.supplier_id && sName.get(c.supplier_id) ? " (fornecedor)" : "";
-      lines.push(`- ${who}${tag}${c.last_message_at ? ` | última mensagem ${c.last_message_at.slice(0, 10)}` : ""}`);
+      lines.push(
+        `- ${who}${tag}${c.last_message_at ? ` | última mensagem ${c.last_message_at.slice(0, 10)}` : ""}`,
+      );
     }
   }
 
@@ -145,8 +159,15 @@ export const READ_CONVERSATION_TOOL = {
   input_schema: {
     type: "object" as const,
     properties: {
-      name: { type: "string", description: "Nome do fornecedor ou contato da conversa, como aparece na lista (ou parte dele)." },
-      limit: { type: "number", description: "Quantas mensagens recentes ler (padrão 80, máximo 200)." },
+      name: {
+        type: "string",
+        description:
+          "Nome do fornecedor ou contato da conversa, como aparece na lista (ou parte dele).",
+      },
+      limit: {
+        type: "number",
+        description: "Quantas mensagens recentes ler (padrão 80, máximo 200).",
+      },
     },
     required: ["name"],
   },
@@ -162,12 +183,18 @@ const msgTime = new Intl.DateTimeFormat("pt-BR", {
 });
 
 /** Mensagens de uma conversa do WhatsApp da obra, em texto, pra IA ler. */
-export async function readConversation(householdId: string, args: { name?: string; limit?: number }): Promise<string> {
+export async function readConversation(
+  householdId: string,
+  args: { name?: string; limit?: number },
+): Promise<string> {
   const admin = createSupabaseAdmin();
   const wanted = norm(args.name ?? "");
   if (!wanted) return "Diga de qual conversa (nome do fornecedor ou contato).";
   const [{ data: convs }, { data: supplierRows }] = await Promise.all([
-    admin.from("wa_conversations").select("id, contact_name, phone, supplier_id").eq("household_id", householdId),
+    admin
+      .from("wa_conversations")
+      .select("id, contact_name, phone, supplier_id")
+      .eq("household_id", householdId),
     admin.from("suppliers").select("id, name").eq("household_id", householdId),
   ]);
   const sName = new Map((supplierRows ?? []).map((x) => [x.id, x.name]));
@@ -189,7 +216,8 @@ export async function readConversation(householdId: string, args: { name?: strin
   if (matches.length === 0) {
     return `Não achei conversa com "${args.name}". Conversas no app: ${titled.map((c) => c.title).join(", ") || "nenhuma"}.`;
   }
-  if (matches.length > 1) return `Mais de uma conversa bate com "${args.name}": ${matches.map((c) => c.title).join(", ")}. Pergunte qual.`;
+  if (matches.length > 1)
+    return `Mais de uma conversa bate com "${args.name}": ${matches.map((c) => c.title).join(", ")}. Pergunte qual.`;
 
   const conv = matches[0]!;
   const limit = Math.min(Math.max(Number(args.limit) || 80, 10), 200);
@@ -203,7 +231,10 @@ export async function readConversation(householdId: string, args: { name?: strin
   if (rows.length === 0) return `A conversa com ${conv.title} ainda não tem mensagens no app.`;
   return [
     `Conversa com ${conv.title}${conv.supplier_id ? " (fornecedor cadastrado)" : ""}, ${rows.length} mensagens mais recentes:`,
-    ...rows.map((m) => `[${msgTime.format(new Date(m.created_at))}] ${m.direction === "out" ? "Você" : conv.title}: ${m.content}`),
+    ...rows.map(
+      (m) =>
+        `[${msgTime.format(new Date(m.created_at))}] ${m.direction === "out" ? "Você" : conv.title}: ${m.content}`,
+    ),
   ].join("\n");
 }
 
@@ -264,6 +295,8 @@ REGRAS:
     "anota pro Daniel concretar a laje sexta" -> add_activity(title "Concretar a laje", assignee "Daniel", due_date da próxima sexta).
     "preciso comprar tela de proteção" -> add_activity(title "Comprar tela de proteção").
     "o Daniel terminou a caixa de inspeção" -> complete_activity(title "caixa de inspeção").
+    "toda segunda pedir água pro pessoal" -> add_activity(title "Pedir água", recurrence "semanal", due_date da próxima segunda).
+  - Atividade com "repete" no contexto: ao concluir, a próxima é criada sozinha. Não crie outra igual.
 - CONVERSAS DO WHATSAPP: quando o pedido depender do que foi falado com um fornecedor ou contato ("o que o Daniel
   disse", "resume a conversa com a Hidráulica", "lança o que ele cobrou", "cria as tarefas que combinamos"), chame
   read_whatsapp_conversation com o nome antes de responder. Depois use o que leu: responda, ou chame register_expense /
@@ -306,7 +339,9 @@ export async function searchCosts(householdId: string, args: SearchCostsArgs): P
 
   let q = admin
     .from("obra_items")
-    .select("name, quantity, unit_price, actual_unit_price, supplier, bought_at, suppliers:suppliers(name)")
+    .select(
+      "name, quantity, unit_price, actual_unit_price, supplier, bought_at, suppliers:suppliers(name)",
+    )
     .eq("module_id", mod.id)
     .eq("status", args.status ?? "done")
     .order("bought_at", { ascending: false })
@@ -332,13 +367,16 @@ export async function searchCosts(householdId: string, args: SearchCostsArgs): P
   if (args.query?.trim()) {
     const term = args.query.trim().toLowerCase();
     rows = rows.filter(
-      (r) => r.name.toLowerCase().includes(term) || (r.suppliers?.name ?? r.supplier ?? "").toLowerCase().includes(term),
+      (r) =>
+        r.name.toLowerCase().includes(term) ||
+        (r.suppliers?.name ?? r.supplier ?? "").toLowerCase().includes(term),
     );
   }
 
   if (rows.length === 0) return "Nenhum custo encontrado com esses critérios.";
 
-  const amountOf = (r: Row) => Number(r.quantity) * Number(r.actual_unit_price ?? r.unit_price ?? 0);
+  const amountOf = (r: Row) =>
+    Number(r.quantity) * Number(r.actual_unit_price ?? r.unit_price ?? 0);
   const total = rows.reduce((s, r) => s + amountOf(r), 0);
   const lines = [`${rows.length} custo(s), total ${formatBRL(total)}:`];
   for (const r of rows.slice(0, 30)) {
@@ -358,10 +396,24 @@ export const SEARCH_COSTS_TOOL = {
   input_schema: {
     type: "object" as const,
     properties: {
-      query: { type: "string", description: "Termo livre pra buscar no nome do item ou fornecedor (ex.: 'cimento', 'Leroy Merlin')." },
-      date_from: { type: "string", description: "Data inicial ISO (YYYY-MM-DD), se o usuário mencionar período." },
-      date_to: { type: "string", description: "Data final ISO (YYYY-MM-DD), se o usuário mencionar período." },
-      status: { type: "string", enum: ["done", "todo"], description: "Padrão: done (já executado)." },
+      query: {
+        type: "string",
+        description:
+          "Termo livre pra buscar no nome do item ou fornecedor (ex.: 'cimento', 'Leroy Merlin').",
+      },
+      date_from: {
+        type: "string",
+        description: "Data inicial ISO (YYYY-MM-DD), se o usuário mencionar período.",
+      },
+      date_to: {
+        type: "string",
+        description: "Data final ISO (YYYY-MM-DD), se o usuário mencionar período.",
+      },
+      status: {
+        type: "string",
+        enum: ["done", "todo"],
+        description: "Padrão: done (já executado).",
+      },
     },
   },
 };

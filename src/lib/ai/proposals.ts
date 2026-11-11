@@ -4,10 +4,16 @@ import crypto from "node:crypto";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import {
+  ACTIVITY_RECURRENCES,
+  type ActivityRecurrence,
+  asRecurrence,
+  RECURRENCE_LABELS,
+} from "@/lib/activity-recurrence";
 import { todayISO } from "@/lib/dates";
 import { getServerEnv } from "@/lib/env";
 import { formatBRL } from "@/lib/money";
-import { createExpense, type ExpenseStatus,normalizeName } from "@/lib/obra-expense";
+import { createExpense, type ExpenseStatus, normalizeName } from "@/lib/obra-expense";
 import type { Database } from "@/types/database";
 
 type Db = SupabaseClient<Database>;
@@ -39,7 +45,15 @@ export type ProposedAction =
       unit: string | null;
       estimated_value: number | null;
     }
-  | { type: "activity"; title: string; due_date: string | null; assignee: string | null; notes: string | null }
+  | {
+      type: "activity";
+      title: string;
+      due_date: string | null;
+      assignee: string | null;
+      notes: string | null;
+      recurrence?: ActivityRecurrence | null;
+      recurrence_until?: string | null;
+    }
   | { type: "activity_done"; id: string; title: string };
 
 interface ProposalPayload {
@@ -67,7 +81,11 @@ export const REGISTER_EXPENSE_TOOL = {
       item_name: { type: "string", description: "O que foi (ex: Cimento, Pedreiro, Frete)." },
       amount: { type: "number", description: "Valor total em reais." },
       supplier_name: { type: "string", description: "Nome do fornecedor, como o usuário falou." },
-      status: { type: "string", enum: ["cotacao", "executada"], description: "cotacao ou executada." },
+      status: {
+        type: "string",
+        enum: ["cotacao", "executada"],
+        description: "cotacao ou executada.",
+      },
       date: { type: "string", description: "Data YYYY-MM-DD, se o usuário disser. Padrão: hoje." },
     },
     required: ["item_name", "amount", "supplier_name", "status"],
@@ -102,7 +120,11 @@ export const ADD_CHECKLIST_ITEM_TOOL = {
     type: "object" as const,
     properties: {
       phase_name: { type: "string", description: "Nome da fase." },
-      category: { type: "string", enum: [...CHECKLIST_CATEGORIES], description: "Padrão: material." },
+      category: {
+        type: "string",
+        enum: [...CHECKLIST_CATEGORIES],
+        description: "Padrão: material.",
+      },
       name: { type: "string", description: "Nome do item/processo/serviço." },
       unit: { type: "string", description: "Unidade, se fizer sentido." },
       estimated_value: { type: "number", description: "Valor estimado, se souber." },
@@ -120,10 +142,30 @@ export const ADD_ACTIVITY_TOOL = {
   input_schema: {
     type: "object" as const,
     properties: {
-      title: { type: "string", description: "O que fazer, curto (ex: Concretar a laje, Comprar cimento)." },
-      due_date: { type: "string", description: "Data YYYY-MM-DD, se o usuário der (resolva 'amanhã', 'sexta' a partir de Hoje)." },
-      assignee: { type: "string", description: "Responsável (nome da pessoa), se o usuário disser." },
+      title: {
+        type: "string",
+        description: "O que fazer, curto (ex: Concretar a laje, Comprar cimento).",
+      },
+      due_date: {
+        type: "string",
+        description:
+          "Data YYYY-MM-DD, se o usuário der (resolva 'amanhã', 'sexta' a partir de Hoje).",
+      },
+      assignee: {
+        type: "string",
+        description: "Responsável (nome da pessoa), se o usuário disser.",
+      },
       notes: { type: "string", description: "Detalhe extra, se houver." },
+      recurrence: {
+        type: "string",
+        enum: [...ACTIVITY_RECURRENCES],
+        description:
+          "Só se o usuário pedir pra repetir ('toda semana', 'todo mês', 'todo dia'). A próxima nasce quando esta for marcada como feita.",
+      },
+      recurrence_until: {
+        type: "string",
+        description: "Até quando repetir, YYYY-MM-DD, se o usuário disser.",
+      },
     },
     required: ["title"],
   },
@@ -137,7 +179,10 @@ export const COMPLETE_ACTIVITY_TOOL = {
   input_schema: {
     type: "object" as const,
     properties: {
-      title: { type: "string", description: "Título (ou parte) da atividade aberta, como aparece no contexto." },
+      title: {
+        type: "string",
+        description: "Título (ou parte) da atividade aberta, como aparece no contexto.",
+      },
     },
     required: ["title"],
   },
@@ -187,11 +232,19 @@ export async function planAction(
     const amount = typeof input.amount === "number" ? Math.round(input.amount * 100) / 100 : NaN;
     const status = input.status === "cotacao" || input.status === "executada" ? input.status : null;
     if (!name) return { error: "Falta o nome do item. Pergunte ao usuário." };
-    if (!(amount > 0 && amount <= 10_000_000)) return { error: "Valor inválido. Pergunte o valor ao usuário." };
-    if (!supplierName) return { error: "Falta o fornecedor. Pergunte ao usuário de qual fornecedor foi." };
-    if (!status) return { error: "Não está claro se já foi pago (executada) ou é só cotação. Pergunte ao usuário." };
+    if (!(amount > 0 && amount <= 10_000_000))
+      return { error: "Valor inválido. Pergunte o valor ao usuário." };
+    if (!supplierName)
+      return { error: "Falta o fornecedor. Pergunte ao usuário de qual fornecedor foi." };
+    if (!status)
+      return {
+        error: "Não está claro se já foi pago (executada) ou é só cotação. Pergunte ao usuário.",
+      };
 
-    const { data: suppliers } = await db.from("suppliers").select("id, name").eq("household_id", householdId);
+    const { data: suppliers } = await db
+      .from("suppliers")
+      .select("id, name")
+      .eq("household_id", householdId);
     const wanted = normalizeName(supplierName);
     const exact = (suppliers ?? []).find((s) => normalizeName(s.name) === wanted);
     let supplier: { id: string; name: string } | { newName: string };
@@ -203,17 +256,31 @@ export async function planAction(
         return n.includes(wanted) || wanted.includes(n);
       });
       if (partial.length > 1) {
-        return { error: `"${supplierName}" bate com mais de um fornecedor (${partial.map((s) => s.name).join(", ")}). Pergunte qual é.` };
+        return {
+          error: `"${supplierName}" bate com mais de um fornecedor (${partial.map((s) => s.name).join(", ")}). Pergunte qual é.`,
+        };
       }
       supplier = partial[0] ?? { newName: supplierName };
     }
-    return { action: { type: "expense", name, amount, status, date: validDate(input.date) ?? todayISO(), supplier } };
+    return {
+      action: {
+        type: "expense",
+        name,
+        amount,
+        status,
+        date: validDate(input.date) ?? todayISO(),
+        supplier,
+      },
+    };
   }
 
   if (toolName === ADD_SUPPLIER_TOOL.name) {
     const name = str(input.name, 120);
     if (!name) return { error: "Falta o nome do fornecedor." };
-    const category = typeof input.category === "string" && SUPPLIER_CATEGORIES.includes(input.category) ? input.category : "material";
+    const category =
+      typeof input.category === "string" && SUPPLIER_CATEGORIES.includes(input.category)
+        ? input.category
+        : "material";
     return {
       action: {
         type: "supplier",
@@ -233,8 +300,20 @@ export async function planAction(
     const name = str(input.name, 200);
     if (!phase || !name) return { error: "Falta a fase ou o nome do item." };
     const category = CHECKLIST_CATEGORIES.find((c) => c === input.category) ?? "material";
-    const est = typeof input.estimated_value === "number" && input.estimated_value > 0 ? input.estimated_value : null;
-    return { action: { type: "checklist", phase_name: phase, category, name, unit: str(input.unit, 20), estimated_value: est } };
+    const est =
+      typeof input.estimated_value === "number" && input.estimated_value > 0
+        ? input.estimated_value
+        : null;
+    return {
+      action: {
+        type: "checklist",
+        phase_name: phase,
+        category,
+        name,
+        unit: str(input.unit, 20),
+        estimated_value: est,
+      },
+    };
   }
 
   if (toolName === ADD_ACTIVITY_TOOL.name) {
@@ -247,6 +326,8 @@ export async function planAction(
         due_date: validDate(input.due_date),
         assignee: str(input.assignee, 80),
         notes: str(input.notes, 500),
+        recurrence: asRecurrence(input.recurrence),
+        recurrence_until: asRecurrence(input.recurrence) ? validDate(input.recurrence_until) : null,
       },
     };
   }
@@ -256,12 +337,27 @@ export async function planAction(
     if (!wanted) return { error: "Falta qual atividade. Pergunte ao usuário." };
     const moduleId = await obraModuleId(db, householdId);
     if (!moduleId) return { error: "Não há obra cadastrada." };
-    const { data: open } = await db.from("obra_activities").select("id, title").eq("module_id", moduleId).neq("status", "feito");
+    const { data: open } = await db
+      .from("obra_activities")
+      .select("id, title")
+      .eq("module_id", moduleId)
+      .neq("status", "feito");
     const w = normalizeName(wanted);
     const exact = (open ?? []).filter((a) => normalizeName(a.title) === w);
-    const partial = exact.length > 0 ? exact : (open ?? []).filter((a) => normalizeName(a.title).includes(w) || w.includes(normalizeName(a.title)));
-    if (partial.length === 0) return { error: `Não achei atividade aberta parecida com "${wanted}". Diga isso ao usuário e mostre as abertas do contexto.` };
-    if (partial.length > 1) return { error: `"${wanted}" bate com mais de uma atividade aberta (${partial.map((a) => a.title).join(", ")}). Pergunte qual.` };
+    const partial =
+      exact.length > 0
+        ? exact
+        : (open ?? []).filter(
+            (a) => normalizeName(a.title).includes(w) || w.includes(normalizeName(a.title)),
+          );
+    if (partial.length === 0)
+      return {
+        error: `Não achei atividade aberta parecida com "${wanted}". Diga isso ao usuário e mostre as abertas do contexto.`,
+      };
+    if (partial.length > 1)
+      return {
+        error: `"${wanted}" bate com mais de uma atividade aberta (${partial.map((a) => a.title).join(", ")}). Pergunte qual.`,
+      };
     return { action: { type: "activity_done", id: partial[0]!.id, title: partial[0]!.title } };
   }
 
@@ -275,20 +371,33 @@ function brDate(iso: string): string {
 
 export function describeAction(a: ProposedAction): string {
   if (a.type === "expense") {
-    const supplier = "id" in a.supplier ? a.supplier.name : `${a.supplier.newName} (fornecedor NOVO, vai ser cadastrado)`;
+    const supplier =
+      "id" in a.supplier
+        ? a.supplier.name
+        : `${a.supplier.newName} (fornecedor NOVO, vai ser cadastrado)`;
     if (a.status === "executada") {
       return `Despesa EXECUTADA: ${a.name}, ${formatBRL(a.amount)}, em ${supplier}, data ${brDate(a.date)}. Cria a cotação já aceita e o custo feito.`;
     }
     return `Cotação EM ABERTO: ${a.name}, ${formatBRL(a.amount)}, em ${supplier}. Fica em Cotações, ainda não vira custo.`;
   }
   if (a.type === "supplier") {
-    const extras = [a.phone && `tel ${a.phone}`, a.phone2 && `tel ${a.phone2}`, a.cnpj && `CNPJ ${a.cnpj}`, a.address]
+    const extras = [
+      a.phone && `tel ${a.phone}`,
+      a.phone2 && `tel ${a.phone2}`,
+      a.cnpj && `CNPJ ${a.cnpj}`,
+      a.address,
+    ]
       .filter(Boolean)
       .join(", ");
     return `Novo fornecedor: ${a.name} (${a.category})${extras ? `, ${extras}` : ""}.`;
   }
   if (a.type === "activity") {
-    const extras = [a.assignee && `responsável ${a.assignee}`, a.due_date ? `para ${brDate(a.due_date)}` : "sem data"]
+    const r = a.recurrence ? RECURRENCE_LABELS[a.recurrence].toLowerCase() : null;
+    const extras = [
+      a.assignee && `responsável ${a.assignee}`,
+      a.due_date ? `para ${brDate(a.due_date)}` : r ? "começa hoje" : "sem data",
+      r && `repete ${r}${a.recurrence_until ? ` até ${brDate(a.recurrence_until)}` : ""}`,
+    ]
       .filter(Boolean)
       .join(", ");
     return `Nova atividade: ${a.title} (${extras}).`;
@@ -298,17 +407,33 @@ export function describeAction(a: ProposedAction): string {
 }
 
 function signingKey(): Buffer {
-  return crypto.createHmac("sha256", getServerEnv().SUPABASE_SERVICE_ROLE_KEY).update("ai-proposal-v1").digest();
+  return crypto
+    .createHmac("sha256", getServerEnv().SUPABASE_SERVICE_ROLE_KEY)
+    .update("ai-proposal-v1")
+    .digest();
 }
 
-export function signProposal(householdId: string, userId: string, actions: ProposedAction[]): string {
-  const payload: ProposalPayload = { hh: householdId, uid: userId, exp: Date.now() + PROPOSAL_TTL_MS, actions };
+export function signProposal(
+  householdId: string,
+  userId: string,
+  actions: ProposedAction[],
+): string {
+  const payload: ProposalPayload = {
+    hh: householdId,
+    uid: userId,
+    exp: Date.now() + PROPOSAL_TTL_MS,
+    actions,
+  };
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const sig = crypto.createHmac("sha256", signingKey()).update(body).digest("base64url");
   return `${body}.${sig}`;
 }
 
-export function verifyProposal(token: string, householdId: string, userId: string): ProposedAction[] | null {
+export function verifyProposal(
+  token: string,
+  householdId: string,
+  userId: string,
+): ProposedAction[] | null {
   const [body, sig] = token.split(".");
   if (!body || !sig) return null;
   const expected = crypto.createHmac("sha256", signingKey()).update(body).digest();
@@ -354,7 +479,10 @@ export async function executeActions(
     }
 
     if (a.type === "supplier") {
-      const { data: existing } = await db.from("suppliers").select("id, name").eq("household_id", householdId);
+      const { data: existing } = await db
+        .from("suppliers")
+        .select("id, name")
+        .eq("household_id", householdId);
       const dup = (existing ?? []).find((s) => normalizeName(s.name) === normalizeName(a.name));
       if (dup) {
         done.push(`fornecedor ${dup.name} (já existia)`);
@@ -379,10 +507,13 @@ export async function executeActions(
       const { error } = await db.from("obra_activities").insert({
         module_id: moduleId,
         title: a.title,
-        due_date: a.due_date,
+        due_date: a.due_date ?? (a.recurrence ? todayISO() : null),
         assignee: a.assignee,
         notes: a.notes,
         status: "pendente",
+        recurrence: a.recurrence ?? null,
+        recurrence_until: a.recurrence ? (a.recurrence_until ?? null) : null,
+        recurrence_anchor: a.recurrence ? (a.due_date ?? todayISO()) : null,
       });
       if (error) failed.push(`atividade ${a.title}`);
       else done.push(`atividade ${a.title}`);
