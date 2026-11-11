@@ -89,7 +89,9 @@ const norm = (v: string) =>
     .toLowerCase()
     .trim();
 
-async function inbox<T = Record<string, unknown>>(body: Record<string, unknown>): Promise<T | null> {
+async function inbox<T = Record<string, unknown>>(
+  body: Record<string, unknown>,
+): Promise<T | null> {
   const res = await fetch("/api/whatsapp/inbox", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -131,7 +133,12 @@ function ConnectionPanel({ status, canWrite }: { status: Status; canWrite: boole
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action }),
     });
-    const data = (await res.json().catch(() => ({}))) as { status?: Status; qr?: string | null; pairingCode?: string | null; error?: string };
+    const data = (await res.json().catch(() => ({}))) as {
+      status?: Status;
+      qr?: string | null;
+      pairingCode?: string | null;
+      error?: string;
+    };
     if (!res.ok) {
       toast.error(data.error ?? "Falha ao falar com o WhatsApp.");
       return null;
@@ -180,7 +187,7 @@ function ConnectionPanel({ status, canWrite }: { status: Status; canWrite: boole
 
   if (status === "connected") {
     return (
-      <div className="flex items-center justify-between gap-2 rounded-lg border border-success/40 bg-success/5 px-3 py-2 text-xs">
+      <div className="border-success/40 bg-success/5 flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs">
         {ConfirmDialog}
         <span className="flex items-center gap-1.5 text-success">
           <span className="h-2 w-2 rounded-full bg-success" /> WhatsApp conectado
@@ -190,7 +197,13 @@ function ConnectionPanel({ status, canWrite }: { status: Status; canWrite: boole
             type="button"
             className="text-text-muted hover:text-danger"
             onClick={async () => {
-              if (!(await confirm("Desconectar o WhatsApp do app? As conversas já trazidas continuam aqui.", { danger: true }))) return;
+              if (
+                !(await confirm(
+                  "Desconectar o WhatsApp do app? As conversas já trazidas continuam aqui.",
+                  { danger: true },
+                ))
+              )
+                return;
               const data = await call("logout");
               if (data) router.refresh();
             }}
@@ -209,8 +222,8 @@ function ConnectionPanel({ status, canWrite }: { status: Status; canWrite: boole
         <div className="min-w-0 flex-1 space-y-1">
           <p className="text-sm font-semibold">Conecte o seu WhatsApp</p>
           <p className="text-xs text-text-muted">
-            No celular: WhatsApp, Configurações, Aparelhos conectados, Conectar um aparelho, e aponte pro QR Code. Só entram no app as
-            conversas que você escolher.
+            No celular: WhatsApp, Configurações, Aparelhos conectados, Conectar um aparelho, e
+            aponte pro QR Code. Só entram no app as conversas que você escolher.
           </p>
         </div>
       </div>
@@ -219,14 +232,19 @@ function ConnectionPanel({ status, canWrite }: { status: Status; canWrite: boole
       ) : qr ? (
         <div className="flex flex-col items-center gap-2">
           <img src={qr} alt="QR Code do WhatsApp" className="h-56 w-56 rounded-lg bg-white p-2" />
-          {pairing && <p className="text-xs text-text-muted">Ou use o código: <strong className="text-text">{pairing}</strong></p>}
+          {pairing && (
+            <p className="text-xs text-text-muted">
+              Ou use o código: <strong className="text-text">{pairing}</strong>
+            </p>
+          )}
           <p className="flex items-center gap-1.5 text-xs text-text-muted">
             <Loader2 className="h-3 w-3 animate-spin" /> Esperando você ler o QR Code...
           </p>
         </div>
       ) : (
         <Button onClick={connect} disabled={busy} className="w-full">
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />} Gerar QR Code
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />}{" "}
+          Gerar QR Code
         </Button>
       )}
     </Card>
@@ -247,7 +265,10 @@ function PhoneChatsPicker({ onClose }: { onClose: () => void }) {
   const visible = useMemo(
     () =>
       (chats ?? []).filter(
-        (c) => !q || norm(`${c.name ?? ""} ${c.supplierName ?? ""} ${c.lastText ?? ""}`).includes(q) || c.phoneKey.includes(q.replace(/\D/g, "") || "§"),
+        (c) =>
+          !q ||
+          norm(`${c.name ?? ""} ${c.supplierName ?? ""} ${c.lastText ?? ""}`).includes(q) ||
+          c.phoneKey.includes(q.replace(/\D/g, "") || "§"),
       ),
     [chats, q],
   );
@@ -274,7 +295,12 @@ function PhoneChatsPicker({ onClose }: { onClose: () => void }) {
       <div className="fixed left-1/2 top-1/2 z-50 flex max-h-[85dvh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-bg-elev shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <p className="text-sm font-semibold">Trazer conversa do celular</p>
-          <button type="button" onClick={onClose} aria-label="Fechar" className="text-text-muted hover:text-text">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="text-text-muted hover:text-text"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -294,7 +320,11 @@ function PhoneChatsPicker({ onClose }: { onClose: () => void }) {
               <Loader2 className="h-4 w-4 animate-spin" /> Buscando conversas do celular...
             </li>
           )}
-          {chats !== null && visible.length === 0 && <li className="p-6 text-center text-sm text-text-muted">Nenhuma conversa encontrada.</li>}
+          {chats !== null && visible.length === 0 && (
+            <li className="p-6 text-center text-sm text-text-muted">
+              Nenhuma conversa encontrada.
+            </li>
+          )}
           {visible.map((c) => (
             <li key={c.jid}>
               <button
@@ -307,9 +337,13 @@ function PhoneChatsPicker({ onClose }: { onClose: () => void }) {
                   <div className="flex items-center justify-between gap-2">
                     <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
                       {c.supplierName && <Store className="h-3 w-3 shrink-0 text-primary" />}
-                      <span className="truncate">{c.supplierName ?? c.name ?? c.phoneLabel ?? "Contato sem nome"}</span>
+                      <span className="truncate">
+                        {c.supplierName ?? c.name ?? c.phoneLabel ?? "Contato sem nome"}
+                      </span>
                     </p>
-                    <span className="shrink-0 text-[10px] text-text-muted">{fmtWhen(c.updatedAt)}</span>
+                    <span className="shrink-0 text-[10px] text-text-muted">
+                      {fmtWhen(c.updatedAt)}
+                    </span>
                   </div>
                   {(c.supplierName || c.name) && c.phoneLabel && (
                     <p className="truncate text-[11px] text-text-muted">
@@ -322,19 +356,23 @@ function PhoneChatsPicker({ onClose }: { onClose: () => void }) {
                     {c.lastText}
                   </p>
                 </div>
-                {busy === c.jid ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4 shrink-0 text-primary" />}
+                {busy === c.jid ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4 shrink-0 text-primary" />
+                )}
               </button>
             </li>
           ))}
         </ul>
         <p className="border-t border-border px-4 py-2 text-[11px] text-text-muted">
-          Ao trazer, as últimas mensagens vêm junto. As outras conversas continuam só no seu celular.
+          Ao trazer, as últimas mensagens vêm junto. As outras conversas continuam só no seu
+          celular.
         </p>
       </div>
     </>
   );
 }
-
 
 interface Attachable {
   key: string;
@@ -363,10 +401,17 @@ function AttachmentPicker({
   moduleId: string;
   supplierId: string | null;
   onClose: () => void;
-  onSend: (file: { url: string; name: string; mimetype: string | null; caption: string }) => Promise<boolean>;
+  onSend: (file: {
+    url: string;
+    name: string;
+    mimetype: string | null;
+    caption: string;
+  }) => Promise<boolean>;
 }) {
   const [tab, setTab] = useState<AttachTab>(supplierId ? "fornecedores" : "documentos");
-  const [items, setItems] = useState<Record<Exclude<AttachTab, "aparelho">, Attachable[]> | null>(null);
+  const [items, setItems] = useState<Record<Exclude<AttachTab, "aparelho">, Attachable[]> | null>(
+    null,
+  );
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState<Attachable[]>([]);
   const [progress, setProgress] = useState<string | null>(null);
@@ -377,11 +422,20 @@ function AttachmentPicker({
     const supabase = createSupabaseBrowser();
     (async () => {
       const [docs, folders, budgets, suppliers, gallery] = await Promise.all([
-        supabase.from("obra_documents").select("id, name, file_url, file_type, folder_id").eq("module_id", moduleId),
+        supabase
+          .from("obra_documents")
+          .select("id, name, file_url, file_type, folder_id")
+          .eq("module_id", moduleId),
         supabase.from("obra_folders").select("id, name").eq("module_id", moduleId),
-        supabase.from("supplier_budget_files").select("id, name, file_url, file_type, supplier_id").eq("module_id", moduleId),
+        supabase
+          .from("supplier_budget_files")
+          .select("id, name, file_url, file_type, supplier_id")
+          .eq("module_id", moduleId),
         supabase.from("suppliers").select("id, name").eq("household_id", householdId),
-        supabase.from("obra_gallery").select("id, image_url, caption, media_type, folder_id, taken_at").eq("module_id", moduleId),
+        supabase
+          .from("obra_gallery")
+          .select("id, image_url, caption, media_type, folder_id, taken_at")
+          .eq("module_id", moduleId),
       ]);
       const folderName = new Map((folders.data ?? []).map((f) => [f.id, f.name]));
       const supplierName = new Map((suppliers.data ?? []).map((x) => [x.id, x.name]));
@@ -404,7 +458,11 @@ function AttachmentPicker({
             group: supplierName.get(f.supplier_id) ?? "Fornecedor",
             supplierId: f.supplier_id,
           }))
-          .sort((a, b) => Number(b.supplierId === supplierId) - Number(a.supplierId === supplierId) || a.group.localeCompare(b.group)),
+          .sort(
+            (a, b) =>
+              Number(b.supplierId === supplierId) - Number(a.supplierId === supplierId) ||
+              a.group.localeCompare(b.group),
+          ),
         galeria: (gallery.data ?? [])
           .map((g) => ({
             key: g.id,
@@ -419,7 +477,9 @@ function AttachmentPicker({
   }, [householdId, moduleId, supplierId]);
 
   function toggle(i: Attachable) {
-    setChosen((cur) => (cur.some((x) => x.key === i.key) ? cur.filter((x) => x.key !== i.key) : [...cur, i]));
+    setChosen((cur) =>
+      cur.some((x) => x.key === i.key) ? cur.filter((x) => x.key !== i.key) : [...cur, i],
+    );
   }
 
   /** Envia um por vez, na ordem escolhida; a legenda vai no primeiro. Para no primeiro erro. */
@@ -440,7 +500,10 @@ function AttachmentPicker({
     const sent = await sendAll(chosen);
     setSending(false);
     setProgress(null);
-    if (sent > 0) toast.success(sent === 1 ? "Arquivo enviado pelo WhatsApp." : `${sent} arquivos enviados pelo WhatsApp.`);
+    if (sent > 0)
+      toast.success(
+        sent === 1 ? "Arquivo enviado pelo WhatsApp." : `${sent} arquivos enviados pelo WhatsApp.`,
+      );
     if (sent === chosen.length) onClose();
     else setChosen((cur) => cur.slice(sent));
   }
@@ -462,12 +525,18 @@ function AttachmentPicker({
     const sent = await sendAll(uploaded);
     setSending(false);
     setProgress(null);
-    if (sent > 0) toast.success(sent === 1 ? "Arquivo enviado pelo WhatsApp." : `${sent} arquivos enviados pelo WhatsApp.`);
+    if (sent > 0)
+      toast.success(
+        sent === 1 ? "Arquivo enviado pelo WhatsApp." : `${sent} arquivos enviados pelo WhatsApp.`,
+      );
     if (sent === files.length) onClose();
   }
 
   const q = norm(query);
-  const list = tab === "aparelho" || !items ? [] : items[tab].filter((i) => !q || norm(`${i.name} ${i.group}`).includes(q));
+  const list =
+    tab === "aparelho" || !items
+      ? []
+      : items[tab].filter((i) => !q || norm(`${i.name} ${i.group}`).includes(q));
   const tabs: [AttachTab, string][] = [
     ["documentos", "Documentos"],
     ["fornecedores", "Fornecedores"],
@@ -481,7 +550,12 @@ function AttachmentPicker({
       <div className="fixed left-1/2 top-1/2 z-50 flex max-h-[85dvh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-bg-elev shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <p className="text-sm font-semibold">Enviar arquivo pelo WhatsApp</p>
-          <button type="button" onClick={onClose} aria-label="Fechar" className="text-text-muted hover:text-text">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="text-text-muted hover:text-text"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -509,8 +583,14 @@ function AttachmentPicker({
                 sending && "pointer-events-none opacity-60",
               )}
             >
-              {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
-              {sending ? (progress ?? "Enviando...") : "Escolher arquivos do computador ou celular (pode marcar vários)"}
+              {sending ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Upload className="h-5 w-5" />
+              )}
+              {sending
+                ? (progress ?? "Enviando...")
+                : "Escolher arquivos do computador ou celular (pode marcar vários)"}
               <input
                 type="file"
                 multiple
@@ -523,7 +603,11 @@ function AttachmentPicker({
                 }}
               />
             </label>
-            <Input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Legenda (opcional)" />
+            <Input
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              placeholder="Legenda (opcional)"
+            />
           </div>
         ) : (
           <>
@@ -542,7 +626,9 @@ function AttachmentPicker({
                   <Loader2 className="h-4 w-4 animate-spin" /> Carregando arquivos...
                 </li>
               )}
-              {items !== null && list.length === 0 && <li className="p-6 text-center text-sm text-text-muted">Nenhum arquivo aqui.</li>}
+              {items !== null && list.length === 0 && (
+                <li className="p-6 text-center text-sm text-text-muted">Nenhum arquivo aqui.</li>
+              )}
               {list.map((i) => (
                 <li key={i.key}>
                   <button
@@ -569,7 +655,9 @@ function AttachmentPicker({
                       <span className="block truncate text-sm">{i.name}</span>
                       <span className="block truncate text-[11px] text-text-muted">
                         {i.group}
-                        {i.supplierId && i.supplierId === supplierId && " · fornecedor desta conversa"}
+                        {i.supplierId &&
+                          i.supplierId === supplierId &&
+                          " · fornecedor desta conversa"}
                       </span>
                     </span>
                   </button>
@@ -586,11 +674,16 @@ function AttachmentPicker({
                       </>
                     ) : (
                       <>
-                        <strong className="text-text">{chosen.length} arquivos</strong> marcados (de todas as abas)
+                        <strong className="text-text">{chosen.length} arquivos</strong> marcados (de
+                        todas as abas)
                       </>
                     )}
                   </span>
-                  <button type="button" onClick={() => setChosen([])} className="shrink-0 hover:text-text">
+                  <button
+                    type="button"
+                    onClick={() => setChosen([])}
+                    className="shrink-0 hover:text-text"
+                  >
                     limpar
                   </button>
                 </p>
@@ -598,11 +691,21 @@ function AttachmentPicker({
                   <Input
                     value={caption}
                     onChange={(e) => setCaption(e.target.value)}
-                    placeholder={chosen.length > 1 ? "Legenda (vai no primeiro)" : "Legenda (opcional)"}
+                    placeholder={
+                      chosen.length > 1 ? "Legenda (vai no primeiro)" : "Legenda (opcional)"
+                    }
                   />
                   <Button disabled={sending} onClick={sendChosen} className="shrink-0">
-                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    {sending ? (progress ?? "Enviando") : chosen.length > 1 ? `Enviar ${chosen.length}` : "Enviar"}
+                    {sending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    {sending
+                      ? (progress ?? "Enviando")
+                      : chosen.length > 1
+                        ? `Enviar ${chosen.length}`
+                        : "Enviar"}
                   </Button>
                 </div>
               </div>
@@ -663,7 +766,12 @@ function NewConversation({ suppliers }: { suppliers: SupplierOption[] }) {
           className="h-9"
           aria-label="Número com DDD"
         />
-        <Button size="sm" className="h-9" disabled={busy || (!phone.trim() && !supplierId)} onClick={start}>
+        <Button
+          size="sm"
+          className="h-9"
+          disabled={busy || (!phone.trim() && !supplierId)}
+          onClick={start}
+        >
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Abrir"}
         </Button>
       </div>
@@ -695,7 +803,10 @@ function Thread({
   const [sending, setSending] = useState(false);
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [newSupplier, setNewSupplier] = useState({ name: conversation.contactName ?? "", category: "material" });
+  const [newSupplier, setNewSupplier] = useState({
+    name: conversation.contactName ?? "",
+    category: "material",
+  });
   const listRef = useRef<HTMLDivElement>(null);
   const lastId = messages.at(-1)?.id;
 
@@ -730,18 +841,21 @@ function Thread({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {ConfirmDialog}
-      <div className="space-y-2 border-b border-border px-4 py-3">
+      <div className="space-y-2 border-b border-border px-3 py-3 sm:px-4">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="truncate font-semibold">{conversation.title}</p>
-            <p className="text-xs text-text-muted">
+            <p className="truncate text-xs text-text-muted">
               {conversation.phoneLabel}
               {conversation.supplierId && (
                 <>
                   {" · "}
-                  <Link href={`/overview/fornecedores/${conversation.supplierId}`} className="text-primary hover:underline">
+                  <Link
+                    href={`/overview/fornecedores/${conversation.supplierId}`}
+                    className="text-primary hover:underline"
+                  >
                     ver fornecedor
                   </Link>
                 </>
@@ -756,59 +870,80 @@ function Thread({
               title="Pedir algo à IA com base nesta conversa"
               onClick={() =>
                 window.dispatchEvent(
-                  new CustomEvent("onobra:ask-ai", { detail: { text: `Com base na conversa com ${conversation.title}, ` } }),
+                  new CustomEvent("onobra:ask-ai", {
+                    detail: { text: `Com base na conversa com ${conversation.title}, ` },
+                  }),
                 )
               }
             >
-              <Sparkles className="h-3.5 w-3.5" /> Perguntar à IA
+              <Sparkles className="h-3.5 w-3.5" />
+              <span className="sm:hidden">IA</span>
+              <span className="hidden sm:inline">Perguntar à IA</span>
             </Button>
-          {canWrite && (
-            <>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8"
-                disabled={busy || !connected}
-                title="Puxar mensagens anteriores do WhatsApp"
-                aria-label="Puxar mensagens anteriores"
-                onClick={async () => {
-                  const d = await run({ action: "history", conversation_id: conversation.id });
-                  if (d) toast.success(d.count ? `${d.count} mensagens trazidas.` : "Nenhuma mensagem antiga nova.");
-                }}
-              >
-                <History className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8"
-                disabled={busy}
-                aria-label="Tirar conversa do app"
-                title="Tirar do app (não apaga do celular)"
-                onClick={async () => {
-                  if (!(await confirm("Tirar esta conversa do app? Ela continua no seu celular.", { danger: true }))) return;
-                  const d = await inbox({ action: "remove", conversation_id: conversation.id });
-                  if (!d) return;
-                  router.push("/overview/conversas");
-                  router.refresh();
-                }}
-              >
-                <Trash2 className="h-4 w-4 text-danger" />
-              </Button>
-            </>
-          )}
+            {canWrite && (
+              <>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  disabled={busy || !connected}
+                  title="Puxar mensagens anteriores do WhatsApp"
+                  aria-label="Puxar mensagens anteriores"
+                  onClick={async () => {
+                    const d = await run({ action: "history", conversation_id: conversation.id });
+                    if (d)
+                      toast.success(
+                        d.count
+                          ? `${d.count} mensagens trazidas.`
+                          : "Nenhuma mensagem antiga nova.",
+                      );
+                  }}
+                >
+                  <History className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  disabled={busy}
+                  aria-label="Tirar conversa do app"
+                  title="Tirar do app (não apaga do celular)"
+                  onClick={async () => {
+                    if (
+                      !(await confirm("Tirar esta conversa do app? Ela continua no seu celular.", {
+                        danger: true,
+                      }))
+                    )
+                      return;
+                    const d = await inbox({ action: "remove", conversation_id: conversation.id });
+                    if (!d) return;
+                    router.push("/overview/conversas");
+                    router.refresh();
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 text-danger" />
+                </Button>
+              </>
+            )}
           </div>
         </div>
         {canWrite && (
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <Store className="h-3.5 w-3.5 text-text-muted" />
+          <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+            <Store className="h-3.5 w-3.5 shrink-0 text-text-muted" />
             <select
               value={conversation.supplierId ?? ""}
               disabled={busy}
               onChange={(e) =>
-                run({ action: "link_supplier", conversation_id: conversation.id, supplier_id: e.target.value || null }, "Fornecedor ligado.")
+                run(
+                  {
+                    action: "link_supplier",
+                    conversation_id: conversation.id,
+                    supplier_id: e.target.value || null,
+                  },
+                  "Fornecedor ligado.",
+                )
               }
-              className="h-8 max-w-[14rem] rounded-md border border-border bg-bg-elev px-2"
+              className="h-8 min-w-0 max-w-full flex-1 rounded-md border border-border bg-bg-elev px-2 sm:max-w-[14rem] sm:flex-none"
               aria-label="Fornecedor desta conversa"
             >
               <option value="">Sem fornecedor ligado</option>
@@ -819,14 +954,18 @@ function Thread({
               ))}
             </select>
             {!conversation.supplierId && !creating && (
-              <button type="button" onClick={() => setCreating(true)} className="text-primary hover:underline">
+              <button
+                type="button"
+                onClick={() => setCreating(true)}
+                className="text-primary hover:underline"
+              >
                 cadastrar como fornecedor
               </button>
             )}
           </div>
         )}
         {creating && (
-          <div className="space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-3">
+          <div className="border-primary/40 bg-primary/5 space-y-2 rounded-lg border p-3">
             <p className="text-xs font-semibold text-primary">Novo fornecedor com este contato</p>
             <Input
               autoFocus
@@ -847,7 +986,9 @@ function Thread({
                   </option>
                 ))}
               </select>
-              <span className="text-[11px] text-text-muted">Telefone: {conversation.phoneLabel}</span>
+              <span className="text-[11px] text-text-muted">
+                Telefone: {conversation.phoneLabel}
+              </span>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setCreating(false)}>
@@ -857,12 +998,19 @@ function Thread({
                 size="sm"
                 disabled={busy || !newSupplier.name.trim()}
                 onClick={async () => {
-                  const d = await run(
-                    { action: "create_supplier", conversation_id: conversation.id, name: newSupplier.name.trim(), category: newSupplier.category },
-                  );
+                  const d = await run({
+                    action: "create_supplier",
+                    conversation_id: conversation.id,
+                    name: newSupplier.name.trim(),
+                    category: newSupplier.category,
+                  });
                   if (!d) return;
                   setCreating(false);
-                  toast.success((d as { created?: boolean }).created ? "Fornecedor cadastrado e ligado à conversa." : "Esse fornecedor já existia, liguei a conversa a ele.");
+                  toast.success(
+                    (d as { created?: boolean }).created
+                      ? "Fornecedor cadastrado e ligado à conversa."
+                      : "Esse fornecedor já existia, liguei a conversa a ele.",
+                  );
                 }}
               >
                 Salvar fornecedor
@@ -872,14 +1020,26 @@ function Thread({
         )}
       </div>
 
-      <div ref={listRef} className="flex-1 space-y-2 overflow-y-auto bg-bg-elev-2/40 p-4">
-        {messages.length === 0 && <p className="py-8 text-center text-sm text-text-muted">Sem mensagens ainda. Mande a primeira abaixo.</p>}
+      <div
+        ref={listRef}
+        className="bg-bg-elev-2/40 min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden p-3 sm:p-4"
+      >
+        {messages.length === 0 && (
+          <p className="py-8 text-center text-sm text-text-muted">
+            Sem mensagens ainda. Mande a primeira abaixo.
+          </p>
+        )}
         {messages.map((m) => (
-          <div key={m.id} className={cn("flex flex-col", m.direction === "out" ? "items-end" : "items-start")}>
+          <div
+            key={m.id}
+            className={cn("flex flex-col", m.direction === "out" ? "items-end" : "items-start")}
+          >
             <div
               className={cn(
-                "max-w-[85%] select-text whitespace-pre-line break-words rounded-2xl px-3.5 py-2 text-sm",
-                m.direction === "out" ? "bg-primary text-primary-foreground" : "bg-bg-elev text-text shadow-sm",
+                "max-w-[85%] select-text whitespace-pre-line break-words rounded-2xl px-3.5 py-2 text-sm [overflow-wrap:anywhere]",
+                m.direction === "out"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-bg-elev text-text shadow-sm",
               )}
             >
               {m.content}
@@ -912,7 +1072,7 @@ function Thread({
             e.preventDefault();
             void send();
           }}
-          className="flex items-end gap-2 border-t border-border p-3"
+          className="flex items-end gap-2 border-t border-border p-2 sm:p-3"
         >
           <Button
             type="button"
@@ -936,10 +1096,17 @@ function Thread({
               }
             }}
             disabled={!connected}
-            placeholder={connected ? "Mensagem pelo seu WhatsApp..." : "Conecte o WhatsApp pra responder"}
-            className="max-h-32 min-h-10 flex-1 resize-none rounded-md border border-border bg-bg-elev px-3 py-2 text-sm outline-none focus:border-primary/60"
+            placeholder={
+              connected ? "Mensagem pelo seu WhatsApp..." : "Conecte o WhatsApp pra responder"
+            }
+            className="focus:border-primary/60 max-h-32 min-h-10 min-w-0 flex-1 resize-none rounded-md border border-border bg-bg-elev px-3 py-2 text-base outline-none sm:text-sm"
           />
-          <Button type="submit" size="icon" disabled={sending || !text.trim() || !connected} aria-label="Enviar">
+          <Button
+            type="submit"
+            size="icon"
+            disabled={sending || !text.trim() || !connected}
+            aria-label="Enviar"
+          >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </form>
@@ -996,12 +1163,17 @@ export function ObraConversations({
   useAutoRefresh(5000, configured);
 
   const q = norm(query);
-  const visible = q ? conversations.filter((c) => norm(c.title).includes(q) || c.phone.includes(q.replace(/\D/g, "") || "§")) : conversations;
+  const visible = q
+    ? conversations.filter(
+        (c) => norm(c.title).includes(q) || c.phone.includes(q.replace(/\D/g, "") || "§"),
+      )
+    : conversations;
 
   if (!configured) {
     return (
       <Card className="p-6 text-center text-sm text-text-muted">
-        O servidor do WhatsApp ainda não foi configurado no app. Assim que estiver, a conexão aparece aqui.
+        O servidor do WhatsApp ainda não foi configurado no app. Assim que estiver, a conexão
+        aparece aqui.
       </Card>
     );
   }
@@ -1010,12 +1182,22 @@ export function ObraConversations({
     <div className="space-y-3">
       <ConnectionPanel status={status} canWrite={canWrite} />
 
-      <Card className="grid h-[calc(100dvh-15rem)] min-h-[28rem] overflow-hidden p-0 md:grid-cols-[20rem_1fr]">
-        <div className={cn("flex min-h-0 flex-col border-r border-border", selected && "hidden md:flex")}>
+      <Card className="grid h-[calc(100dvh-15rem)] min-h-[28rem] grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden p-0 md:grid-cols-[20rem_minmax(0,1fr)]">
+        <div
+          className={cn(
+            "flex min-h-0 min-w-0 flex-col md:border-r md:border-border",
+            selected && "hidden md:flex",
+          )}
+        >
           {canWrite && connected && (
             <>
               <div className="border-b border-border p-3">
-                <Button variant="outline" size="sm" className="w-full" onClick={() => setPicking(true)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setPicking(true)}
+                >
                   <Smartphone className="h-3.5 w-3.5" /> Trazer conversa do celular
                 </Button>
               </div>
@@ -1049,19 +1231,26 @@ export function ObraConversations({
                   <Link
                     href={`/overview/conversas?c=${c.id}`}
                     prefetch={false}
-                    className={cn("block px-3 py-2.5 hover:bg-bg-elev-2", c.id === selected?.id && "bg-primary/10")}
+                    className={cn(
+                      "block px-3 py-2.5 hover:bg-bg-elev-2",
+                      c.id === selected?.id && "bg-primary/10",
+                    )}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium">
                         {c.supplierId && <Store className="h-3 w-3 shrink-0 text-primary" />}
                         <span className="truncate">{c.title}</span>
                       </p>
-                      <span className="shrink-0 text-[10px] text-text-muted">{fmtWhen(c.lastMessageAt)}</span>
+                      <span className="shrink-0 text-[10px] text-text-muted">
+                        {fmtWhen(c.lastMessageAt)}
+                      </span>
                     </div>
                     <div className="mt-0.5 flex items-center gap-1.5">
                       <p className="flex-1 truncate text-xs text-text-muted">{c.lastMessage}</p>
                       {c.unread > 0 && (
-                        <span className="shrink-0 rounded-full bg-success px-1.5 text-[10px] font-bold text-white">{c.unread}</span>
+                        <span className="shrink-0 rounded-full bg-success px-1.5 text-[10px] font-bold text-white">
+                          {c.unread}
+                        </span>
                       )}
                     </div>
                   </Link>
@@ -1072,8 +1261,12 @@ export function ObraConversations({
         </div>
 
         {selected ? (
-          <div className="flex min-h-0 flex-col">
-            <Link href="/overview/conversas" prefetch={false} className="block border-b border-border px-4 py-2 text-xs text-primary md:hidden">
+          <div className="flex min-h-0 min-w-0 flex-col">
+            <Link
+              href="/overview/conversas"
+              prefetch={false}
+              className="block border-b border-border px-4 py-2 text-xs text-primary md:hidden"
+            >
               ← Voltar pras conversas
             </Link>
             <Thread
