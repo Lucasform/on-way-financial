@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { type NextRequest,NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
@@ -10,6 +10,7 @@ import {
   SEARCH_COSTS_TOOL,
   searchCosts,
 } from "@/lib/ai/context";
+import { type DocumentToolContent, READ_DOCUMENT_TOOL, readDocument } from "@/lib/ai/documents";
 import {
   ADD_ACTIVITY_TOOL,
   ADD_CHECKLIST_ITEM_TOOL,
@@ -31,7 +32,7 @@ import { getObraModule } from "@/lib/obra";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const messageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -43,7 +44,16 @@ const bodySchema = z.object({
   confirm: z.string().max(20_000).optional(),
 });
 
-const TOOLS = [SEARCH_COSTS_TOOL, READ_CONVERSATION_TOOL, REGISTER_EXPENSE_TOOL, ADD_SUPPLIER_TOOL, ADD_CHECKLIST_ITEM_TOOL, ADD_ACTIVITY_TOOL, COMPLETE_ACTIVITY_TOOL];
+const TOOLS = [
+  SEARCH_COSTS_TOOL,
+  READ_CONVERSATION_TOOL,
+  READ_DOCUMENT_TOOL,
+  REGISTER_EXPENSE_TOOL,
+  ADD_SUPPLIER_TOOL,
+  ADD_CHECKLIST_ITEM_TOOL,
+  ADD_ACTIVITY_TOOL,
+  COMPLETE_ACTIVITY_TOOL,
+];
 
 const CLAIMS_WRITE =
   /cart[aã]o|(confer|confir)\w*[^.!?\n]{0,40}resumo|resumo[^.!?\n]{0,40}(confer|confir)|\b(registrei|gravei|cadastrei|lancei|anotei)\b|\b(pronto|j[aá]|foi|est[aá]|fica|ficou)[,!.]?\s+(registrad|gravad|cadastrad|lan[cç]ad|anotad)/i;
@@ -71,10 +81,13 @@ export async function POST(req: NextRequest) {
   const db = createSupabaseServer();
 
   if (parsed.data.confirm) {
-    if (ctx.role === "viewer") return NextResponse.json({ reply: "Seu acesso é só de leitura, não consigo gravar." });
+    if (ctx.role === "viewer")
+      return NextResponse.json({ reply: "Seu acesso é só de leitura, não consigo gravar." });
     const actions = verifyProposal(parsed.data.confirm, ctx.householdId, ctx.userId);
     if (!actions) {
-      return NextResponse.json({ reply: "Essa proposta expirou. Me manda de novo o que quer registrar." });
+      return NextResponse.json({
+        reply: "Essa proposta expirou. Me manda de novo o que quer registrar.",
+      });
     }
     const mod = await getObraModule(ctx.householdId);
     if (!mod) return NextResponse.json({ reply: "Não encontrei a obra ativa." });
@@ -91,13 +104,23 @@ export async function POST(req: NextRequest) {
 
   try {
     const householdId = ctx.householdId;
-    const history: Anthropic.MessageParam[] = parsed.data.messages.map((m) => ({ role: m.role, content: m.content }));
+    const history: Anthropic.MessageParam[] = parsed.data.messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
     const proposed: ProposedAction[] = [];
     const canWrite = ctx.role !== "viewer";
 
-    async function runTool(tu: Anthropic.ToolUseBlock): Promise<string> {
-      if (tu.name === SEARCH_COSTS_TOOL.name) return searchCosts(householdId, tu.input as Record<string, string>);
-      if (tu.name === READ_CONVERSATION_TOOL.name) return readConversation(householdId, tu.input as { name?: string; limit?: number });
+    async function runTool(tu: Anthropic.ToolUseBlock): Promise<DocumentToolContent> {
+      if (tu.name === SEARCH_COSTS_TOOL.name)
+        return searchCosts(householdId, tu.input as Record<string, string>);
+      if (tu.name === READ_CONVERSATION_TOOL.name)
+        return readConversation(householdId, tu.input as { name?: string; limit?: number });
+      if (tu.name === READ_DOCUMENT_TOOL.name) {
+        const mod = await getObraModule(householdId);
+        if (!mod) return "Não há obra cadastrada.";
+        return readDocument(householdId, mod.id, tu.input as { name?: string });
+      }
       if (!WRITE_TOOL_NAMES.has(tu.name)) return "Ferramenta desconhecida.";
       if (!canWrite) return "O usuário tem acesso só de leitura. Diga que não dá pra registrar.";
       const plan = await planAction(db, householdId, tu.name, tu.input as Record<string, unknown>);
@@ -107,19 +130,35 @@ export async function POST(req: NextRequest) {
     }
 
     async function converse(): Promise<string> {
-      let res = await client().messages.create({ model: env.ANTHROPIC_MODEL, max_tokens: 800, system, messages: history, tools: TOOLS });
+      let res = await client().messages.create({
+        model: env.ANTHROPIC_MODEL,
+        max_tokens: 1500,
+        system,
+        messages: history,
+        tools: TOOLS,
+      });
       let rounds = 0;
       while (res.stop_reason === "tool_use" && rounds < 3) {
         rounds++;
-        const toolUses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+        const toolUses = res.content.filter(
+          (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+        );
         if (toolUses.length === 0) break;
         const results: Anthropic.ToolResultBlockParam[] = [];
         for (const tu of toolUses) {
-          results.push({ type: "tool_result", tool_use_id: tu.id, content: await runTool(tu) });
+          // o SDK instalado não tipa bloco de PDF dentro de tool_result, mas a API aceita
+          const content = (await runTool(tu)) as Anthropic.ToolResultBlockParam["content"];
+          results.push({ type: "tool_result", tool_use_id: tu.id, content });
         }
         history.push({ role: "assistant", content: res.content });
         history.push({ role: "user", content: results });
-        res = await client().messages.create({ model: env.ANTHROPIC_MODEL, max_tokens: 800, system, messages: history, tools: TOOLS });
+        res = await client().messages.create({
+          model: env.ANTHROPIC_MODEL,
+          max_tokens: 1500,
+          system,
+          messages: history,
+          tools: TOOLS,
+        });
       }
       return res.content
         .filter((b): b is Anthropic.TextBlock => b.type === "text")
@@ -136,7 +175,8 @@ export async function POST(req: NextRequest) {
       history.push({ role: "user", content: NO_TOOL_NUDGE });
       text = await converse();
       if (proposed.length === 0 && CLAIMS_WRITE.test(text)) {
-        text = "Ainda não preparei nada pra registrar. Me diz o item, o valor, o fornecedor e se já foi pago ou é só cotação.";
+        text =
+          "Ainda não preparei nada pra registrar. Me diz o item, o valor, o fornecedor e se já foi pago ou é só cotação.";
       }
     }
 

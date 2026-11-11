@@ -1,5 +1,6 @@
 import "server-only";
 
+import { documentContextLines } from "@/lib/ai/documents";
 import { monthRangeISO, todayISO } from "@/lib/dates";
 import { formatBRL } from "@/lib/money";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
@@ -125,6 +126,8 @@ export async function buildFinancialContext(opts: ContextOptions): Promise<strin
         `- ${a.title}${a.due_date ? ` | ${a.due_date}` : ""}${who(a)}${a.recurrence ? ` | repete: ${a.recurrence}` : ""}`,
       );
   }
+
+  lines.push(...(await documentContextLines(opts.householdId, mod.id)));
 
   const [{ data: convs }, { data: supplierRows }] = await Promise.all([
     admin
@@ -297,6 +300,11 @@ REGRAS:
     "o Daniel terminou a caixa de inspeção" -> complete_activity(title "caixa de inspeção").
     "toda segunda pedir água pro pessoal" -> add_activity(title "Pedir água", recurrence "semanal", due_date da próxima segunda).
   - Atividade com "repete" no contexto: ao concluir, a próxima é criada sozinha. Não crie outra igual.
+- DOCUMENTOS ANEXADOS: quando o pedido depender do conteúdo de um arquivo do app (contrato, orçamento, comprovante,
+  nota, planta, memorial), chame read_document com o nome do arquivo antes de responder. Responda com o que está
+  escrito no arquivo (valores, datas, prazos, cláusulas) e diga quando algo não aparece nele. Pra lançar a partir de um
+  comprovante ou orçamento, leia primeiro e use register_expense com os dados lidos (o usuário confirma no cartão).
+  Comprovante de pagamento = executada; orçamento ou proposta = cotacao.
 - CONVERSAS DO WHATSAPP: quando o pedido depender do que foi falado com um fornecedor ou contato ("o que o Daniel
   disse", "resume a conversa com a Hidráulica", "lança o que ele cobrou", "cria as tarefas que combinamos"), chame
   read_whatsapp_conversation com o nome antes de responder. Depois use o que leu: responda, ou chame register_expense /
