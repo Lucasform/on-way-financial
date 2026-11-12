@@ -9,15 +9,30 @@ import type { Database } from "@/types/database";
 type Db = SupabaseClient<Database>;
 
 async function loadQuote(db: Db, householdId: string, quoteId: string) {
-  const { data } = await db.from("price_quotes").select("*").eq("id", quoteId).eq("household_id", householdId).maybeSingle();
+  const { data } = await db
+    .from("price_quotes")
+    .select("*")
+    .eq("id", quoteId)
+    .eq("household_id", householdId)
+    .maybeSingle();
   return data;
 }
 
 async function createPaidItem(
   db: Db,
-  args: { moduleId: string; quote: Database["public"]["Tables"]["price_quotes"]["Row"]; label: string; amount: number; date: string },
+  args: {
+    moduleId: string;
+    quote: Database["public"]["Tables"]["price_quotes"]["Row"];
+    label: string;
+    amount: number;
+    date: string;
+  },
 ) {
-  const { data: supplier } = await db.from("suppliers").select("name, category").eq("id", args.quote.supplier_id).maybeSingle();
+  const { data: supplier } = await db
+    .from("suppliers")
+    .select("name, category")
+    .eq("id", args.quote.supplier_id)
+    .maybeSingle();
   return db
     .from("obra_items")
     .insert({
@@ -46,11 +61,19 @@ export async function settleQuote(db: Db, quoteId: string) {
     .eq("id", quoteId)
     .maybeSingle();
   if (!quote?.execution_started_at || quote.total_amount == null || quote.cancelled_at) return;
-  const { data: payments } = await db.from("quote_payments").select("amount, paid_at").eq("quote_id", quoteId);
-  const paid = (payments ?? []).filter((p) => p.paid_at).reduce((s, p) => s + toCents(Number(p.amount)), 0);
+  const { data: payments } = await db
+    .from("quote_payments")
+    .select("amount, paid_at")
+    .eq("quote_id", quoteId);
+  const paid = (payments ?? [])
+    .filter((p) => p.paid_at)
+    .reduce((s, p) => s + toCents(Number(p.amount)), 0);
   const settled = paid >= toCents(Number(quote.total_amount));
   if (settled && !quote.accepted_at) {
-    await db.from("price_quotes").update({ accepted_at: new Date().toISOString() }).eq("id", quoteId);
+    await db
+      .from("price_quotes")
+      .update({ accepted_at: new Date().toISOString() })
+      .eq("id", quoteId);
   } else if (!settled && quote.accepted_at) {
     await db.from("price_quotes").update({ accepted_at: null }).eq("id", quoteId);
   }
@@ -66,18 +89,26 @@ export type StartExecutionInput = {
   | { mode: "parcial"; paid_now: number; paid_date?: string | null; installments: PlannedPayment[] }
 );
 
-export async function startExecution(db: Db, input: StartExecutionInput): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+export async function startExecution(
+  db: Db,
+  input: StartExecutionInput,
+): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
   const quote = await loadQuote(db, input.householdId, input.quoteId);
   if (!quote) return { ok: false, error: "quote_not_found", status: 404 };
+  if (quote.rejected_at) return { ok: false, error: "quote_rejected", status: 409 };
   const totalCents = toCents(Number(quote.unit_price) * input.quantity);
   if (totalCents <= 0) return { ok: false, error: "invalid_total", status: 400 };
   const now = new Date().toISOString();
 
   if (input.mode === "parcial") {
     const paidCents = toCents(input.paid_now);
-    if (paidCents < 0 || paidCents >= totalCents) return { ok: false, error: "paid_now_out_of_range", status: 400 };
+    if (paidCents < 0 || paidCents >= totalCents)
+      return { ok: false, error: "paid_now_out_of_range", status: 400 };
     const plannedCents = input.installments.reduce((s, p) => s + toCents(p.amount), 0);
-    if (plannedCents !== totalCents - paidCents || input.installments.some((p) => toCents(p.amount) <= 0)) {
+    if (
+      plannedCents !== totalCents - paidCents ||
+      input.installments.some((p) => toCents(p.amount) <= 0)
+    ) {
       return { ok: false, error: "plan_sum_mismatch", status: 400 };
     }
   }
@@ -93,6 +124,7 @@ export async function startExecution(db: Db, input: StartExecutionInput): Promis
     .eq("id", quote.id)
     .is("execution_started_at", null)
     .is("accepted_at", null)
+    .is("rejected_at", null)
     .select("id")
     .maybeSingle();
   if (claimErr) return { ok: false, error: claimErr.message, status: 500 };
@@ -101,11 +133,18 @@ export async function startExecution(db: Db, input: StartExecutionInput): Promis
   const rollback = async () => {
     await db.from("quote_payments").delete().eq("quote_id", quote.id);
     await db.from("obra_items").delete().eq("quote_id", quote.id);
-    await db.from("price_quotes").update({ execution_started_at: null, total_amount: null, accepted_at: null }).eq("id", quote.id);
+    await db
+      .from("price_quotes")
+      .update({ execution_started_at: null, total_amount: null, accepted_at: null })
+      .eq("id", quote.id);
   };
 
   if (input.mode === "total") {
-    const { data: supplier } = await db.from("suppliers").select("name, category").eq("id", quote.supplier_id).maybeSingle();
+    const { data: supplier } = await db
+      .from("suppliers")
+      .select("name, category")
+      .eq("id", quote.supplier_id)
+      .maybeSingle();
     const { error } = await db.from("obra_items").insert({
       module_id: input.moduleId,
       category: supplier?.category ?? "material",
@@ -208,7 +247,10 @@ export async function payInstallment(
   return { ok: true, quoteId: quote.id };
 }
 
-export async function reschedulePayment(db: Db, args: { householdId: string; paymentId: string; dueDate: string }) {
+export async function reschedulePayment(
+  db: Db,
+  args: { householdId: string; paymentId: string; dueDate: string },
+) {
   const { data } = await db
     .from("quote_payments")
     .update({ due_date: args.dueDate })
@@ -224,7 +266,10 @@ export async function reschedulePayment(db: Db, args: { householdId: string; pay
  * Muda o valor de uma parcela ainda não paga. O total da cotação passa a ser a soma das parcelas,
  * então a cotação continua fechando certinho (e vira Aceita se já estiver tudo pago).
  */
-export async function updatePaymentAmount(db: Db, args: { householdId: string; paymentId: string; amount: number }) {
+export async function updatePaymentAmount(
+  db: Db,
+  args: { householdId: string; paymentId: string; amount: number },
+) {
   const { data } = await db
     .from("quote_payments")
     .update({ amount: toCents(args.amount) / 100 })
@@ -234,21 +279,38 @@ export async function updatePaymentAmount(db: Db, args: { householdId: string; p
     .select("quote_id")
     .maybeSingle();
   if (!data) return null;
-  const { data: all } = await db.from("quote_payments").select("amount").eq("quote_id", data.quote_id);
+  const { data: all } = await db
+    .from("quote_payments")
+    .select("amount")
+    .eq("quote_id", data.quote_id);
   const totalCents = (all ?? []).reduce((s, p) => s + toCents(Number(p.amount)), 0);
-  await db.from("price_quotes").update({ total_amount: totalCents / 100 }).eq("id", data.quote_id).eq("household_id", args.householdId);
+  await db
+    .from("price_quotes")
+    .update({ total_amount: totalCents / 100 })
+    .eq("id", data.quote_id)
+    .eq("household_id", args.householdId);
   await settleQuote(db, data.quote_id);
   return data;
 }
 
 /** Volta a cotação pra em aberto. Só se nenhum pagamento foi feito ainda. */
-export async function cancelExecution(db: Db, args: { householdId: string; quoteId: string }): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+export async function cancelExecution(
+  db: Db,
+  args: { householdId: string; quoteId: string },
+): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
   const quote = await loadQuote(db, args.householdId, args.quoteId);
   if (!quote) return { ok: false, error: "quote_not_found", status: 404 };
-  const { data: payments } = await db.from("quote_payments").select("id, paid_at").eq("quote_id", quote.id);
-  if ((payments ?? []).some((p) => p.paid_at)) return { ok: false, error: "has_paid_payments", status: 409 };
+  const { data: payments } = await db
+    .from("quote_payments")
+    .select("id, paid_at")
+    .eq("quote_id", quote.id);
+  if ((payments ?? []).some((p) => p.paid_at))
+    return { ok: false, error: "has_paid_payments", status: 409 };
   await db.from("quote_payments").delete().eq("quote_id", quote.id);
-  await db.from("price_quotes").update({ execution_started_at: null, total_amount: null, accepted_at: null }).eq("id", quote.id);
+  await db
+    .from("price_quotes")
+    .update({ execution_started_at: null, total_amount: null, accepted_at: null })
+    .eq("id", quote.id);
   return { ok: true };
 }
 
@@ -273,7 +335,14 @@ export async function revertPaymentForItem(db: Db, itemId: string): Promise<stri
  */
 export async function cancelPurchase(
   db: Db,
-  args: { householdId: string; moduleId: string; quoteId?: string; itemId?: string; date: string; reason: string | null },
+  args: {
+    householdId: string;
+    moduleId: string;
+    quoteId?: string;
+    itemId?: string;
+    date: string;
+    reason: string | null;
+  },
 ): Promise<{ ok: true; quoteId: string | null } | { ok: false; error: string; status: number }> {
   let quoteId = args.quoteId ?? null;
   if (!quoteId && args.itemId) {
@@ -300,7 +369,8 @@ export async function cancelPurchase(
   const quote = await loadQuote(db, args.householdId, quoteId);
   if (!quote) return { ok: false, error: "quote_not_found", status: 404 };
   if (quote.cancelled_at) return { ok: false, error: "already_cancelled", status: 409 };
-  if (!quote.accepted_at && !quote.execution_started_at) return { ok: false, error: "not_executed", status: 409 };
+  if (!quote.accepted_at && !quote.execution_started_at)
+    return { ok: false, error: "not_executed", status: 409 };
 
   const { error: itemsErr } = await db
     .from("obra_items")

@@ -34,6 +34,7 @@ export interface ExecQuote {
   total_amount?: number | null;
   cancelled_at?: string | null;
   cancel_reason?: string | null;
+  rejected_at?: string | null;
 }
 
 export interface ExecutionItem {
@@ -55,12 +56,13 @@ export interface ExecutionSnapshot<Q extends ExecQuote = ExecQuote> {
   items: ExecutionItem[];
 }
 
-export type QuoteStatus = "aberto" | "execucao" | "aceita" | "cancelada";
+export type QuoteStatus = "aberto" | "execucao" | "aceita" | "cancelada" | "recusada";
 
 export function quoteStatus(q: ExecQuote): QuoteStatus {
   if (q.cancelled_at) return "cancelada";
   if (q.accepted_at) return "aceita";
   if (q.execution_started_at) return "execucao";
+  if (q.rejected_at) return "recusada";
   return "aberto";
 }
 
@@ -71,18 +73,26 @@ const ERRORS: Record<string, string> = {
   payment_not_found_or_paid: "Esse pagamento já foi pago ou não existe mais.",
   plan_sum_mismatch: "A soma das parcelas não fecha com o restante. Confira os valores.",
   already_cancelled: "Essa compra já foi cancelada.",
+  quote_rejected: "Essa cotação está recusada. Reabra antes de executar.",
   not_executed: "Só dá pra cancelar uma compra que já foi executada.",
 };
 
-export async function callExecution<Q extends ExecQuote>(body: Record<string, unknown>): Promise<ExecutionSnapshot<Q> | null> {
+export async function callExecution<Q extends ExecQuote>(
+  body: Record<string, unknown>,
+): Promise<ExecutionSnapshot<Q> | null> {
   const res = await fetch("/api/obra/quote-execution", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  const data = (await res.json().catch(() => ({}))) as { error?: unknown } & Partial<ExecutionSnapshot<Q>>;
+  const data = (await res.json().catch(() => ({}))) as { error?: unknown } & Partial<
+    ExecutionSnapshot<Q>
+  >;
   if (!res.ok) {
-    toast.error((typeof data.error === "string" && ERRORS[data.error]) || "Não consegui salvar. Tente de novo.");
+    toast.error(
+      (typeof data.error === "string" && ERRORS[data.error]) ||
+        "Não consegui salvar. Tente de novo.",
+    );
     return null;
   }
   return data as ExecutionSnapshot<Q>;
@@ -192,13 +202,23 @@ export function AmountEditor({
           if (e.key === "Enter") save();
           if (e.key === "Escape") setOpen(false);
         }}
-        className="num h-7 w-24 rounded border border-primary/60 bg-bg-elev px-1.5 text-right text-xs font-medium"
+        className="num border-primary/60 h-7 w-24 rounded border bg-bg-elev px-1.5 text-right text-xs font-medium"
         aria-label={`Novo valor de ${label}`}
       />
-      <button type="button" onClick={save} className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-bg-elev" aria-label="Salvar valor">
+      <button
+        type="button"
+        onClick={save}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-bg-elev"
+        aria-label="Salvar valor"
+      >
         <Check className="h-3.5 w-3.5 text-success" />
       </button>
-      <button type="button" onClick={() => setOpen(false)} className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-bg-elev" aria-label="Cancelar">
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-bg-elev"
+        aria-label="Cancelar"
+      >
         <X className="h-3.5 w-3.5 text-text-muted" />
       </button>
     </span>
@@ -227,7 +247,8 @@ export function ExecuteQuoteDialog<Q extends ExecQuote>({
   const remaining = remainingCents / 100;
 
   const valid =
-    total > 0 && (mode === "total" || (paid >= 0 && remainingCents > 0 && plan !== null && plan.valid));
+    total > 0 &&
+    (mode === "total" || (paid >= 0 && remainingCents > 0 && plan !== null && plan.valid));
 
   async function submit() {
     if (!valid || saving) return;
@@ -243,11 +264,19 @@ export function ExecuteQuoteDialog<Q extends ExecQuote>({
             : {
                 mode: "parcial",
                 paid_now: paid,
-                installments: (plan?.slots ?? []).map((s) => ({ label: s.label, amount: s.cents / 100, due_date: s.due_date })),
+                installments: (plan?.slots ?? []).map((s) => ({
+                  label: s.label,
+                  amount: s.cents / 100,
+                  due_date: s.due_date,
+                })),
               },
       });
       if (!snapshot) return;
-      toast.success(mode === "total" ? "Cotação executada e aceita." : "Cotação em execução, pagamentos agendados.");
+      toast.success(
+        mode === "total"
+          ? "Cotação executada e aceita."
+          : "Cotação em execução, pagamentos agendados.",
+      );
       onDone(snapshot);
     } finally {
       setSaving(false);
@@ -257,7 +286,9 @@ export function ExecuteQuoteDialog<Q extends ExecQuote>({
   const pill = (active: boolean) =>
     cn(
       "rounded-md border px-3 py-2 text-sm font-medium transition-colors",
-      active ? "border-primary bg-primary/10 text-primary" : "border-border text-text-muted hover:bg-bg-elev-2",
+      active
+        ? "border-primary bg-primary/10 text-primary"
+        : "border-border text-text-muted hover:bg-bg-elev-2",
     );
 
   return (
@@ -273,7 +304,14 @@ export function ExecuteQuoteDialog<Q extends ExecQuote>({
           <div className="grid grid-cols-2 items-end gap-3">
             <div className="space-y-1">
               <Label htmlFor="exec-qty">Quantidade ({quote.unit})</Label>
-              <Input id="exec-qty" type="number" step="0.01" min="0" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+              <Input
+                id="exec-qty"
+                type="number"
+                step="0.01"
+                min="0"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+              />
             </div>
             <div className="pb-2 text-right">
               <p className="text-[11px] text-text-muted">Total</p>
@@ -284,10 +322,18 @@ export function ExecuteQuoteDialog<Q extends ExecQuote>({
           <div className="space-y-1">
             <Label>Pagamento</Label>
             <div className="grid grid-cols-2 gap-2">
-              <button type="button" className={pill(mode === "total")} onClick={() => setMode("total")}>
+              <button
+                type="button"
+                className={pill(mode === "total")}
+                onClick={() => setMode("total")}
+              >
                 Valor total
               </button>
-              <button type="button" className={pill(mode === "parcial")} onClick={() => setMode("parcial")}>
+              <button
+                type="button"
+                className={pill(mode === "parcial")}
+                onClick={() => setMode("parcial")}
+              >
                 Parcial
               </button>
             </div>
@@ -310,7 +356,8 @@ export function ExecuteQuoteDialog<Q extends ExecQuote>({
                   onChange={(e) => setPaidNow(e.target.value)}
                 />
                 <p className="text-[11px] text-text-muted">
-                  Restante: <strong className="text-text">{formatBRL(Math.max(remaining, 0))}</strong>
+                  Restante:{" "}
+                  <strong className="text-text">{formatBRL(Math.max(remaining, 0))}</strong>
                 </p>
               </div>
 
@@ -329,7 +376,11 @@ export function ExecuteQuoteDialog<Q extends ExecQuote>({
             Cancelar
           </Button>
           <Button size="sm" disabled={!valid || saving} onClick={submit}>
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            {saving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check className="h-3.5 w-3.5" />
+            )}
             Executar
           </Button>
         </div>
@@ -379,7 +430,10 @@ export function QuotePaymentsPanel<Q extends ExecQuote>({
           <span className="font-medium text-primary">{pct}%</span>
         </div>
         <div className="h-1.5 overflow-hidden rounded-full bg-border">
-          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+          <div
+            className="h-full rounded-full bg-primary transition-all"
+            style={{ width: `${pct}%` }}
+          />
         </div>
       </div>
 
@@ -388,28 +442,44 @@ export function QuotePaymentsPanel<Q extends ExecQuote>({
           const overdue = !p.paid_at && p.due_date !== null && p.due_date < today;
           const dueToday = !p.paid_at && p.due_date === today;
           return (
-            <li key={p.id} className="flex flex-col gap-1.5 text-sm sm:flex-row sm:items-center sm:gap-2">
+            <li
+              key={p.id}
+              className="flex flex-col gap-1.5 text-sm sm:flex-row sm:items-center sm:gap-2"
+            >
               <div className="flex min-w-0 flex-1 items-center gap-2">
-              <span
-                className={cn(
-                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
-                  p.paid_at ? "border-success bg-success text-white" : overdue ? "border-danger" : "border-border",
-                )}
-              >
-                {p.paid_at && <Check className="h-3 w-3" />}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className={cn("truncate", p.paid_at && "text-text-muted")}>
-                  {p.label} · <span className="num">{formatBRL(Number(p.amount))}</span>
-                </p>
-                <p className={cn("text-[11px]", overdue ? "font-medium text-danger" : dueToday ? "font-medium text-warning" : "text-text-muted")}>
-                  {p.paid_at
-                    ? `pago em ${fmtDate(p.paid_at, "dd/MM/yyyy")}`
-                    : p.due_date
-                      ? `${overdue ? "atrasado, venceu" : dueToday ? "vence hoje," : "vence"} ${fmtDate(p.due_date, "dd/MM/yyyy")}`
-                      : "sem data"}
-                </p>
-              </div>
+                <span
+                  className={cn(
+                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
+                    p.paid_at
+                      ? "border-success bg-success text-white"
+                      : overdue
+                        ? "border-danger"
+                        : "border-border",
+                  )}
+                >
+                  {p.paid_at && <Check className="h-3 w-3" />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className={cn("truncate", p.paid_at && "text-text-muted")}>
+                    {p.label} · <span className="num">{formatBRL(Number(p.amount))}</span>
+                  </p>
+                  <p
+                    className={cn(
+                      "text-[11px]",
+                      overdue
+                        ? "font-medium text-danger"
+                        : dueToday
+                          ? "font-medium text-warning"
+                          : "text-text-muted",
+                    )}
+                  >
+                    {p.paid_at
+                      ? `pago em ${fmtDate(p.paid_at, "dd/MM/yyyy")}`
+                      : p.due_date
+                        ? `${overdue ? "atrasado, venceu" : dueToday ? "vence hoje," : "vence"} ${fmtDate(p.due_date, "dd/MM/yyyy")}`
+                        : "sem data"}
+                  </p>
+                </div>
               </div>
               {canWrite && !p.paid_at && (
                 <div className="flex shrink-0 items-center justify-end gap-1.5">
@@ -417,20 +487,34 @@ export function QuotePaymentsPanel<Q extends ExecQuote>({
                     value={p.due_date}
                     label={p.label}
                     disabled={busy !== null}
-                    onChange={(date) => run(p.id, { action: "reschedule", payment_id: p.id, due_date: date }, "Data atualizada.")}
+                    onChange={(date) =>
+                      run(
+                        p.id,
+                        { action: "reschedule", payment_id: p.id, due_date: date },
+                        "Data atualizada.",
+                      )
+                    }
                   />
                   <AmountEditor
                     value={Number(p.amount)}
                     label={p.label}
                     disabled={busy !== null}
-                    onSave={(amount) => run(p.id, { action: "amount", payment_id: p.id, amount }, "Valor atualizado. O total da cotação foi recalculado.")}
+                    onSave={(amount) =>
+                      run(
+                        p.id,
+                        { action: "amount", payment_id: p.id, amount },
+                        "Valor atualizado. O total da cotação foi recalculado.",
+                      )
+                    }
                   />
                   <Button
                     size="sm"
                     variant="outline"
                     className="h-8 min-w-16 px-3 text-xs"
                     disabled={busy !== null}
-                    onClick={() => run(p.id, { action: "pay", payment_id: p.id }, "Pagamento registrado.")}
+                    onClick={() =>
+                      run(p.id, { action: "pay", payment_id: p.id }, "Pagamento registrado.")
+                    }
                   >
                     {busy === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Pagar"}
                   </Button>
@@ -445,7 +529,13 @@ export function QuotePaymentsPanel<Q extends ExecQuote>({
         <button
           type="button"
           disabled={busy !== null}
-          onClick={() => run("cancel", { action: "cancel", quote_id: quote.id }, "Execução cancelada, cotação voltou pra Em aberto.")}
+          onClick={() =>
+            run(
+              "cancel",
+              { action: "cancel", quote_id: quote.id },
+              "Execução cancelada, cotação voltou pra Em aberto.",
+            )
+          }
           className="text-xs text-text-muted underline-offset-2 hover:text-danger hover:underline"
         >
           Cancelar execução e voltar pra Em aberto
@@ -455,7 +545,13 @@ export function QuotePaymentsPanel<Q extends ExecQuote>({
   );
 }
 
-export function QuoteProgressText({ quote, payments }: { quote: ExecQuote; payments: QuotePayment[] }) {
+export function QuoteProgressText({
+  quote,
+  payments,
+}: {
+  quote: ExecQuote;
+  payments: QuotePayment[];
+}) {
   const paid = payments.filter((p) => p.paid_at).reduce((s, p) => s + Number(p.amount), 0);
   return (
     <span className="text-[11px] text-text-muted">
@@ -502,12 +598,19 @@ export function CancelPurchaseDialog({
         </p>
         <div className="space-y-3">
           <ul className="space-y-1 text-xs text-text-muted">
-            <li>- Sai do Gasto e dos totais, mas continua no histórico do fornecedor como cancelada.</li>
+            <li>
+              - Sai do Gasto e dos totais, mas continua no histórico do fornecedor como cancelada.
+            </li>
             {hasSchedule && <li>- As parcelas que ainda não foram pagas são removidas.</li>}
           </ul>
           <div className="space-y-1">
             <Label htmlFor="cancel-date">Data do cancelamento/reembolso</Label>
-            <Input id="cancel-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Input
+              id="cancel-date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
           </div>
           <div className="space-y-1">
             <Label htmlFor="cancel-reason">Motivo (opcional)</Label>

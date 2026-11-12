@@ -25,13 +25,17 @@ export default async function SupplierDetailPage({ params }: { params: { id: str
   const [{ data: quotes }, { data: purchases }, { data: budgetFiles }] = await Promise.all([
     supabase
       .from("price_quotes")
-      .select("id, item_name, unit, unit_price, quoted_at, accepted_at, execution_started_at, total_amount, cancelled_at, cancel_reason")
+      .select(
+        "id, item_name, unit, unit_price, quoted_at, accepted_at, execution_started_at, total_amount, cancelled_at, cancel_reason, rejected_at",
+      )
       .eq("household_id", ctx.householdId)
       .eq("supplier_id", params.id)
       .order("quoted_at", { ascending: false }),
     supabase
       .from("obra_items")
-      .select("id, name, quantity, unit, unit_price, actual_unit_price, status, bought_at, quote_id, cancelled_at, cancel_reason")
+      .select(
+        "id, name, quantity, unit, unit_price, actual_unit_price, status, bought_at, quote_id, cancelled_at, cancel_reason",
+      )
       .eq("module_id", mod.id)
       .eq("supplier_id", params.id)
       .order("created_at", { ascending: false }),

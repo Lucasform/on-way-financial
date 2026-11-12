@@ -8,7 +8,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-const TABS = ["aberto", "execucao", "aceita", "cancelada"] as const;
+const TABS = ["aberto", "execucao", "aceita", "recusada", "cancelada"] as const;
 
 export default async function CotacoesPage({ searchParams }: { searchParams: { tab?: string } }) {
   const ctx = (await loadActiveContext())!;
@@ -17,7 +17,11 @@ export default async function CotacoesPage({ searchParams }: { searchParams: { t
   if (!mod) redirect("/overview");
 
   const [{ data: quotes }, { data: suppliers }, { data: payments }] = await Promise.all([
-    supabase.from("price_quotes").select("*").eq("household_id", ctx.householdId).order("quoted_at", { ascending: false }),
+    supabase
+      .from("price_quotes")
+      .select("*")
+      .eq("household_id", ctx.householdId)
+      .order("quoted_at", { ascending: false }),
     supabase.from("suppliers").select("*").eq("household_id", ctx.householdId).order("name"),
     supabase
       .from("quote_payments")
@@ -29,7 +33,10 @@ export default async function CotacoesPage({ searchParams }: { searchParams: { t
 
   return (
     <div>
-      <ObraSectionHeader title="Cotações" subtitle="Compare preços, execute e acompanhe os pagamentos" />
+      <ObraSectionHeader
+        title="Cotações"
+        subtitle="Compare preços, execute e acompanhe os pagamentos"
+      />
       <ObraQuotesTab
         householdId={ctx.householdId}
         suppliers={suppliers ?? []}

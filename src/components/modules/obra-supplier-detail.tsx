@@ -1,6 +1,27 @@
 "use client";
 
-import { Ban, Building2, Check, CheckCircle2, ChevronDown, ChevronUp, Circle, FileText, Loader2, MapPin, MessageCircle, Pencil, Play, Plus, Receipt, ShoppingBag, Star, Trash2, Upload } from "lucide-react";
+import {
+  Ban,
+  Building2,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Circle,
+  FileText,
+  Loader2,
+  MapPin,
+  MessageCircle,
+  Pencil,
+  Play,
+  Plus,
+  Receipt,
+  ShoppingBag,
+  Star,
+  Trash2,
+  Upload,
+  XCircle,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -41,6 +62,7 @@ export interface QuoteRow {
   total_amount: number | null;
   cancelled_at?: string | null;
   cancel_reason?: string | null;
+  rejected_at?: string | null;
 }
 
 export interface PurchaseRow {
@@ -87,9 +109,31 @@ function fmtFileSize(bytes: number | null): string {
 }
 
 const CATEGORIES = ["material", "mão-de-obra", "equipamento", "serviço", "outro"];
-const UNITS = ["un", "m", "m2", "m3", "kg", "saco", "litro", "rolo", "barra", "caixa", "hora", "diária"];
+const UNITS = [
+  "un",
+  "m",
+  "m2",
+  "m3",
+  "kg",
+  "saco",
+  "litro",
+  "rolo",
+  "barra",
+  "caixa",
+  "hora",
+  "diária",
+];
 
-export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, quotes: initialQuotes, purchases: initialPurchases, budgetFiles: initialBudgetFiles, payments: initialPayments, canWrite }: Props) {
+export function ObraSupplierDetail({
+  supplier: initial,
+  householdId,
+  moduleId,
+  quotes: initialQuotes,
+  purchases: initialPurchases,
+  budgetFiles: initialBudgetFiles,
+  payments: initialPayments,
+  canWrite,
+}: Props) {
   const supabase = createSupabaseBrowser();
   const router = useRouter();
   const [supplier, setSupplier] = useState(initial);
@@ -116,7 +160,10 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "start", supplier_id: supplier.id }),
       });
-      const data = (await res.json().catch(() => ({}))) as { conversation_id?: string; error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        conversation_id?: string;
+        error?: string;
+      };
       if (!res.ok || !data.conversation_id) {
         toast.error(data.error ?? "Não consegui abrir a conversa.");
         if (data.error?.includes("Conecte")) router.push("/overview/conversas");
@@ -129,7 +176,12 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
   }
   const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null);
   const [showAddQuote, setShowAddQuote] = useState(false);
-  const [newQuote, setNewQuote] = useState({ item_name: "", unit: "un", unit_price: "", quoted_at: todayISO() });
+  const [newQuote, setNewQuote] = useState({
+    item_name: "",
+    unit: "un",
+    unit_price: "",
+    quoted_at: todayISO(),
+  });
   const [savingNewQuote, setSavingNewQuote] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [dropActive, setDropActive] = useState(false);
@@ -170,7 +222,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
         toast.error("Falha ao salvar cotação.");
         return;
       }
-      setQuotes((s) => s.map((q) => (q.id === id ? { ...q, ...quoteDraft } as QuoteRow : q)));
+      setQuotes((s) => s.map((q) => (q.id === id ? ({ ...q, ...quoteDraft } as QuoteRow) : q)));
       setEditingQuoteId(null);
       toast.success("Cotação atualizada.");
     } finally {
@@ -225,9 +277,41 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
     }
   }
 
+  async function setRejected(id: string, rejected: boolean) {
+    if (!canWrite) return;
+    const quote = quotes.find((q) => q.id === id);
+    if (
+      rejected &&
+      !(await confirm(
+        `Recusar a cotação de "${quote?.item_name ?? ""}"? Ela sai de Em aberto e fica em Recusadas.`,
+      ))
+    )
+      return;
+    const value = rejected ? todayISO() : null;
+    const { data, error } = await supabase
+      .from("price_quotes")
+      .update({ rejected_at: value })
+      .eq("id", id)
+      .is("execution_started_at", null)
+      .is("accepted_at", null)
+      .select("id")
+      .maybeSingle();
+    if (error || !data) {
+      toast.error(rejected ? "Falha ao recusar." : "Falha ao reabrir.");
+      return;
+    }
+    setQuotes((s) => s.map((q) => (q.id === id ? { ...q, rejected_at: value } : q)));
+    toast.success(rejected ? "Cotação recusada." : "Cotação reaberta.");
+  }
+
   async function reopenQuote(id: string) {
     if (!canWrite) return;
-    if (!(await confirm("Voltar essa cotação pra em aberto? O custo lançado não é apagado; pra isso, apague em Custos."))) return;
+    if (
+      !(await confirm(
+        "Voltar essa cotação pra em aberto? O custo lançado não é apagado; pra isso, apague em Custos.",
+      ))
+    )
+      return;
     const { error } = await supabase
       .from("price_quotes")
       .update({ accepted_at: null, execution_started_at: null, total_amount: null })
@@ -236,7 +320,13 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
       toast.error("Falha ao reabrir.");
       return;
     }
-    setQuotes((s) => s.map((q) => (q.id === id ? { ...q, accepted_at: null, execution_started_at: null, total_amount: null } : q)));
+    setQuotes((s) =>
+      s.map((q) =>
+        q.id === id
+          ? { ...q, accepted_at: null, execution_started_at: null, total_amount: null }
+          : q,
+      ),
+    );
     toast.success("Cotação reaberta.");
   }
 
@@ -256,13 +346,17 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
     const done = p.status === "done";
     const nextStatus = done ? "todo" : "done";
     const nextBoughtAt = done ? null : todayISO();
-    setPurchases((s) => s.map((x) => (x.id === p.id ? { ...x, status: nextStatus, bought_at: nextBoughtAt } : x)));
+    setPurchases((s) =>
+      s.map((x) => (x.id === p.id ? { ...x, status: nextStatus, bought_at: nextBoughtAt } : x)),
+    );
     const { error } = await supabase
       .from("obra_items")
       .update({ status: nextStatus, bought_at: nextBoughtAt })
       .eq("id", p.id);
     if (error) {
-      setPurchases((s) => s.map((x) => (x.id === p.id ? { ...x, status: p.status, bought_at: p.bought_at } : x)));
+      setPurchases((s) =>
+        s.map((x) => (x.id === p.id ? { ...x, status: p.status, bought_at: p.bought_at } : x)),
+      );
       toast.error("Falha ao atualizar.");
     }
   }
@@ -284,7 +378,9 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
         toast.error("Falha ao salvar item.");
         return;
       }
-      setPurchases((s) => s.map((p) => (p.id === id ? { ...p, ...purchaseDraft } as PurchaseRow : p)));
+      setPurchases((s) =>
+        s.map((p) => (p.id === id ? ({ ...p, ...purchaseDraft } as PurchaseRow) : p)),
+      );
       setEditingPurchaseId(null);
       toast.success("Item atualizado.");
     } finally {
@@ -307,7 +403,13 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
 
   async function removePurchase(itemId: string) {
     if (!canWrite || removingId) return;
-    if (!(await confirm("Apagar esse custo já executado? Ele sai do Gasto. Se veio de uma cotação, ela volta pra em aberto (ou o pagamento volta pra agendado).", { danger: true }))) return;
+    if (
+      !(await confirm(
+        "Apagar esse custo já executado? Ele sai do Gasto. Se veio de uma cotação, ela volta pra em aberto (ou o pagamento volta pra agendado).",
+        { danger: true },
+      ))
+    )
+      return;
     setRemovingId(itemId);
     try {
       const res = await fetch("/api/obra/revert-purchase", {
@@ -319,18 +421,30 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
         toast.error("Falha ao apagar.");
         return;
       }
-      const data = (await res.json()) as { quote_id: string | null; payment_quote_id?: string | null };
+      const data = (await res.json()) as {
+        quote_id: string | null;
+        payment_quote_id?: string | null;
+      };
       setPurchases((s) => s.filter((p) => p.id !== itemId));
       if (data.quote_id) {
         setQuotes((s) =>
-          s.map((q) => (q.id === data.quote_id ? { ...q, accepted_at: null, execution_started_at: null, total_amount: null } : q)),
+          s.map((q) =>
+            q.id === data.quote_id
+              ? { ...q, accepted_at: null, execution_started_at: null, total_amount: null }
+              : q,
+          ),
         );
       }
       if (data.payment_quote_id) {
-        const snap = await callExecution<QuoteRow>({ action: "get", quote_id: data.payment_quote_id });
+        const snap = await callExecution<QuoteRow>({
+          action: "get",
+          quote_id: data.payment_quote_id,
+        });
         if (snap) applySnapshot(snap);
       }
-      toast.success(data.payment_quote_id ? "Pagamento desfeito, voltou pra agendado." : "Removido.");
+      toast.success(
+        data.payment_quote_id ? "Pagamento desfeito, voltou pra agendado." : "Removido.",
+      );
     } finally {
       setRemovingId(null);
     }
@@ -342,7 +456,13 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
     try {
       let okCount = 0;
       for (const file of Array.from(files)) {
-        const result = await uploadObraFile(supabase, "obra-documents", householdId, moduleId, file);
+        const result = await uploadObraFile(
+          supabase,
+          "obra-documents",
+          householdId,
+          moduleId,
+          file,
+        );
         if ("error" in result) {
           toast.error(`Falha no upload de "${file.name}": ${result.error}`);
           continue;
@@ -366,7 +486,8 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
         setBudgetFiles((s) => [data as BudgetFile, ...s]);
         okCount += 1;
       }
-      if (okCount > 0) toast.success(okCount === 1 ? "PDF adicionado." : `${okCount} PDFs adicionados.`);
+      if (okCount > 0)
+        toast.success(okCount === 1 ? "PDF adicionado." : `${okCount} PDFs adicionados.`);
     } finally {
       setUploadingBudget(false);
     }
@@ -464,7 +585,11 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
     if (snap.quote) applySnapshot(snap);
     else if (target.kind === "item") {
       setPurchases((s) =>
-        s.map((x) => (x.id === target.item.id ? { ...x, status: "cancelled", cancelled_at: date, cancel_reason: reason || null } : x)),
+        s.map((x) =>
+          x.id === target.item.id
+            ? { ...x, status: "cancelled", cancelled_at: date, cancel_reason: reason || null }
+            : x,
+        ),
       );
     }
     toast.success("Compra cancelada. Saiu do gasto e ficou no histórico.");
@@ -487,8 +612,16 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
             )}
             <div className="flex items-center gap-0.5">
               {[1, 2, 3, 4, 5].map((n) => (
-                <button key={n} type="button" disabled={!canWrite} onClick={() => rate(n)} aria-label={`Nota ${n}`}>
-                  <Star className={`h-4 w-4 ${(supplier.rating ?? 0) >= n ? "fill-warning text-warning" : "text-text-muted"}`} />
+                <button
+                  key={n}
+                  type="button"
+                  disabled={!canWrite}
+                  onClick={() => rate(n)}
+                  aria-label={`Nota ${n}`}
+                >
+                  <Star
+                    className={`h-4 w-4 ${(supplier.rating ?? 0) >= n ? "fill-warning text-warning" : "text-text-muted"}`}
+                  />
                 </button>
               ))}
             </div>
@@ -504,7 +637,13 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
               >
                 {editing ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </Button>
-              <Button variant="ghost" size="icon" onClick={remove} disabled={pending} aria-label="Apagar fornecedor">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={remove}
+                disabled={pending}
+                aria-label="Apagar fornecedor"
+              >
                 <Trash2 className="h-4 w-4 text-danger" />
               </Button>
             </div>
@@ -521,29 +660,50 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
                 className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
               >
                 {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
                 ))}
               </select>
             </div>
             <div className="space-y-1">
               <Label>CNPJ</Label>
-              <Input value={draft.cnpj ?? ""} onChange={(e) => setDraft({ ...draft, cnpj: e.target.value })} placeholder="00.000.000/0001-00" />
+              <Input
+                value={draft.cnpj ?? ""}
+                onChange={(e) => setDraft({ ...draft, cnpj: e.target.value })}
+                placeholder="00.000.000/0001-00"
+              />
             </div>
             <div className="space-y-1">
               <Label>Telefone</Label>
-              <Input value={draft.phone ?? ""} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} placeholder="(11) 99999-9999" />
+              <Input
+                value={draft.phone ?? ""}
+                onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
+                placeholder="(11) 99999-9999"
+              />
             </div>
             <div className="space-y-1">
               <Label>2º telefone</Label>
-              <Input value={draft.phone2 ?? ""} onChange={(e) => setDraft({ ...draft, phone2: e.target.value })} placeholder="(11) 98888-8888" />
+              <Input
+                value={draft.phone2 ?? ""}
+                onChange={(e) => setDraft({ ...draft, phone2: e.target.value })}
+                placeholder="(11) 98888-8888"
+              />
             </div>
             <div className="space-y-1 sm:col-span-2">
               <Label>Endereço</Label>
-              <Input value={draft.address ?? ""} onChange={(e) => setDraft({ ...draft, address: e.target.value })} placeholder="Rua, número, bairro, cidade" />
+              <Input
+                value={draft.address ?? ""}
+                onChange={(e) => setDraft({ ...draft, address: e.target.value })}
+                placeholder="Rua, número, bairro, cidade"
+              />
             </div>
             <div className="space-y-1 sm:col-span-2">
               <Label>Notas</Label>
-              <Input value={draft.notes ?? ""} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
+              <Input
+                value={draft.notes ?? ""}
+                onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+              />
             </div>
           </div>
         ) : (
@@ -555,12 +715,22 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
               </p>
             )}
             {supplier.phone && (
-              <a href={waLink(supplier.phone)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-primary hover:underline">
+              <a
+                href={waLink(supplier.phone)}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 text-primary hover:underline"
+              >
                 <MessageCircle className="h-3.5 w-3.5" /> {supplier.phone}
               </a>
             )}
             {supplier.phone2 && (
-              <a href={waLink(supplier.phone2)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-primary hover:underline">
+              <a
+                href={waLink(supplier.phone2)}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 text-primary hover:underline"
+              >
                 <MessageCircle className="h-3.5 w-3.5" /> {supplier.phone2}
               </a>
             )}
@@ -571,7 +741,12 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
                 onClick={openChat}
                 className="flex items-center gap-1.5 font-medium text-primary hover:underline disabled:opacity-60"
               >
-                {openingChat ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />} Conversar pelo app
+                {openingChat ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <MessageCircle className="h-3.5 w-3.5" />
+                )}{" "}
+                Conversar pelo app
               </button>
             )}
             {supplier.address && (
@@ -591,7 +766,11 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
           </h3>
           {canWrite && (
             <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-primary hover:underline">
-              {uploadingBudget ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              {uploadingBudget ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Upload className="h-3.5 w-3.5" />
+              )}
               Adicionar PDF
               <input
                 type="file"
@@ -608,7 +787,11 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
           )}
         </div>
         {budgetFiles.length === 0 ? (
-          <Empty icon={FileText} title="Sem arquivos ainda" description="Anexe orçamentos e comprovantes desse fornecedor em PDF. Pode subir mais de um." />
+          <Empty
+            icon={FileText}
+            title="Sem arquivos ainda"
+            description="Anexe orçamentos e comprovantes desse fornecedor em PDF. Pode subir mais de um."
+          />
         ) : (
           <Card className="divide-y divide-border">
             {budgetFiles.map((f) => (
@@ -616,7 +799,12 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-bg-elev-2 text-text-muted">
                   <FileText className="h-4 w-4" />
                 </span>
-                <a href={f.file_url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 hover:underline">
+                <a
+                  href={f.file_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="min-w-0 flex-1 hover:underline"
+                >
                   <p className="truncate font-medium">{f.name}</p>
                   <p className="text-xs text-text-muted">
                     {fmtDate(f.created_at, "dd/MM/yyyy")}
@@ -668,7 +856,9 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
                 className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
               >
                 {UNITS.map((u) => (
-                  <option key={u} value={u}>{u}</option>
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
                 ))}
               </select>
               <Input
@@ -685,8 +875,14 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
               />
             </div>
             <div className="mt-2 flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setShowAddQuote(false)}>Cancelar</Button>
-              <Button size="sm" disabled={savingNewQuote || !newQuote.item_name.trim() || !newQuote.unit_price} onClick={addNewQuote}>
+              <Button variant="ghost" size="sm" onClick={() => setShowAddQuote(false)}>
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                disabled={savingNewQuote || !newQuote.item_name.trim() || !newQuote.unit_price}
+                onClick={addNewQuote}
+              >
                 Salvar
               </Button>
             </div>
@@ -694,11 +890,16 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
         )}
         {canWrite && quotes.some((q) => quoteStatus(q) === "aberto") && (
           <p className="mb-2 text-[11px] text-text-muted">
-            Clique em <Play className="inline h-3 w-3" /> Executar (valor total ou parcial), ou arraste a cotação pra Custos.
+            Clique em <Play className="inline h-3 w-3" /> Executar (valor total ou parcial), ou
+            arraste a cotação pra Custos.
           </p>
         )}
         {quotes.length === 0 ? (
-          <Empty icon={Receipt} title="Sem cotações" description="Registre o preço que esse fornecedor passou." />
+          <Empty
+            icon={Receipt}
+            title="Sem cotações"
+            description="Registre o preço que esse fornecedor passou."
+          />
         ) : (
           <Card className="divide-y divide-border">
             {quotes.map((q) => {
@@ -711,23 +912,51 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
                 <div key={q.id}>
                   <div
                     draggable={draggableNow}
-                    onDragStart={(e) => draggableNow && e.dataTransfer.setData("text/quote-id", q.id)}
-                    onClick={() => (status === "aberto" ? openQuote(q) : status === "execucao" && setExpandedQuoteId(expanded ? null : q.id))}
-                    className={`flex items-center justify-between gap-3 p-3 text-sm ${canWrite ? "cursor-pointer hover:bg-bg-elev-2" : ""} ${draggableNow ? "active:cursor-grabbing" : ""} ${status === "aceita" ? "opacity-60" : ""}`}
+                    onDragStart={(e) =>
+                      draggableNow && e.dataTransfer.setData("text/quote-id", q.id)
+                    }
+                    onClick={() =>
+                      status === "aberto"
+                        ? openQuote(q)
+                        : status === "execucao" && setExpandedQuoteId(expanded ? null : q.id)
+                    }
+                    className={`flex items-center justify-between gap-3 p-3 text-sm ${canWrite ? "cursor-pointer hover:bg-bg-elev-2" : ""} ${draggableNow ? "active:cursor-grabbing" : ""} ${status === "aceita" || status === "recusada" ? "opacity-60" : ""}`}
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">{q.item_name}</p>
                       {status === "execucao" ? (
                         <QuoteProgressText quote={q} payments={qPayments} />
                       ) : (
-                        <p className="text-xs text-text-muted">{fmtDate(q.quoted_at, "dd/MM/yyyy")} · {q.unit}</p>
+                        <p className="text-xs text-text-muted">
+                          {fmtDate(q.quoted_at, "dd/MM/yyyy")} · {q.unit}
+                        </p>
                       )}
                     </div>
                     <Money value={q.unit_price} size="sm" className="shrink-0" />
                     {status === "execucao" && (
                       <Badge variant="secondary" className="shrink-0">
-                        em execução {expanded ? <ChevronUp className="ml-0.5 inline h-3 w-3" /> : <ChevronDown className="ml-0.5 inline h-3 w-3" />}
+                        em execução{" "}
+                        {expanded ? (
+                          <ChevronUp className="ml-0.5 inline h-3 w-3" />
+                        ) : (
+                          <ChevronDown className="ml-0.5 inline h-3 w-3" />
+                        )}
                       </Badge>
+                    )}
+                    {status === "recusada" && (
+                      <button
+                        type="button"
+                        disabled={!canWrite}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void setRejected(q.id, false);
+                        }}
+                        className="shrink-0"
+                        aria-label="Reabrir cotação recusada"
+                        title={canWrite ? "Voltar pra Em aberto" : undefined}
+                      >
+                        <Badge variant="secondary">recusada{canWrite ? " · reabrir" : ""}</Badge>
+                      </button>
                     )}
                     {status === "cancelada" && (
                       <Badge variant="secondary" className="shrink-0 text-danger">
@@ -771,6 +1000,21 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
                         className="h-7 w-7 shrink-0"
                         onClick={(e) => {
                           e.stopPropagation();
+                          void setRejected(q.id, true);
+                        }}
+                        aria-label="Recusar cotação"
+                        title="Recusar (fica em Recusadas)"
+                      >
+                        <XCircle className="h-3.5 w-3.5 text-text-muted" />
+                      </Button>
+                    )}
+                    {canWrite && status === "aberto" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           openQuote(q);
                         }}
                         aria-label="Editar cotação"
@@ -793,13 +1037,20 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
                     )}
                   </div>
                   {status === "execucao" && expanded && (
-                    <QuotePaymentsPanel quote={q} payments={qPayments} canWrite={canWrite} onChange={applySnapshot} />
+                    <QuotePaymentsPanel
+                      quote={q}
+                      payments={qPayments}
+                      canWrite={canWrite}
+                      onChange={applySnapshot}
+                    />
                   )}
                   {isEditing && (
                     <div className="grid gap-2 border-t border-border bg-bg-elev-2 p-3 sm:grid-cols-4">
                       <Input
                         value={quoteDraft.item_name ?? ""}
-                        onChange={(e) => setQuoteDraft({ ...quoteDraft, item_name: e.target.value })}
+                        onChange={(e) =>
+                          setQuoteDraft({ ...quoteDraft, item_name: e.target.value })
+                        }
                         placeholder="Item"
                         className="sm:col-span-2"
                       />
@@ -812,21 +1063,38 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
                         type="number"
                         step="0.01"
                         value={quoteDraft.unit_price ?? ""}
-                        onChange={(e) => setQuoteDraft({ ...quoteDraft, unit_price: e.target.value === "" ? undefined : Number(e.target.value) })}
+                        onChange={(e) =>
+                          setQuoteDraft({
+                            ...quoteDraft,
+                            unit_price: e.target.value === "" ? undefined : Number(e.target.value),
+                          })
+                        }
                         placeholder="Preço"
                       />
                       <Input
                         type="date"
                         value={quoteDraft.quoted_at ?? ""}
-                        onChange={(e) => setQuoteDraft({ ...quoteDraft, quoted_at: e.target.value })}
+                        onChange={(e) =>
+                          setQuoteDraft({ ...quoteDraft, quoted_at: e.target.value })
+                        }
                         className="sm:col-span-2"
                       />
                       <div className="flex gap-2 sm:col-span-2 sm:justify-end">
-                        <Button variant="ghost" size="sm" className="mr-auto text-danger hover:text-danger" disabled={savingQuote} onClick={() => removeQuote(q.id)}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="mr-auto text-danger hover:text-danger"
+                          disabled={savingQuote}
+                          onClick={() => removeQuote(q.id)}
+                        >
                           <Trash2 className="h-3.5 w-3.5" /> Apagar
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setEditingQuoteId(null)}>Cancelar</Button>
-                        <Button size="sm" disabled={savingQuote} onClick={() => saveQuote(q.id)}>Salvar</Button>
+                        <Button variant="ghost" size="sm" onClick={() => setEditingQuoteId(null)}>
+                          Cancelar
+                        </Button>
+                        <Button size="sm" disabled={savingQuote} onClick={() => saveQuote(q.id)}>
+                          Salvar
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -845,7 +1113,7 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
         }}
         onDragLeave={() => setDropActive(false)}
         onDrop={onDropQuote}
-        className={dropActive ? "rounded-lg ring-2 ring-primary/60 transition-shadow" : ""}
+        className={dropActive ? "ring-primary/60 rounded-lg ring-2 transition-shadow" : ""}
       >
         <div className="mb-2 flex items-center justify-between">
           <h3 className="flex items-center gap-1.5 text-sm font-semibold">
@@ -864,7 +1132,11 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
           <Empty
             icon={ShoppingBag}
             title="Sem custos ainda"
-            description={canWrite ? "Aceite uma cotação acima ou arraste ela pra cá." : "Custos aceitos aparecem aqui."}
+            description={
+              canWrite
+                ? "Aceite uma cotação acima ou arraste ela pra cá."
+                : "Custos aceitos aparecem aqui."
+            }
           />
         ) : (
           <Card className="divide-y divide-border">
@@ -875,108 +1147,154 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
               const cancelled = p.status === "cancelled";
               return (
                 <div key={p.id}>
-                <div
-                  className={`flex items-center justify-between gap-3 p-3 text-sm ${canWrite ? "hover:bg-bg-elev-2" : ""} ${done || cancelled ? "opacity-60" : ""}`}
-                >
-                  {cancelled ? (
-                    <Ban className="h-5 w-5 shrink-0 text-danger" />
-                  ) : canWrite ? (
-                    <button
-                      type="button"
-                      onClick={() => toggleDone(p)}
-                      aria-label={done ? "Marcar como a fazer" : "Marcar como feito"}
-                      className="shrink-0 text-text-muted hover:text-success"
-                    >
-                      {done ? <CheckCircle2 className="h-5 w-5 text-success" /> : <Circle className="h-5 w-5" />}
-                    </button>
-                  ) : (
-                    done ? <CheckCircle2 className="h-5 w-5 shrink-0 text-success" /> : <Circle className="h-5 w-5 shrink-0 text-text-muted" />
-                  )}
-                  <div className="min-w-0 flex-1 cursor-pointer" onClick={() => openPurchase(p)}>
-                    <p className={`truncate font-medium ${done ? "line-through" : ""}`}>{p.name}</p>
+                  <div
+                    className={`flex items-center justify-between gap-3 p-3 text-sm ${canWrite ? "hover:bg-bg-elev-2" : ""} ${done || cancelled ? "opacity-60" : ""}`}
+                  >
                     {cancelled ? (
-                      <p className="text-xs text-danger">
-                        cancelado · reembolso{p.cancelled_at && ` em ${fmtDate(p.cancelled_at, "dd/MM/yyyy")}`}
-                        {p.cancel_reason && <span className="text-text-muted"> · {p.cancel_reason}</span>}
-                      </p>
+                      <Ban className="h-5 w-5 shrink-0 text-danger" />
+                    ) : canWrite ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleDone(p)}
+                        aria-label={done ? "Marcar como a fazer" : "Marcar como feito"}
+                        className="shrink-0 text-text-muted hover:text-success"
+                      >
+                        {done ? (
+                          <CheckCircle2 className="h-5 w-5 text-success" />
+                        ) : (
+                          <Circle className="h-5 w-5" />
+                        )}
+                      </button>
+                    ) : done ? (
+                      <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
                     ) : (
-                      <p className="text-xs text-text-muted">
-                        {Number(p.quantity)} {p.unit}
-                        {done && p.bought_at && <> · feito em {fmtDate(p.bought_at, "dd/MM/yyyy")}</>}
+                      <Circle className="h-5 w-5 shrink-0 text-text-muted" />
+                    )}
+                    <div className="min-w-0 flex-1 cursor-pointer" onClick={() => openPurchase(p)}>
+                      <p className={`truncate font-medium ${done ? "line-through" : ""}`}>
+                        {p.name}
                       </p>
+                      {cancelled ? (
+                        <p className="text-xs text-danger">
+                          cancelado · reembolso
+                          {p.cancelled_at && ` em ${fmtDate(p.cancelled_at, "dd/MM/yyyy")}`}
+                          {p.cancel_reason && (
+                            <span className="text-text-muted"> · {p.cancel_reason}</span>
+                          )}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-text-muted">
+                          {Number(p.quantity)} {p.unit}
+                          {done && p.bought_at && (
+                            <> · feito em {fmtDate(p.bought_at, "dd/MM/yyyy")}</>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <Money
+                      value={total}
+                      size="sm"
+                      className={`shrink-0 ${cancelled ? "line-through" : ""}`}
+                    />
+                    {canWrite && done && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const q = p.quote_id
+                            ? quotes.find((x) => x.id === p.quote_id)
+                            : undefined;
+                          setCancelTarget(
+                            q ? { kind: "quote", quote: q } : { kind: "item", item: p },
+                          );
+                        }}
+                        aria-label="Cancelar compra (reembolso)"
+                        title="Cancelar compra (reembolso)"
+                      >
+                        <Ban className="h-3.5 w-3.5 text-text-muted" />
+                      </Button>
+                    )}
+                    {canWrite && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0"
+                        disabled={removingId === p.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removePurchase(p.id);
+                        }}
+                        aria-label="Apagar"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-danger" />
+                      </Button>
                     )}
                   </div>
-                  <Money value={total} size="sm" className={`shrink-0 ${cancelled ? "line-through" : ""}`} />
-                  {canWrite && done && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const q = p.quote_id ? quotes.find((x) => x.id === p.quote_id) : undefined;
-                        setCancelTarget(q ? { kind: "quote", quote: q } : { kind: "item", item: p });
-                      }}
-                      aria-label="Cancelar compra (reembolso)"
-                      title="Cancelar compra (reembolso)"
-                    >
-                      <Ban className="h-3.5 w-3.5 text-text-muted" />
-                    </Button>
-                  )}
-                  {canWrite && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0"
-                      disabled={removingId === p.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removePurchase(p.id);
-                      }}
-                      aria-label="Apagar"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-danger" />
-                    </Button>
-                  )}
-                </div>
-                {isEditing && (
-                  <div className="grid gap-2 border-t border-border bg-bg-elev-2 p-3 sm:grid-cols-4">
-                    <Input
-                      value={purchaseDraft.name ?? ""}
-                      onChange={(e) => setPurchaseDraft({ ...purchaseDraft, name: e.target.value })}
-                      placeholder="Item"
-                      className="sm:col-span-2"
-                    />
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={purchaseDraft.quantity ?? ""}
-                      onChange={(e) => setPurchaseDraft({ ...purchaseDraft, quantity: Number(e.target.value) })}
-                      placeholder="Quantidade"
-                    />
-                    <Input
-                      value={purchaseDraft.unit ?? ""}
-                      onChange={(e) => setPurchaseDraft({ ...purchaseDraft, unit: e.target.value })}
-                      placeholder="Unidade"
-                    />
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={purchaseDraft.actual_unit_price ?? ""}
-                      onChange={(e) => setPurchaseDraft({ ...purchaseDraft, actual_unit_price: Number(e.target.value) })}
-                      placeholder="Preço pago"
-                    />
-                    <Input
-                      type="date"
-                      value={purchaseDraft.bought_at ?? ""}
-                      onChange={(e) => setPurchaseDraft({ ...purchaseDraft, bought_at: e.target.value })}
-                    />
-                    <div className="flex gap-2 sm:col-span-2 sm:justify-end">
-                      <Button variant="ghost" size="sm" onClick={() => setEditingPurchaseId(null)}>Cancelar</Button>
-                      <Button size="sm" disabled={savingPurchase} onClick={() => savePurchase(p.id)}>Salvar</Button>
+                  {isEditing && (
+                    <div className="grid gap-2 border-t border-border bg-bg-elev-2 p-3 sm:grid-cols-4">
+                      <Input
+                        value={purchaseDraft.name ?? ""}
+                        onChange={(e) =>
+                          setPurchaseDraft({ ...purchaseDraft, name: e.target.value })
+                        }
+                        placeholder="Item"
+                        className="sm:col-span-2"
+                      />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={purchaseDraft.quantity ?? ""}
+                        onChange={(e) =>
+                          setPurchaseDraft({ ...purchaseDraft, quantity: Number(e.target.value) })
+                        }
+                        placeholder="Quantidade"
+                      />
+                      <Input
+                        value={purchaseDraft.unit ?? ""}
+                        onChange={(e) =>
+                          setPurchaseDraft({ ...purchaseDraft, unit: e.target.value })
+                        }
+                        placeholder="Unidade"
+                      />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={purchaseDraft.actual_unit_price ?? ""}
+                        onChange={(e) =>
+                          setPurchaseDraft({
+                            ...purchaseDraft,
+                            actual_unit_price: Number(e.target.value),
+                          })
+                        }
+                        placeholder="Preço pago"
+                      />
+                      <Input
+                        type="date"
+                        value={purchaseDraft.bought_at ?? ""}
+                        onChange={(e) =>
+                          setPurchaseDraft({ ...purchaseDraft, bought_at: e.target.value })
+                        }
+                      />
+                      <div className="flex gap-2 sm:col-span-2 sm:justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingPurchaseId(null)}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={savingPurchase}
+                          onClick={() => savePurchase(p.id)}
+                        >
+                          Salvar
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
                 </div>
               );
             })}
@@ -991,7 +1309,11 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
           allowNewSupplier={false}
           onDone={(r) => {
             setShowAddExpense(false);
-            const quote = { execution_started_at: null, total_amount: null, ...r.quote } as QuoteRow;
+            const quote = {
+              execution_started_at: null,
+              total_amount: null,
+              ...r.quote,
+            } as QuoteRow;
             setQuotes((s) => [quote, ...s]);
             if (r.payments) applySnapshot({ quote, payments: r.payments, items: r.items ?? [] });
             else if (r.item) setPurchases((s) => [r.item!, ...s]);
@@ -1002,13 +1324,18 @@ export function ObraSupplierDetail({ supplier: initial, householdId, moduleId, q
 
       {cancelTarget && (
         <CancelPurchaseDialog
-          title={cancelTarget.kind === "quote" ? cancelTarget.quote.item_name : cancelTarget.item.name}
+          title={
+            cancelTarget.kind === "quote" ? cancelTarget.quote.item_name : cancelTarget.item.name
+          }
           amount={
             cancelTarget.kind === "quote"
               ? Number(cancelTarget.quote.total_amount ?? cancelTarget.quote.unit_price)
-              : Number(cancelTarget.item.quantity) * Number(cancelTarget.item.actual_unit_price ?? cancelTarget.item.unit_price ?? 0)
+              : Number(cancelTarget.item.quantity) *
+                Number(cancelTarget.item.actual_unit_price ?? cancelTarget.item.unit_price ?? 0)
           }
-          hasSchedule={cancelTarget.kind === "quote" && quoteStatus(cancelTarget.quote) === "execucao"}
+          hasSchedule={
+            cancelTarget.kind === "quote" && quoteStatus(cancelTarget.quote) === "execucao"
+          }
           onCancel={() => setCancelTarget(null)}
           onConfirm={({ date, reason }) => confirmCancel(cancelTarget, date, reason)}
         />

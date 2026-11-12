@@ -1,6 +1,20 @@
 "use client";
 
-import { ArrowUpDown, Ban, ChevronDown, ChevronUp, Pencil, Play, Plus, Receipt, Search, Trash2, Trophy } from "lucide-react";
+import {
+  ArrowUpDown,
+  Ban,
+  ChevronDown,
+  ChevronUp,
+  Pencil,
+  Play,
+  Plus,
+  Receipt,
+  RotateCcw,
+  Search,
+  Trash2,
+  Trophy,
+  XCircle,
+} from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -42,9 +56,23 @@ export interface Quote {
   total_amount: number | null;
   cancelled_at?: string | null;
   cancel_reason?: string | null;
+  rejected_at?: string | null;
 }
 
-const UNITS = ["un", "m", "m2", "m3", "kg", "saco", "litro", "rolo", "barra", "caixa", "hora", "diária"];
+const UNITS = [
+  "un",
+  "m",
+  "m2",
+  "m3",
+  "kg",
+  "saco",
+  "litro",
+  "rolo",
+  "barra",
+  "caixa",
+  "hora",
+  "diária",
+];
 
 const SORT_OPTIONS = [
   { value: "item-asc", label: "Item (A-Z)" },
@@ -65,7 +93,14 @@ interface Props {
   canWrite: boolean;
 }
 
-export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments, initialTab = "aberto", canWrite }: Props) {
+export function ObraQuotesTab({
+  householdId,
+  suppliers,
+  initial,
+  initialPayments,
+  initialTab = "aberto",
+  canWrite,
+}: Props) {
   const supabase = createSupabaseBrowser();
   const [quotes, setQuotes] = useState(initial);
   const [pending, start] = useTransition();
@@ -86,7 +121,13 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
   });
 
   const counts = useMemo(() => {
-    const c: Record<QuoteStatus, number> = { aberto: 0, execucao: 0, aceita: 0, cancelada: 0 };
+    const c: Record<QuoteStatus, number> = {
+      aberto: 0,
+      execucao: 0,
+      aceita: 0,
+      cancelada: 0,
+      recusada: 0,
+    };
     for (const q of quotes) c[quoteStatus(q)]++;
     return c;
   }, [quotes]);
@@ -125,8 +166,14 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
         return groups.sort((a, b) => Number(b.list[0]!.unit_price) - Number(a.list[0]!.unit_price));
       case "recent":
         return groups.sort((a, b) => {
-          const aRecent = a.list.reduce((m, q) => (q.quoted_at > m ? q.quoted_at : m), a.list[0]!.quoted_at);
-          const bRecent = b.list.reduce((m, q) => (q.quoted_at > m ? q.quoted_at : m), b.list[0]!.quoted_at);
+          const aRecent = a.list.reduce(
+            (m, q) => (q.quoted_at > m ? q.quoted_at : m),
+            a.list[0]!.quoted_at,
+          );
+          const bRecent = b.list.reduce(
+            (m, q) => (q.quoted_at > m ? q.quoted_at : m),
+            b.list[0]!.quoted_at,
+          );
           return bRecent.localeCompare(aRecent);
         });
       case "item-asc":
@@ -177,9 +224,50 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
     setExpandedId(status === "execucao" ? snap.quote.id : null);
   }
 
+  async function setRejected(q: Quote, rejected: boolean) {
+    if (!canWrite) return;
+    if (
+      rejected &&
+      !(await confirm(
+        `Recusar a cotação de "${q.item_name}" (${supplierName(q.supplier_id)})? Ela sai de Em aberto e fica guardada em Recusadas.`,
+      ))
+    )
+      return;
+    start(async () => {
+      const value = rejected ? todayISO() : null;
+      const { data, error } = await supabase
+        .from("price_quotes")
+        .update({ rejected_at: value })
+        .eq("id", q.id)
+        .is("execution_started_at", null)
+        .is("accepted_at", null)
+        .select("id")
+        .maybeSingle();
+      if (error || !data) {
+        toast.error(
+          rejected
+            ? "Falha ao recusar. Atualize a página."
+            : "Falha ao reabrir. Atualize a página.",
+        );
+        return;
+      }
+      setQuotes((s) => s.map((x) => (x.id === q.id ? { ...x, rejected_at: value } : x)));
+      toast.success(
+        rejected
+          ? "Cotação recusada. Está em Recusadas."
+          : "Cotação reaberta. Voltou pra Em aberto.",
+      );
+    });
+  }
+
   async function remove(q: Quote) {
     if (!canWrite) return;
-    if (!(await confirm(`Apagar a cotação de "${q.item_name}" (${supplierName(q.supplier_id)})?`, { danger: true }))) return;
+    if (
+      !(await confirm(`Apagar a cotação de "${q.item_name}" (${supplierName(q.supplier_id)})?`, {
+        danger: true,
+      }))
+    )
+      return;
     start(async () => {
       const { error } = await supabase.from("price_quotes").delete().eq("id", q.id);
       if (error) {
@@ -253,7 +341,7 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
         <Card className="p-4">
           <p className="mb-3 text-sm font-semibold">Nova cotação</p>
           <div className="grid gap-2 sm:grid-cols-6">
-            <div className="sm:col-span-2 space-y-1">
+            <div className="space-y-1 sm:col-span-2">
               <Label htmlFor="qname">Item</Label>
               <Input
                 id="qname"
@@ -299,11 +387,20 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                 type="number"
                 step="0.01"
                 value={draft.unit_price ?? ""}
-                onChange={(e) => setDraft({ ...draft, unit_price: e.target.value === "" ? undefined : Number(e.target.value) })}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    unit_price: e.target.value === "" ? undefined : Number(e.target.value),
+                  })
+                }
               />
             </div>
             <div className="flex items-end">
-              <Button onClick={add} disabled={pending || !draft.item_name?.trim() || draft.unit_price == null} className="w-full">
+              <Button
+                onClick={add}
+                disabled={pending || !draft.item_name?.trim() || draft.unit_price == null}
+                className="w-full"
+              >
                 <Plus className="h-4 w-4" /> Adicionar
               </Button>
             </div>
@@ -317,6 +414,7 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
             ["aberto", "Em aberto"],
             ["execucao", "Em execução"],
             ["aceita", "Aceita"],
+            ["recusada", "Recusadas"],
             ["cancelada", "Canceladas"],
           ] as const
         ).map(([value, label]) => (
@@ -326,7 +424,7 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
             onClick={() => setActiveTab(value)}
             className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
               activeTab === value
-                ? "border-primary bg-primary/10 text-primary"
+                ? "bg-primary/10 border-primary text-primary"
                 : "border-border text-text-muted hover:bg-bg-elev-2"
             }`}
           >
@@ -369,24 +467,28 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
           title={
             supplierQuery.trim()
               ? "Nenhuma cotação desse fornecedor"
-              : activeTab === "cancelada"
-                ? "Nenhuma compra cancelada"
-                : activeTab === "aceita"
-                ? "Nenhuma cotação aceita ainda"
-                : activeTab === "execucao"
-                  ? "Nada em execução"
-                  : "Sem cotações em aberto"
+              : activeTab === "recusada"
+                ? "Nenhuma cotação recusada"
+                : activeTab === "cancelada"
+                  ? "Nenhuma compra cancelada"
+                  : activeTab === "aceita"
+                    ? "Nenhuma cotação aceita ainda"
+                    : activeTab === "execucao"
+                      ? "Nada em execução"
+                      : "Sem cotações em aberto"
           }
           description={
             supplierQuery.trim()
               ? "Tenta buscar por outro nome."
-              : activeTab === "cancelada"
-                ? "Compra cancelada com reembolso aparece aqui, fora do gasto."
-                : activeTab === "aceita"
-                ? "Cotação paga por inteiro aparece aqui."
-                : activeTab === "execucao"
-                  ? "Cotação com pagamento parcial ou agendado aparece aqui até quitar."
-                  : "Registre preços de fornecedores diferentes pra comparar."
+              : activeTab === "recusada"
+                ? "Cotação que você recusou fica guardada aqui, fora da comparação. Dá pra reabrir."
+                : activeTab === "cancelada"
+                  ? "Compra cancelada com reembolso aparece aqui, fora do gasto."
+                  : activeTab === "aceita"
+                    ? "Cotação paga por inteiro aparece aqui."
+                    : activeTab === "execucao"
+                      ? "Cotação com pagamento parcial ou agendado aparece aqui até quitar."
+                      : "Registre preços de fornecedores diferentes pra comparar."
           }
         />
       ) : (
@@ -417,6 +519,11 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                                 cancelada{q.cancelled_at && ` em ${fmtDate(q.cancelled_at)}`}
                                 {q.cancel_reason && ` · ${q.cancel_reason}`}
                               </p>
+                            ) : status === "recusada" ? (
+                              <p className="text-[10px] text-text-muted">
+                                {fmtDate(q.quoted_at)} · recusada
+                                {q.rejected_at && ` em ${fmtDate(q.rejected_at)}`}
+                              </p>
                             ) : status === "execucao" ? (
                               <QuoteProgressText quote={q} payments={qPayments} />
                             ) : (
@@ -426,13 +533,24 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                               </p>
                             )}
                           </div>
-                          {best && g.list.length > 1 && <Badge variant="success">melhor preço</Badge>}
+                          {best && g.list.length > 1 && (
+                            <Badge variant="success">melhor preço</Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
-                          <Money value={Number(q.unit_price)} size="sm" className="num font-medium" />
+                          <Money
+                            value={Number(q.unit_price)}
+                            size="sm"
+                            className="num font-medium"
+                          />
                           <span className="text-xs text-text-muted">/{q.unit}</span>
                           {canWrite && status === "aberto" && (
-                            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setExecuting(q)}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => setExecuting(q)}
+                            >
                               <Play className="h-3 w-3" /> Executar
                             </Button>
                           )}
@@ -443,7 +561,12 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                               className="h-7 px-2 text-xs"
                               onClick={() => setExpandedId(expanded ? null : q.id)}
                             >
-                              Pagamentos {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                              Pagamentos{" "}
+                              {expanded ? (
+                                <ChevronUp className="h-3 w-3" />
+                              ) : (
+                                <ChevronDown className="h-3 w-3" />
+                              )}
                             </Button>
                           )}
                           {canWrite && (status === "aceita" || status === "execucao") && (
@@ -458,12 +581,47 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                             </Button>
                           )}
                           {canWrite && status === "aberto" && (
-                            <Button variant="ghost" size="icon" onClick={() => startEdit(q)} aria-label="Editar cotação">
-                              <Pencil className="h-4 w-4" />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setRejected(q, true)}
+                              disabled={pending}
+                              aria-label="Recusar cotação"
+                              title="Recusar (sai de Em aberto e fica em Recusadas)"
+                            >
+                              <XCircle className="h-4 w-4 text-text-muted" />
+                            </Button>
+                          )}
+                          {canWrite && status === "recusada" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => setRejected(q, false)}
+                              disabled={pending}
+                              title="Voltar pra Em aberto"
+                            >
+                              <RotateCcw className="h-3 w-3" /> Reabrir
                             </Button>
                           )}
                           {canWrite && status === "aberto" && (
-                            <Button variant="ghost" size="icon" onClick={() => remove(q)} disabled={pending} aria-label="Apagar cotação">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => startEdit(q)}
+                              aria-label="Editar cotação"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {canWrite && (status === "aberto" || status === "recusada") && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => remove(q)}
+                              disabled={pending}
+                              aria-label="Apagar cotação"
+                            >
                               <Trash2 className="h-4 w-4 text-danger" />
                             </Button>
                           )}
@@ -476,7 +634,9 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                             <Input
                               id={`ename-${q.id}`}
                               value={editDraft.item_name ?? ""}
-                              onChange={(e) => setEditDraft({ ...editDraft, item_name: e.target.value })}
+                              onChange={(e) =>
+                                setEditDraft({ ...editDraft, item_name: e.target.value })
+                              }
                             />
                           </div>
                           <div className="space-y-1 sm:col-span-2">
@@ -484,7 +644,9 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                             <select
                               id={`esup-${q.id}`}
                               value={editDraft.supplier_id ?? ""}
-                              onChange={(e) => setEditDraft({ ...editDraft, supplier_id: e.target.value })}
+                              onChange={(e) =>
+                                setEditDraft({ ...editDraft, supplier_id: e.target.value })
+                              }
                               className="h-10 w-full rounded-md border border-border bg-bg-elev px-3 text-sm"
                             >
                               {suppliers.map((s) => (
@@ -517,7 +679,11 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                               step="0.01"
                               value={editDraft.unit_price ?? ""}
                               onChange={(e) =>
-                                setEditDraft({ ...editDraft, unit_price: e.target.value === "" ? undefined : Number(e.target.value) })
+                                setEditDraft({
+                                  ...editDraft,
+                                  unit_price:
+                                    e.target.value === "" ? undefined : Number(e.target.value),
+                                })
                               }
                             />
                           </div>
@@ -527,7 +693,9 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                               id={`edate-${q.id}`}
                               type="date"
                               value={editDraft.quoted_at ?? ""}
-                              onChange={(e) => setEditDraft({ ...editDraft, quoted_at: e.target.value })}
+                              onChange={(e) =>
+                                setEditDraft({ ...editDraft, quoted_at: e.target.value })
+                              }
                             />
                           </div>
                           <div className="space-y-1 sm:col-span-2">
@@ -536,7 +704,9 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                               id={`evalid-${q.id}`}
                               type="date"
                               value={editDraft.valid_until ?? ""}
-                              onChange={(e) => setEditDraft({ ...editDraft, valid_until: e.target.value || null })}
+                              onChange={(e) =>
+                                setEditDraft({ ...editDraft, valid_until: e.target.value || null })
+                              }
                             />
                           </div>
                           <div className="flex items-end justify-end gap-2 sm:col-span-2">
@@ -550,7 +720,12 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
                         </div>
                       )}
                       {status === "execucao" && expanded && (
-                        <QuotePaymentsPanel quote={q} payments={qPayments} canWrite={canWrite} onChange={applySnapshot} />
+                        <QuotePaymentsPanel
+                          quote={q}
+                          payments={qPayments}
+                          canWrite={canWrite}
+                          onChange={applySnapshot}
+                        />
                       )}
                     </li>
                   );
@@ -570,7 +745,12 @@ export function ObraQuotesTab({ householdId, suppliers, initial, initialPayments
           hasSchedule={quoteStatus(cancelling) === "execucao"}
           onCancel={() => setCancelling(null)}
           onConfirm={async ({ date, reason }) => {
-            const snap = await callExecution<Quote>({ action: "cancel_purchase", quote_id: cancelling.id, date, reason });
+            const snap = await callExecution<Quote>({
+              action: "cancel_purchase",
+              quote_id: cancelling.id,
+              date,
+              reason,
+            });
             if (!snap) return;
             setCancelling(null);
             applySnapshot(snap);

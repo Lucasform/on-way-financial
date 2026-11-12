@@ -1071,6 +1071,7 @@ export type Database = {
           material_type_id: string | null
           notes: string | null
           quoted_at: string
+          rejected_at: string | null
           supplier_id: string
           unit: string
           unit_price: number
@@ -1089,6 +1090,7 @@ export type Database = {
           material_type_id?: string | null
           notes?: string | null
           quoted_at?: string
+          rejected_at?: string | null
           supplier_id: string
           unit?: string
           unit_price: number
@@ -1107,6 +1109,7 @@ export type Database = {
           material_type_id?: string | null
           notes?: string | null
           quoted_at?: string
+          rejected_at?: string | null
           supplier_id?: string
           unit?: string
           unit_price?: number
