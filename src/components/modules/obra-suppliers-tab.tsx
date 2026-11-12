@@ -2,7 +2,19 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowUpDown, ChevronDown, ChevronUp, MessageCircle, Phone, Plus, Receipt, Search, Star, Store, Trash2 } from "lucide-react";
+import {
+  ArrowUpDown,
+  ChevronDown,
+  ChevronUp,
+  MessageCircle,
+  Phone,
+  Plus,
+  Receipt,
+  Search,
+  Star,
+  Store,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { QuickAddExpenseDialog } from "@/components/modules/quick-add-expense-dialog";
@@ -55,26 +67,43 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
   const [showAddCost, setShowAddCost] = useState(false);
   const [sort, setSort] = useState<SortValue>("name-asc");
   const [query, setQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const s of suppliers) {
+      const c = s.category || "sem categoria";
+      counts.set(c, (counts.get(c) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [suppliers]);
 
   const sortedSuppliers = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = q ? suppliers.filter((s) => s.name.toLowerCase().includes(q)) : [...suppliers];
+    const list = suppliers.filter(
+      (s) =>
+        (!q || s.name.toLowerCase().includes(q)) &&
+        (!categoryFilter || (s.category || "sem categoria") === categoryFilter),
+    );
     switch (sort) {
       case "name-desc":
         return list.sort((a, b) => b.name.localeCompare(a.name));
       case "category":
         return list.sort(
-          (a, b) => (a.category ?? "").localeCompare(b.category ?? "") || a.name.localeCompare(b.name),
+          (a, b) =>
+            (a.category ?? "").localeCompare(b.category ?? "") || a.name.localeCompare(b.name),
         );
       case "rating":
-        return list.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || a.name.localeCompare(b.name));
+        return list.sort(
+          (a, b) => (b.rating ?? 0) - (a.rating ?? 0) || a.name.localeCompare(b.name),
+        );
       case "recent":
         return list.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
       case "name-asc":
       default:
         return list.sort((a, b) => a.name.localeCompare(b.name));
     }
-  }, [suppliers, sort, query]);
+  }, [suppliers, sort, query, categoryFilter]);
 
   function add() {
     if (!canWrite || !draft.name?.trim()) return;
@@ -132,7 +161,11 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
           <Button variant="outline" onClick={() => setShowAdd(true)} className="w-full sm:w-auto">
             <Plus className="h-4 w-4" /> Novo fornecedor
           </Button>
-          <Button variant="outline" onClick={() => setShowAddCost(true)} className="w-full sm:w-auto">
+          <Button
+            variant="outline"
+            onClick={() => setShowAddCost(true)}
+            className="w-full sm:w-auto"
+          >
             <Receipt className="h-4 w-4" /> Adicionar despesa
           </Button>
         </div>
@@ -140,7 +173,9 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
 
       {showAddCost && (
         <QuickAddExpenseDialog
-          suppliers={suppliers.map((s) => ({ id: s.id, name: s.name })).sort((a, b) => a.name.localeCompare(b.name))}
+          suppliers={suppliers
+            .map((s) => ({ id: s.id, name: s.name }))
+            .sort((a, b) => a.name.localeCompare(b.name))}
           onDone={(r) => {
             setShowAddCost(false);
             setSuppliers((s) =>
@@ -171,10 +206,12 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
         <Card className="p-4">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-sm font-semibold">Novo fornecedor</p>
-            <Button variant="ghost" size="sm" onClick={() => setShowAdd(false)}>Cancelar</Button>
+            <Button variant="ghost" size="sm" onClick={() => setShowAdd(false)}>
+              Cancelar
+            </Button>
           </div>
           <div className="grid gap-2 sm:grid-cols-5">
-            <div className="sm:col-span-2 space-y-1">
+            <div className="space-y-1 sm:col-span-2">
               <Label htmlFor="sname">Nome</Label>
               <Input
                 id="sname"
@@ -219,7 +256,11 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
             onClick={() => setMoreOpen((s) => !s)}
             className="mt-3 inline-flex items-center gap-1 text-xs text-text-muted hover:text-text"
           >
-            {moreOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {moreOpen ? (
+              <ChevronUp className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" />
+            )}
             Mais detalhes (2º telefone, CNPJ, endereço)
           </button>
 
@@ -258,7 +299,11 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
       )}
 
       {suppliers.length === 0 ? (
-        <Empty icon={Store} title="Sem fornecedores" description="Cadastre lojas e prestadores pra comparar preço e histórico." />
+        <Empty
+          icon={Store}
+          title="Sem fornecedores"
+          description="Cadastre lojas e prestadores pra comparar preço e histórico."
+        />
       ) : (
         <>
           <div className="flex items-center gap-2">
@@ -286,66 +331,91 @@ export function ObraSuppliersTab({ householdId, initial, canWrite }: Props) {
               ))}
             </select>
           </div>
-          {query.trim() && sortedSuppliers.length === 0 && (
+          {categoryCounts.length > 1 && (
+            <div className="flex flex-wrap gap-1.5">
+              {[["", suppliers.length] as const, ...categoryCounts].map(([cat, n]) => {
+                const active = (categoryFilter ?? "") === cat;
+                return (
+                  <button
+                    key={cat || "todas"}
+                    type="button"
+                    onClick={() => setCategoryFilter(cat && !active ? cat : null)}
+                    aria-pressed={active}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                      active
+                        ? "bg-primary/10 border-primary text-primary"
+                        : "border-border text-text-muted hover:bg-bg-elev-2"
+                    }`}
+                  >
+                    {cat || "Todas"} ({n})
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {(query.trim() || categoryFilter) && sortedSuppliers.length === 0 && (
             <p className="text-center text-xs text-text-muted">Nenhum fornecedor encontrado.</p>
           )}
           <ul className="space-y-2">
-          {sortedSuppliers.map((s) => (
-            <li key={s.id}>
-              <Card className="p-0">
-                <Link href={`/overview/fornecedores/${s.id}`} className="flex items-center gap-3 p-4 transition-colors hover:bg-bg-elev-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold">{s.name}</p>
-                    <p className="truncate text-xs text-text-muted">
-                      {s.category ?? "—"}
-                      {s.phone && <> · {s.phone}</>}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-0.5" onClick={(e) => e.preventDefault()}>
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        disabled={!canWrite}
-                        onClick={() => rate(s.id, n)}
-                        aria-label={`Nota ${n}`}
+            {sortedSuppliers.map((s) => (
+              <li key={s.id}>
+                <Card className="p-0">
+                  <Link
+                    href={`/overview/fornecedores/${s.id}`}
+                    className="flex items-center gap-3 p-4 transition-colors hover:bg-bg-elev-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold">{s.name}</p>
+                      <p className="truncate text-xs text-text-muted">
+                        {s.category ?? "—"}
+                        {s.phone && <> · {s.phone}</>}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-0.5" onClick={(e) => e.preventDefault()}>
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          disabled={!canWrite}
+                          onClick={() => rate(s.id, n)}
+                          aria-label={`Nota ${n}`}
+                        >
+                          <Star
+                            className={`h-4 w-4 ${
+                              (s.rating ?? 0) >= n ? "fill-warning text-warning" : "text-text-muted"
+                            }`}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    {s.phone && (
+                      <a
+                        href={waLink(s.phone)}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label="Abrir WhatsApp"
+                        className="bg-success/15 hover:bg-success/25 flex h-9 w-9 items-center justify-center rounded-full text-success"
                       >
-                        <Star
-                          className={`h-4 w-4 ${
-                            (s.rating ?? 0) >= n ? "fill-warning text-warning" : "text-text-muted"
-                          }`}
-                        />
-                      </button>
-                    ))}
-                  </div>
-                  {s.phone && (
-                    <a
-                      href={waLink(s.phone)}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      aria-label="Abrir WhatsApp"
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-success/15 text-success hover:bg-success/25"
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                    </a>
-                  )}
-                  {canWrite && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        remove(s.id);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 text-danger" />
-                    </Button>
-                  )}
-                </Link>
-              </Card>
-            </li>
-          ))}
+                        <MessageCircle className="h-4 w-4" />
+                      </a>
+                    )}
+                    {canWrite && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          remove(s.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-danger" />
+                      </Button>
+                    )}
+                  </Link>
+                </Card>
+              </li>
+            ))}
           </ul>
         </>
       )}
