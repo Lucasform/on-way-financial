@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, CheckCircle2, Loader2, Wallet } from "lucide-react";
+import { CalendarClock, CheckCircle2, ChevronRight, Loader2, Store, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -47,21 +47,34 @@ interface Props {
 
 function SupplierLink({ id, name }: { id: string | null; name: string | null }) {
   if (!name) return null;
+  if (!id) {
+    return (
+      <p className="flex min-w-0 items-center gap-1 text-xs text-text-muted">
+        <Store className="h-3 w-3 shrink-0" />
+        <span className="truncate">{name}</span>
+      </p>
+    );
+  }
   return (
-    <span className="text-text-muted">
-      {" · "}
-      {id ? (
-        <Link href={`/overview/fornecedores/${id}`} className="hover:text-primary hover:underline">
-          {name}
-        </Link>
-      ) : (
-        name
-      )}
-    </span>
+    <Link
+      href={`/overview/fornecedores/${id}`}
+      className="inline-flex max-w-full items-center gap-1 py-0.5 text-xs font-medium text-primary hover:underline"
+      title="Abrir o fornecedor"
+    >
+      <Store className="h-3 w-3 shrink-0" />
+      <span className="truncate">{name}</span>
+      <ChevronRight className="h-3 w-3 shrink-0" />
+    </Link>
   );
 }
 
-export function ObraPaymentsTab({ scheduled: initialScheduled, executed: initialExecuted, today, initialTab, canWrite }: Props) {
+export function ObraPaymentsTab({
+  scheduled: initialScheduled,
+  executed: initialExecuted,
+  today,
+  initialTab,
+  canWrite,
+}: Props) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [scheduled, setScheduled] = useState(initialScheduled);
   const [executed, setExecuted] = useState(initialExecuted);
@@ -73,11 +86,27 @@ export function ObraPaymentsTab({ scheduled: initialScheduled, executed: initial
   const overdueCount = scheduled.filter((p) => p.due_date !== null && p.due_date < today).length;
 
   const scheduledGroups = useMemo(() => {
-    const sorted = [...scheduled].sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"));
+    const sorted = [...scheduled].sort((a, b) =>
+      (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"),
+    );
     const groups = [
-      { key: "late", title: "Atrasados", list: sorted.filter((p) => p.due_date !== null && p.due_date < today) },
-      { key: "week", title: "Esta semana", list: sorted.filter((p) => p.due_date !== null && p.due_date >= today && p.due_date <= weekEnd) },
-      { key: "later", title: "Mais pra frente", list: sorted.filter((p) => p.due_date !== null && p.due_date > weekEnd) },
+      {
+        key: "late",
+        title: "Atrasados",
+        list: sorted.filter((p) => p.due_date !== null && p.due_date < today),
+      },
+      {
+        key: "week",
+        title: "Esta semana",
+        list: sorted.filter(
+          (p) => p.due_date !== null && p.due_date >= today && p.due_date <= weekEnd,
+        ),
+      },
+      {
+        key: "later",
+        title: "Mais pra frente",
+        list: sorted.filter((p) => p.due_date !== null && p.due_date > weekEnd),
+      },
       { key: "nodate", title: "Sem data", list: sorted.filter((p) => p.due_date === null) },
     ];
     return groups.filter((g) => g.list.length > 0);
@@ -128,7 +157,11 @@ export function ObraPaymentsTab({ scheduled: initialScheduled, executed: initial
   async function reschedule(p: ScheduledRow, dueDate: string) {
     setBusy(p.id);
     try {
-      const snap = await callExecution({ action: "reschedule", payment_id: p.id, due_date: dueDate });
+      const snap = await callExecution({
+        action: "reschedule",
+        payment_id: p.id,
+        due_date: dueDate,
+      });
       if (!snap) return;
       setScheduled((s) => s.map((x) => (x.id === p.id ? { ...x, due_date: dueDate } : x)));
       toast.success("Data atualizada.");
@@ -158,7 +191,12 @@ export function ObraPaymentsTab({ scheduled: initialScheduled, executed: initial
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <button type="button" onClick={() => setTab("agendados")} className="text-left">
-          <Card className={cn("p-4 transition-colors hover:bg-bg-elev-2", tab === "agendados" && "border-primary/60")}>
+          <Card
+            className={cn(
+              "p-4 transition-colors hover:bg-bg-elev-2",
+              tab === "agendados" && "border-primary/60",
+            )}
+          >
             <p className="flex items-center gap-1.5 text-xs text-text-muted">
               <CalendarClock className="h-3.5 w-3.5" /> Agendado
             </p>
@@ -171,7 +209,12 @@ export function ObraPaymentsTab({ scheduled: initialScheduled, executed: initial
           </Card>
         </button>
         <button type="button" onClick={() => setTab("executados")} className="text-left">
-          <Card className={cn("p-4 transition-colors hover:bg-bg-elev-2", tab === "executados" && "border-primary/60")}>
+          <Card
+            className={cn(
+              "p-4 transition-colors hover:bg-bg-elev-2",
+              tab === "executados" && "border-primary/60",
+            )}
+          >
             <p className="flex items-center gap-1.5 text-xs text-text-muted">
               <Wallet className="h-3.5 w-3.5" /> Executado
             </p>
@@ -193,7 +236,9 @@ export function ObraPaymentsTab({ scheduled: initialScheduled, executed: initial
             onClick={() => setTab(value)}
             className={cn(
               "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-              tab === value ? "border-primary bg-primary/10 text-primary" : "border-border text-text-muted hover:bg-bg-elev-2",
+              tab === value
+                ? "bg-primary/10 border-primary text-primary"
+                : "border-border text-text-muted hover:bg-bg-elev-2",
             )}
           >
             {label}
@@ -221,25 +266,35 @@ export function ObraPaymentsTab({ scheduled: initialScheduled, executed: initial
                     const late = p.due_date !== null && p.due_date < today;
                     const isToday = p.due_date === today;
                     return (
-                      <li key={p.id} className="flex flex-col gap-2 px-4 py-3 text-sm sm:flex-row sm:items-center sm:gap-3">
+                      <li
+                        key={p.id}
+                        className="flex flex-col gap-2 px-4 py-3 text-sm sm:flex-row sm:items-center sm:gap-3"
+                      >
                         <div className="flex min-w-0 flex-1 items-start gap-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium">
-                            {p.item_name}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium">{p.item_name}</p>
                             <SupplierLink id={p.supplier_id} name={p.supplier_name} />
-                          </p>
-                          <p className={cn("text-[11px]", late ? "font-medium text-danger" : isToday ? "font-medium text-warning" : "text-text-muted")}>
-                            {p.label} ·{" "}
-                            {p.due_date === null
-                              ? "sem data"
-                              : late
-                                ? `venceu ${fmtDate(p.due_date, "dd/MM/yyyy")}`
-                                : isToday
-                                  ? "vence hoje"
-                                  : `vence ${fmtDate(p.due_date, "dd/MM/yyyy")}`}
-                          </p>
-                        </div>
-                        <Money value={p.amount} size="sm" className="shrink-0 font-medium" />
+                            <p
+                              className={cn(
+                                "text-[11px]",
+                                late
+                                  ? "font-medium text-danger"
+                                  : isToday
+                                    ? "font-medium text-warning"
+                                    : "text-text-muted",
+                              )}
+                            >
+                              {p.label} ·{" "}
+                              {p.due_date === null
+                                ? "sem data"
+                                : late
+                                  ? `venceu ${fmtDate(p.due_date, "dd/MM/yyyy")}`
+                                  : isToday
+                                    ? "vence hoje"
+                                    : `vence ${fmtDate(p.due_date, "dd/MM/yyyy")}`}
+                            </p>
+                          </div>
+                          <Money value={p.amount} size="sm" className="shrink-0 font-medium" />
                         </div>
                         {canWrite && (
                           <div className="flex shrink-0 items-center justify-end gap-1.5">
@@ -255,8 +310,18 @@ export function ObraPaymentsTab({ scheduled: initialScheduled, executed: initial
                               disabled={busy !== null}
                               onChange={(date) => reschedule(p, date)}
                             />
-                            <Button size="sm" variant="outline" className="h-8 min-w-16 px-3 text-xs" disabled={busy !== null} onClick={() => pay(p)}>
-                              {busy === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Pagar"}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 min-w-16 px-3 text-xs"
+                              disabled={busy !== null}
+                              onClick={() => pay(p)}
+                            >
+                              {busy === p.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                "Pagar"
+                              )}
                             </Button>
                           </div>
                         )}
@@ -271,7 +336,11 @@ export function ObraPaymentsTab({ scheduled: initialScheduled, executed: initial
 
       {tab === "executados" &&
         (executedGroups.length === 0 ? (
-          <Empty icon={Wallet} title="Nada pago ainda" description="Despesas executadas e parcelas pagas aparecem aqui." />
+          <Empty
+            icon={Wallet}
+            title="Nada pago ainda"
+            description="Despesas executadas e parcelas pagas aparecem aqui."
+          />
         ) : (
           <div className="space-y-4">
             {executedGroups.map((g) => (
@@ -285,12 +354,11 @@ export function ObraPaymentsTab({ scheduled: initialScheduled, executed: initial
                     <li key={e.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">
-                          {e.name}
-                          <SupplierLink id={e.supplier_id} name={e.supplier_name} />
-                        </p>
+                        <p className="truncate font-medium">{e.name}</p>
+                        <SupplierLink id={e.supplier_id} name={e.supplier_name} />
                         <p className="text-[11px] text-text-muted">
-                          {e.payment_label && <>{e.payment_label} · </>}pago em {fmtDate(e.date, "dd/MM/yyyy")}
+                          {e.payment_label && <>{e.payment_label} · </>}pago em{" "}
+                          {fmtDate(e.date, "dd/MM/yyyy")}
                         </p>
                       </div>
                       <Money value={e.amount} size="sm" className="shrink-0" />
