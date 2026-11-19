@@ -7,9 +7,12 @@ import { getObraModule } from "@/lib/obra";
 import {
   cancelExecution,
   cancelPurchase,
+  correctPaidItem,
   payInstallment,
+  type Remainder,
   reschedulePayment,
   startExecution,
+  unpayItem,
   updatePaymentAmount,
 } from "@/lib/quote-execution";
 import { createSupabaseServer } from "@/lib/supabase/server";
@@ -23,6 +26,16 @@ const installment = z.object({
   amount: z.number().positive().max(10_000_000),
   due_date: isoDate,
 });
+
+const remainder = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("reschedule"), due_date: isoDate }),
+  z.object({ mode: z.literal("cancel") }),
+]);
+
+function toRemainder(r: z.infer<typeof remainder> | undefined): Remainder | null {
+  if (!r) return null;
+  return r.mode === "reschedule" ? { mode: "reschedule", dueDate: r.due_date } : { mode: "cancel" };
+}
 
 const payment = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("total"), date: isoDate.optional() }),
@@ -41,7 +54,21 @@ const bodySchema = z.discriminatedUnion("action", [
     quantity: z.number().positive().max(1_000_000),
     payment,
   }),
-  z.object({ action: z.literal("pay"), payment_id: z.string().uuid(), date: isoDate.optional() }),
+  z.object({
+    action: z.literal("pay"),
+    payment_id: z.string().uuid(),
+    date: isoDate.optional(),
+    amount: z.number().positive().max(10_000_000).optional(),
+    remainder: remainder.optional(),
+  }),
+  z.object({
+    action: z.literal("correct_paid"),
+    item_id: z.string().uuid(),
+    amount: z.number().positive().max(10_000_000),
+    date: isoDate,
+    remainder: remainder.optional(),
+  }),
+  z.object({ action: z.literal("unpay"), item_id: z.string().uuid() }),
   z.object({ action: z.literal("reschedule"), payment_id: z.string().uuid(), due_date: isoDate }),
   z.object({ action: z.literal("amount"), payment_id: z.string().uuid(), amount: z.number().positive().max(10_000_000) }),
   z.object({ action: z.literal("cancel"), quote_id: z.string().uuid() }),
@@ -88,7 +115,30 @@ export async function POST(req: NextRequest) {
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
     quoteId = body.quote_id;
   } else if (body.action === "pay") {
-    const r = await payInstallment(db, { householdId: ctx.householdId, moduleId: mod.id, paymentId: body.payment_id, date: body.date });
+    const r = await payInstallment(db, {
+      householdId: ctx.householdId,
+      moduleId: mod.id,
+      paymentId: body.payment_id,
+      date: body.date,
+      amount: body.amount,
+      remainder: toRemainder(body.remainder),
+    });
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+    quoteId = r.quoteId;
+  } else if (body.action === "correct_paid") {
+    const r = await correctPaidItem(db, {
+      householdId: ctx.householdId,
+      moduleId: mod.id,
+      itemId: body.item_id,
+      amount: body.amount,
+      date: body.date,
+      remainder: toRemainder(body.remainder),
+    });
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+    if (!r.quoteId) return NextResponse.json({ ok: true, quote: null, payments: [], items: [] });
+    quoteId = r.quoteId;
+  } else if (body.action === "unpay") {
+    const r = await unpayItem(db, { householdId: ctx.householdId, moduleId: mod.id, itemId: body.item_id });
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
     quoteId = r.quoteId;
   } else if (body.action === "reschedule") {

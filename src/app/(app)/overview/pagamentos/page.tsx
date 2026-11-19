@@ -32,7 +32,7 @@ export default async function PagamentosPage({ searchParams }: { searchParams: {
       .is("paid_at", null),
     supabase
       .from("obra_items")
-      .select("id, name, supplier_id, supplier, quantity, unit_price, actual_unit_price, bought_at, created_at")
+      .select("id, name, supplier_id, supplier, quantity, unit_price, actual_unit_price, bought_at, created_at, quote_id")
       .eq("module_id", mod.id)
       .eq("status", "done"),
     supabase.from("suppliers").select("id, name").eq("household_id", ctx.householdId),
@@ -60,6 +60,7 @@ export default async function PagamentosPage({ searchParams }: { searchParams: {
     amount: Number(i.quantity) * Number(i.actual_unit_price ?? i.unit_price ?? 0),
     date: i.bought_at ?? i.created_at.slice(0, 10),
     payment_label: labelByItem.get(i.id) ?? null,
+    quote_id: i.quote_id ?? null,
   }));
 
   return (

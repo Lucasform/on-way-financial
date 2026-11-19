@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarClock, Check, Loader2, Pencil, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { PaymentPlanBuilder } from "@/components/modules/payment-plan-builder";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Money } from "@/components/ui/money";
 import { fmtDate, todayISO } from "@/lib/dates";
-import { type PlanResult, toCents } from "@/lib/installments";
+import { addDaysISO, type PlanResult, toCents } from "@/lib/installments";
 import { formatBRL, parseBRL } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
@@ -74,6 +74,11 @@ const ERRORS: Record<string, string> = {
   plan_sum_mismatch: "A soma das parcelas não fecha com o restante. Confira os valores.",
   already_cancelled: "Essa compra já foi cancelada.",
   quote_rejected: "Essa cotação está recusada. Reabra antes de executar.",
+  pay_amount_out_of_range:
+    "O valor pago precisa ser maior que zero e no máximo o valor da parcela.",
+  item_not_found: "Esse pagamento não existe mais. Atualize a página.",
+  invalid_amount: "Digite um valor maior que zero.",
+  not_from_quote: "Esse lançamento não veio de cotação. Pra tirar do gasto, apague no Gasto.",
   not_executed: "Só dá pra cancelar uma compra que já foi executada.",
 };
 
@@ -107,15 +112,22 @@ export function DateButton({
   disabled,
   label,
   onChange,
+  showLabel = false,
 }: {
   value: string | null;
   disabled?: boolean;
   label: string;
   onChange: (date: string) => void;
+  showLabel?: boolean;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   return (
-    <span className="relative inline-flex h-8 w-8 shrink-0 overflow-hidden">
+    <span
+      className={cn(
+        "relative inline-flex h-8 shrink-0 overflow-hidden",
+        showLabel ? "w-auto" : "w-8",
+      )}
+    >
       <button
         type="button"
         disabled={disabled}
@@ -129,11 +141,15 @@ export function DateButton({
             el.click();
           }
         }}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-bg-elev disabled:opacity-50"
+        className={cn(
+          "inline-flex h-8 items-center justify-center gap-1 rounded-md hover:bg-bg-elev disabled:opacity-50",
+          showLabel ? "border border-border px-2 text-xs text-text-muted" : "w-8",
+        )}
         title="Mudar a data"
         aria-label={`Mudar a data de ${label}`}
       >
         <CalendarClock className="h-4 w-4 text-text-muted" />
+        {showLabel && "Reagendar"}
       </button>
       <input
         ref={ref}
@@ -401,6 +417,8 @@ export function QuotePaymentsPanel<Q extends ExecQuote>({
   onChange: (snapshot: ExecutionSnapshot<Q>) => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [paying, setPaying] = useState<QuotePayment | null>(null);
+  const [fixing, setFixing] = useState<QuotePayment | null>(null);
   const today = todayISO();
   const total = Number(quote.total_amount ?? 0);
   const paid = payments.filter((p) => p.paid_at).reduce((s, p) => s + Number(p.amount), 0);
@@ -481,11 +499,24 @@ export function QuotePaymentsPanel<Q extends ExecQuote>({
                   </p>
                 </div>
               </div>
+              {canWrite && p.paid_at && p.item_id && (
+                <div className="flex shrink-0 justify-end">
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => setFixing(p)}
+                    className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs text-primary hover:bg-bg-elev"
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> Corrigir
+                  </button>
+                </div>
+              )}
               {canWrite && !p.paid_at && (
                 <div className="flex shrink-0 items-center justify-end gap-1.5">
                   <DateButton
                     value={p.due_date}
                     label={p.label}
+                    showLabel
                     disabled={busy !== null}
                     onChange={(date) =>
                       run(
@@ -512,9 +543,7 @@ export function QuotePaymentsPanel<Q extends ExecQuote>({
                     variant="outline"
                     className="h-8 min-w-16 px-3 text-xs"
                     disabled={busy !== null}
-                    onClick={() =>
-                      run(p.id, { action: "pay", payment_id: p.id }, "Pagamento registrado.")
-                    }
+                    onClick={() => setPaying(p)}
                   >
                     {busy === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Pagar"}
                   </Button>
@@ -540,6 +569,34 @@ export function QuotePaymentsPanel<Q extends ExecQuote>({
         >
           Cancelar execução e voltar pra Em aberto
         </button>
+      )}
+      {paying && (
+        <PayDialog<Q>
+          payment={paying}
+          title={quote.item_name}
+          onClose={() => setPaying(null)}
+          onDone={(snap) => {
+            setPaying(null);
+            onChange(snap);
+          }}
+        />
+      )}
+      {fixing && fixing.item_id && (
+        <CorrectPaymentDialog
+          item={{
+            id: fixing.item_id,
+            name: `${quote.item_name} (${fixing.label})`,
+            amount: Number(fixing.amount),
+            date: fixing.paid_at,
+            fromQuote: true,
+          }}
+          onClose={() => setFixing(null)}
+          onDone={async () => {
+            setFixing(null);
+            const snap = await callExecution<Q>({ action: "get", quote_id: quote.id });
+            if (snap) onChange(snap);
+          }}
+        />
       )}
     </div>
   );
@@ -634,5 +691,381 @@ export function CancelPurchaseDialog({
         </div>
       </div>
     </>
+  );
+}
+
+type RestMode = "reschedule" | "cancel";
+
+function defaultRestDate(due: string | null | undefined) {
+  const today = todayISO();
+  return due && due > today ? due : addDaysISO(today, 7);
+}
+
+function ModalShell({
+  title,
+  subtitle,
+  onClose,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-border bg-bg-elev p-5 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">{title}</p>
+            {subtitle && <p className="truncate text-xs text-text-muted">{subtitle}</p>}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-md p-1 text-text-muted hover:text-text"
+            aria-label="Fechar"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </>
+  );
+}
+
+function RestChoice({
+  restCents,
+  mode,
+  onMode,
+  dueDate,
+  onDueDate,
+}: {
+  restCents: number;
+  mode: RestMode;
+  onMode: (m: RestMode) => void;
+  dueDate: string;
+  onDueDate: (d: string) => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-bg-elev-2 p-3">
+      <p className="text-xs font-medium">
+        Sobram <span className="num">{formatBRL(restCents / 100)}</span>. O que fazer com o
+        restante?
+      </p>
+      <label className="flex cursor-pointer items-start gap-2 text-sm">
+        <input
+          type="radio"
+          className="mt-1"
+          checked={mode === "reschedule"}
+          onChange={() => onMode("reschedule")}
+        />
+        <span className="min-w-0 flex-1">
+          Reagendar o restante
+          {mode === "reschedule" && (
+            <Input
+              type="date"
+              value={dueDate}
+              onChange={(e) => onDueDate(e.target.value)}
+              className="mt-1 h-9"
+              aria-label="Nova data do restante"
+            />
+          )}
+        </span>
+      </label>
+      <label className="flex cursor-pointer items-start gap-2 text-sm">
+        <input
+          type="radio"
+          className="mt-1"
+          checked={mode === "cancel"}
+          onChange={() => onMode("cancel")}
+        />
+        <span>
+          Cancelar o restante
+          <span className="block text-[11px] text-text-muted">
+            Desconto ou valor que não vai ser pago: o total da compra diminui.
+          </span>
+        </span>
+      </label>
+    </div>
+  );
+}
+
+/** Pagar uma parcela agendada: valor (pode ser parte), data, e o que fazer com o restante. */
+export function PayDialog<Q extends ExecQuote>({
+  payment,
+  title,
+  onClose,
+  onDone,
+}: {
+  payment: { id: string; label: string; amount: number; due_date: string | null };
+  title: string;
+  onClose: () => void;
+  onDone: (snapshot: ExecutionSnapshot<Q>) => void;
+}) {
+  const full = toCents(Number(payment.amount));
+  const [amountText, setAmountText] = useState((full / 100).toFixed(2).replace(".", ","));
+  const [date, setDate] = useState(todayISO());
+  const [mode, setMode] = useState<RestMode>("reschedule");
+  const [dueDate, setDueDate] = useState(defaultRestDate(payment.due_date));
+  const [saving, setSaving] = useState(false);
+
+  const value = parseBRL(amountText);
+  const paid = value == null ? 0 : toCents(value);
+  const rest = full - paid;
+  const invalid = paid <= 0 || paid > full;
+
+  async function submit() {
+    if (saving) return;
+    if (invalid) {
+      toast.error(`Digite um valor entre R$ 0,01 e ${formatBRL(full / 100)}.`);
+      return;
+    }
+    if (rest > 0 && mode === "reschedule" && !dueDate) {
+      toast.error("Escolha a nova data do restante.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const snap = await callExecution<Q>({
+        action: "pay",
+        payment_id: payment.id,
+        date,
+        amount: paid / 100,
+        remainder:
+          rest > 0 ? (mode === "reschedule" ? { mode, due_date: dueDate } : { mode }) : undefined,
+      });
+      if (!snap) return;
+      toast.success(
+        rest > 0
+          ? mode === "reschedule"
+            ? `Pago ${formatBRL(paid / 100)}. O restante foi pra ${fmtDate(dueDate, "dd/MM/yyyy")}.`
+            : `Pago ${formatBRL(paid / 100)}. O restante foi cancelado.`
+          : "Pagamento registrado.",
+      );
+      onDone(snap);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell
+      title={`Pagar ${payment.label}`}
+      subtitle={`${title} · parcela de ${formatBRL(full / 100)}`}
+      onClose={onClose}
+    >
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor="pay-amount">Valor pago</Label>
+            <Input
+              id="pay-amount"
+              inputMode="decimal"
+              value={amountText}
+              onChange={(e) => setAmountText(e.target.value)}
+              className="num"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="pay-date">Data do pagamento</Label>
+            <Input
+              id="pay-date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+        </div>
+        {!invalid && rest > 0 && (
+          <RestChoice
+            restCents={rest}
+            mode={mode}
+            onMode={setMode}
+            dueDate={dueDate}
+            onDueDate={setDueDate}
+          />
+        )}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Voltar
+          </Button>
+          <Button size="sm" disabled={saving} onClick={submit}>
+            {saving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : rest > 0 && !invalid ? (
+              "Pagar parte"
+            ) : (
+              "Pagar"
+            )}
+          </Button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
+/**
+ * Corrigir um pagamento já lançado sem apagar: valor e data certos. Se veio de cotação e ficou menor,
+ * o restante é reagendado ou cancelado; dá também pra desfazer (volta pra agendado).
+ */
+export function CorrectPaymentDialog({
+  item,
+  onClose,
+  onDone,
+}: {
+  item: { id: string; name: string; amount: number; date: string | null; fromQuote: boolean };
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const old = toCents(Number(item.amount));
+  const [amountText, setAmountText] = useState((old / 100).toFixed(2).replace(".", ","));
+  const [date, setDate] = useState(item.date ?? todayISO());
+  const [mode, setMode] = useState<RestMode>("reschedule");
+  const [dueDate, setDueDate] = useState(defaultRestDate(null));
+  const [saving, setSaving] = useState(false);
+  const [confirmUndo, setConfirmUndo] = useState(false);
+
+  const value = parseBRL(amountText);
+  const now = value == null ? 0 : toCents(value);
+  const rest = old - now;
+
+  async function save() {
+    if (saving) return;
+    if (now <= 0) {
+      toast.error("Digite um valor maior que zero.");
+      return;
+    }
+    if (now === old && date === (item.date ?? "")) {
+      onClose();
+      return;
+    }
+    setSaving(true);
+    try {
+      const snap = await callExecution({
+        action: "correct_paid",
+        item_id: item.id,
+        amount: now / 100,
+        date,
+        remainder:
+          item.fromQuote && rest > 0
+            ? mode === "reschedule"
+              ? { mode, due_date: dueDate }
+              : { mode }
+            : undefined,
+      });
+      if (!snap) return;
+      toast.success(
+        item.fromQuote && rest > 0 && mode === "reschedule"
+          ? `Corrigido. ${formatBRL(rest / 100)} reagendado pra ${fmtDate(dueDate, "dd/MM/yyyy")}.`
+          : "Pagamento corrigido.",
+      );
+      onDone();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function undo() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const snap = await callExecution({ action: "unpay", item_id: item.id });
+      if (!snap) return;
+      toast.success("Pagamento desfeito. O valor voltou pra Agendados.");
+      onDone();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell
+      title="Corrigir pagamento"
+      subtitle={`${item.name} · lançado ${formatBRL(old / 100)}`}
+      onClose={onClose}
+    >
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor="fix-amount">Valor que foi pago</Label>
+            <Input
+              id="fix-amount"
+              inputMode="decimal"
+              value={amountText}
+              onChange={(e) => setAmountText(e.target.value)}
+              className="num"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="fix-date">Data do pagamento</Label>
+            <Input
+              id="fix-date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+        </div>
+        {now > 0 &&
+          rest > 0 &&
+          (item.fromQuote ? (
+            <RestChoice
+              restCents={rest}
+              mode={mode}
+              onMode={setMode}
+              dueDate={dueDate}
+              onDueDate={setDueDate}
+            />
+          ) : (
+            <p className="text-[11px] text-text-muted">
+              A diferença de {formatBRL(rest / 100)} sai do gasto.
+            </p>
+          ))}
+        {now > old && (
+          <p className="text-[11px] text-text-muted">
+            O gasto aumenta {formatBRL((now - old) / 100)}.
+          </p>
+        )}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Voltar
+          </Button>
+          <Button size="sm" disabled={saving} onClick={save}>
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Salvar correção"}
+          </Button>
+        </div>
+        {item.fromQuote && (
+          <div className="border-t border-border pt-3">
+            {confirmUndo ? (
+              <div className="space-y-2">
+                <p className="text-xs text-text-muted">
+                  O lançamento sai do gasto e os {formatBRL(old / 100)} voltam pra Agendados, na
+                  data do pagamento. Confirma?
+                </p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmUndo(false)}>
+                    Não
+                  </Button>
+                  <Button variant="outline" size="sm" disabled={saving} onClick={undo}>
+                    Sim, desfazer
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmUndo(true)}
+                className="text-xs font-medium text-danger hover:underline"
+              >
+                Desfazer pagamento (volta pra Agendados)
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </ModalShell>
   );
 }

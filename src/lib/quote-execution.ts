@@ -213,38 +213,217 @@ export async function startExecution(
   return { ok: true };
 }
 
+/** O que fazer com a diferença quando se paga (ou corrige para) menos que o valor da parcela. */
+export type Remainder = { mode: "reschedule"; dueDate: string } | { mode: "cancel" };
+
+/** O total da cotação passa a ser a soma das parcelas (pagas e a pagar) e o status é recalculado. */
+async function recomputeQuoteTotal(db: Db, householdId: string, quoteId: string) {
+  const { data: all } = await db.from("quote_payments").select("amount").eq("quote_id", quoteId);
+  const totalCents = (all ?? []).reduce((s, p) => s + toCents(Number(p.amount)), 0);
+  await db
+    .from("price_quotes")
+    .update({ total_amount: totalCents / 100 })
+    .eq("id", quoteId)
+    .eq("household_id", householdId);
+  await settleQuote(db, quoteId);
+}
+
+/**
+ * Paga uma parcela agendada. Com `amount` menor que a parcela, paga só uma parte: a diferença vira
+ * uma parcela nova "(restante)" na data escolhida, ou é cancelada (o total da cotação diminui).
+ */
 export async function payInstallment(
   db: Db,
-  args: { householdId: string; moduleId: string; paymentId: string; date?: string | null },
+  args: {
+    householdId: string;
+    moduleId: string;
+    paymentId: string;
+    date?: string | null;
+    amount?: number | null;
+    remainder?: Remainder | null;
+  },
 ): Promise<{ ok: true; quoteId: string } | { ok: false; error: string; status: number }> {
   const date = args.date || todayISO();
-  const { data: payment } = await db
+  const { data: current } = await db
     .from("quote_payments")
-    .update({ paid_at: date })
+    .select("*")
     .eq("id", args.paymentId)
     .eq("household_id", args.householdId)
+    .is("paid_at", null)
+    .maybeSingle();
+  if (!current) return { ok: false, error: "payment_not_found_or_paid", status: 409 };
+  const fullCents = toCents(Number(current.amount));
+  const paidCents = args.amount == null ? fullCents : toCents(args.amount);
+  if (paidCents <= 0 || paidCents > fullCents) return { ok: false, error: "pay_amount_out_of_range", status: 400 };
+
+  const { data: payment } = await db
+    .from("quote_payments")
+    .update({ paid_at: date, amount: paidCents / 100 })
+    .eq("id", current.id)
     .is("paid_at", null)
     .select("*")
     .maybeSingle();
   if (!payment) return { ok: false, error: "payment_not_found_or_paid", status: 409 };
+  const undo = () => db.from("quote_payments").update({ paid_at: null, amount: fullCents / 100 }).eq("id", current.id);
 
   const quote = await loadQuote(db, args.householdId, payment.quote_id);
-  if (!quote) return { ok: false, error: "quote_not_found", status: 404 };
+  if (!quote) {
+    await undo();
+    return { ok: false, error: "quote_not_found", status: 404 };
+  }
+
+  let restId: string | null = null;
+  const restCents = fullCents - paidCents;
+  if (restCents > 0 && (args.remainder?.mode ?? "reschedule") === "reschedule") {
+    const due = args.remainder?.mode === "reschedule" ? args.remainder.dueDate : current.due_date;
+    const { data: rest, error: restErr } = await db
+      .from("quote_payments")
+      .insert({
+        household_id: args.householdId,
+        quote_id: quote.id,
+        label: `${current.label} (restante)`,
+        amount: restCents / 100,
+        due_date: due,
+      })
+      .select("id")
+      .single();
+    if (restErr || !rest) {
+      await undo();
+      return { ok: false, error: restErr?.message ?? "remainder_failed", status: 500 };
+    }
+    restId = rest.id;
+  }
 
   const { data: item, error } = await createPaidItem(db, {
     moduleId: args.moduleId,
     quote,
     label: payment.label,
-    amount: Number(payment.amount),
+    amount: paidCents / 100,
     date,
   });
   if (error || !item) {
-    await db.from("quote_payments").update({ paid_at: null }).eq("id", payment.id);
+    if (restId) await db.from("quote_payments").delete().eq("id", restId);
+    await undo();
     return { ok: false, error: error?.message ?? "item_failed", status: 500 };
   }
   await db.from("quote_payments").update({ item_id: item.id }).eq("id", payment.id);
-  await settleQuote(db, quote.id);
+  await recomputeQuoteTotal(db, args.householdId, quote.id);
   return { ok: true, quoteId: quote.id };
+}
+
+type ItemRow = Pick<
+  Database["public"]["Tables"]["obra_items"]["Row"],
+  "id" | "name" | "quantity" | "unit_price" | "actual_unit_price" | "bought_at" | "quote_id" | "status"
+>;
+
+async function loadDoneItem(db: Db, moduleId: string, itemId: string): Promise<ItemRow | null> {
+  const { data } = await db
+    .from("obra_items")
+    .select("id, name, quantity, unit_price, actual_unit_price, bought_at, quote_id, status")
+    .eq("id", itemId)
+    .eq("module_id", moduleId)
+    .eq("status", "done")
+    .maybeSingle();
+  return data;
+}
+
+const itemCents = (i: ItemRow) => toCents(Number(i.quantity) * Number(i.actual_unit_price ?? i.unit_price ?? 0));
+
+/**
+ * Pagamento de cotação que ainda não tem linha em quote_payments (cotação executada de uma vez):
+ * cria a linha paga pra que correção e desfazer funcionem igual às parcelas.
+ */
+async function ensurePaymentForItem(db: Db, householdId: string, item: ItemRow) {
+  const { data: existing } = await db
+    .from("quote_payments")
+    .select("*")
+    .eq("item_id", item.id)
+    .eq("household_id", householdId)
+    .maybeSingle();
+  if (existing || !item.quote_id) return existing;
+  const paidAt = item.bought_at ?? todayISO();
+  const { data } = await db
+    .from("quote_payments")
+    .insert({
+      household_id: householdId,
+      quote_id: item.quote_id,
+      label: "pagamento",
+      amount: itemCents(item) / 100,
+      due_date: paidAt,
+      paid_at: paidAt,
+      item_id: item.id,
+    })
+    .select("*")
+    .single();
+  return data;
+}
+
+/**
+ * Corrige um pagamento já lançado (valor e data) sem apagar. Se o valor certo for menor, a diferença
+ * vira parcela reagendada ou é cancelada (o total da cotação diminui). Custo avulso só muda o valor.
+ */
+export async function correctPaidItem(
+  db: Db,
+  args: { householdId: string; moduleId: string; itemId: string; amount: number; date: string; remainder?: Remainder | null },
+): Promise<{ ok: true; quoteId: string | null } | { ok: false; error: string; status: number }> {
+  const item = await loadDoneItem(db, args.moduleId, args.itemId);
+  if (!item) return { ok: false, error: "item_not_found", status: 404 };
+  const newCents = toCents(args.amount);
+  if (newCents <= 0) return { ok: false, error: "invalid_amount", status: 400 };
+  const oldCents = itemCents(item);
+
+  // Cotação sem parcelas (executada de uma vez): a linha de pagamento nasce com o valor antigo.
+  const payment = item.quote_id ? await ensurePaymentForItem(db, args.householdId, item) : null;
+  if (item.quote_id && !payment) return { ok: false, error: "payment_failed", status: 500 };
+
+  const qty = Number(item.quantity) || 1;
+  const perUnit = Math.round(newCents / qty) / 100;
+  const keepsQty = toCents(perUnit * qty) === newCents;
+  const { error: itemErr } = await db
+    .from("obra_items")
+    .update(
+      keepsQty
+        ? { actual_unit_price: perUnit, bought_at: args.date }
+        : { quantity: 1, unit_price: newCents / 100, actual_unit_price: newCents / 100, bought_at: args.date },
+    )
+    .eq("id", item.id);
+  if (itemErr) return { ok: false, error: itemErr.message, status: 500 };
+  if (!item.quote_id || !payment) return { ok: true, quoteId: null };
+
+  await db.from("quote_payments").update({ amount: newCents / 100, paid_at: args.date }).eq("id", payment.id);
+  const restCents = oldCents - newCents;
+  if (restCents > 0 && args.remainder?.mode === "reschedule") {
+    await db.from("quote_payments").insert({
+      household_id: args.householdId,
+      quote_id: item.quote_id,
+      label: `${payment.label} (restante)`,
+      amount: restCents / 100,
+      due_date: args.remainder.dueDate,
+    });
+  }
+  await recomputeQuoteTotal(db, args.householdId, item.quote_id);
+  return { ok: true, quoteId: item.quote_id };
+}
+
+/** Desfaz um pagamento de cotação: o custo sai do gasto e o valor volta a ficar agendado. */
+export async function unpayItem(
+  db: Db,
+  args: { householdId: string; moduleId: string; itemId: string },
+): Promise<{ ok: true; quoteId: string } | { ok: false; error: string; status: number }> {
+  const item = await loadDoneItem(db, args.moduleId, args.itemId);
+  if (!item) return { ok: false, error: "item_not_found", status: 404 };
+  if (!item.quote_id) return { ok: false, error: "not_from_quote", status: 400 };
+  const payment = await ensurePaymentForItem(db, args.householdId, item);
+  if (!payment) return { ok: false, error: "payment_failed", status: 500 };
+  const { error } = await db.from("quote_payments").update({ paid_at: null, item_id: null }).eq("id", payment.id);
+  if (error) return { ok: false, error: error.message, status: 500 };
+  const { error: delErr } = await db.from("obra_items").delete().eq("id", item.id).eq("module_id", args.moduleId);
+  if (delErr) {
+    await db.from("quote_payments").update({ paid_at: payment.paid_at, item_id: item.id }).eq("id", payment.id);
+    return { ok: false, error: delErr.message, status: 500 };
+  }
+  await recomputeQuoteTotal(db, args.householdId, item.quote_id);
+  return { ok: true, quoteId: item.quote_id };
 }
 
 export async function reschedulePayment(

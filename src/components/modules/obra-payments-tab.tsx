@@ -1,11 +1,18 @@
 "use client";
 
-import { CalendarClock, CheckCircle2, ChevronRight, Loader2, Store, Wallet } from "lucide-react";
+import { CalendarClock, CheckCircle2, ChevronRight, Pencil, Store, Wallet } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { AmountEditor, callExecution, DateButton } from "@/components/modules/quote-execution";
+import {
+  AmountEditor,
+  callExecution,
+  CorrectPaymentDialog,
+  DateButton,
+  PayDialog,
+} from "@/components/modules/quote-execution";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
@@ -33,6 +40,7 @@ export interface ExecutedRow {
   amount: number;
   date: string;
   payment_label: string | null;
+  quote_id: string | null;
 }
 
 type Tab = "agendados" | "executados";
@@ -79,6 +87,13 @@ export function ObraPaymentsTab({
   const [scheduled, setScheduled] = useState(initialScheduled);
   const [executed, setExecuted] = useState(initialExecuted);
   const [busy, setBusy] = useState<string | null>(null);
+  const [paying, setPaying] = useState<ScheduledRow | null>(null);
+  const [fixing, setFixing] = useState<ExecutedRow | null>(null);
+  const router = useRouter();
+
+  // depois de pagar parte, corrigir ou desfazer, a página recarrega os dados do servidor
+  useEffect(() => setScheduled(initialScheduled), [initialScheduled]);
+  useEffect(() => setExecuted(initialExecuted), [initialExecuted]);
 
   const weekEnd = addDaysISO(today, 7);
   const scheduledTotal = scheduled.reduce((s, p) => s + p.amount, 0);
@@ -125,34 +140,6 @@ export function ObraPaymentsTab({
       list,
     }));
   }, [executed]);
-
-  async function pay(p: ScheduledRow) {
-    setBusy(p.id);
-    try {
-      const snap = await callExecution({ action: "pay", payment_id: p.id });
-      if (!snap) return;
-      setScheduled((s) => s.filter((x) => x.id !== p.id));
-      const paid = snap.payments.find((x) => x.id === p.id);
-      const item = paid?.item_id ? snap.items.find((i) => i.id === paid.item_id) : undefined;
-      if (item) {
-        setExecuted((s) => [
-          {
-            id: item.id,
-            name: item.name,
-            supplier_id: p.supplier_id,
-            supplier_name: p.supplier_name,
-            amount: Number(item.quantity) * Number(item.actual_unit_price ?? item.unit_price ?? 0),
-            date: item.bought_at ?? today,
-            payment_label: p.label,
-          },
-          ...s,
-        ]);
-      }
-      toast.success("Pagamento registrado.");
-    } finally {
-      setBusy(null);
-    }
-  }
 
   async function reschedule(p: ScheduledRow, dueDate: string) {
     setBusy(p.id);
@@ -308,6 +295,7 @@ export function ObraPaymentsTab({
                               value={p.due_date}
                               label={p.label}
                               disabled={busy !== null}
+                              showLabel
                               onChange={(date) => reschedule(p, date)}
                             />
                             <Button
@@ -315,13 +303,9 @@ export function ObraPaymentsTab({
                               variant="outline"
                               className="h-8 min-w-16 px-3 text-xs"
                               disabled={busy !== null}
-                              onClick={() => pay(p)}
+                              onClick={() => setPaying(p)}
                             >
-                              {busy === p.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                "Pagar"
-                              )}
+                              Pagar
                             </Button>
                           </div>
                         )}
@@ -362,13 +346,25 @@ export function ObraPaymentsTab({
                         </p>
                       </div>
                       <Money value={e.amount} size="sm" className="shrink-0" />
+                      {canWrite && (
+                        <button
+                          type="button"
+                          onClick={() => setFixing(e)}
+                          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-primary hover:bg-bg-elev-2"
+                          aria-label={`Corrigir pagamento de ${e.name}`}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">Corrigir</span>
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
               </Card>
             ))}
             <p className="text-center text-xs text-text-muted">
-              Pra corrigir ou apagar um valor, use o{" "}
+              Toque no lápis pra corrigir valor ou data, reagendar ou cancelar o restante, ou
+              desfazer. Pra apagar de vez, use o{" "}
               <Link href="/overview/gasto" className="text-primary hover:underline">
                 Gasto
               </Link>
@@ -376,6 +372,33 @@ export function ObraPaymentsTab({
             </p>
           </div>
         ))}
+      {paying && (
+        <PayDialog
+          payment={paying}
+          title={paying.item_name}
+          onClose={() => setPaying(null)}
+          onDone={() => {
+            setPaying(null);
+            router.refresh();
+          }}
+        />
+      )}
+      {fixing && (
+        <CorrectPaymentDialog
+          item={{
+            id: fixing.id,
+            name: fixing.name,
+            amount: fixing.amount,
+            date: fixing.date,
+            fromQuote: !!fixing.quote_id,
+          }}
+          onClose={() => setFixing(null)}
+          onDone={() => {
+            setFixing(null);
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }
