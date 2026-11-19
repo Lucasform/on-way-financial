@@ -1,12 +1,19 @@
 "use client";
 
-import { AlertTriangle, Ban, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Ban, Pencil, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { QuickAddExpenseDialog, type SupplierOption } from "@/components/modules/quick-add-expense-dialog";
-import { callExecution, CancelPurchaseDialog } from "@/components/modules/quote-execution";
+import {
+  QuickAddExpenseDialog,
+  type SupplierOption,
+} from "@/components/modules/quick-add-expense-dialog";
+import {
+  callExecution,
+  CancelPurchaseDialog,
+  CorrectPaymentDialog,
+} from "@/components/modules/quote-execution";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
@@ -38,6 +45,7 @@ export function ObraCostsList({ costs, suppliers, canWrite }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<CostRow | null>(null);
+  const [fixing, setFixing] = useState<CostRow | null>(null);
 
   const nameById = new Map(suppliers.map((s) => [s.id, s.name]));
 
@@ -146,6 +154,19 @@ export function ObraCostsList({ costs, suppliers, canWrite }: Props) {
                     size="icon"
                     className="h-7 w-7 shrink-0"
                     disabled={busyId === c.id}
+                    onClick={() => setFixing(c)}
+                    aria-label="Corrigir pagamento"
+                    title="Corrigir valor ou data (reagendar ou cancelar o restante, ou desfazer)"
+                  >
+                    <Pencil className="h-3.5 w-3.5 text-primary" />
+                  </Button>
+                )}
+                {canWrite && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    disabled={busyId === c.id}
                     onClick={() => setCancelling(c)}
                     aria-label="Cancelar compra (reembolso)"
                     title="Cancelar compra (reembolso)"
@@ -171,6 +192,23 @@ export function ObraCostsList({ costs, suppliers, canWrite }: Props) {
         </Card>
       )}
 
+      {fixing && (
+        <CorrectPaymentDialog
+          item={{
+            id: fixing.id,
+            name: fixing.name,
+            amount: fixing.amount,
+            date: fixing.bought_at,
+            fromQuote: !!fixing.quote_id,
+          }}
+          onClose={() => setFixing(null)}
+          onDone={() => {
+            setFixing(null);
+            router.refresh();
+          }}
+        />
+      )}
+
       {cancelling && (
         <CancelPurchaseDialog
           title={cancelling.name}
@@ -178,7 +216,12 @@ export function ObraCostsList({ costs, suppliers, canWrite }: Props) {
           hasSchedule={cancelling.from_payment}
           onCancel={() => setCancelling(null)}
           onConfirm={async ({ date, reason }) => {
-            const r = await callExecution({ action: "cancel_purchase", item_id: cancelling.id, date, reason });
+            const r = await callExecution({
+              action: "cancel_purchase",
+              item_id: cancelling.id,
+              date,
+              reason,
+            });
             if (!r) return;
             setCancelling(null);
             toast.success("Compra cancelada. Saiu do gasto e ficou no histórico do fornecedor.");
