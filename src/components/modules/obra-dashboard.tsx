@@ -26,7 +26,11 @@ import {
   type UpcomingActivity,
 } from "@/components/modules/daily-briefing";
 import { FolderChips, MoveToFolderBar, type ObraFolder } from "@/components/modules/obra-folders";
-import { QuickAddExpenseDialog, type SupplierOption } from "@/components/modules/quick-add-expense-dialog";
+import { ObraSiteCard } from "@/components/modules/obra-site-card";
+import {
+  QuickAddExpenseDialog,
+  type SupplierOption,
+} from "@/components/modules/quick-add-expense-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
@@ -36,6 +40,7 @@ import { Money } from "@/components/ui/money";
 import { fmtDate } from "@/lib/dates";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
 import { uploadObraFile } from "@/lib/supabase/obra-storage";
+import type { Json } from "@/types/database";
 
 export interface Module {
   id: string;
@@ -44,6 +49,7 @@ export interface Module {
   budget: number | null;
   start_date: string | null;
   end_date: string | null;
+  config?: Json;
 }
 export interface GalleryItem {
   id: string;
@@ -92,14 +98,19 @@ function WeekPaymentsCard({
   const total = payments.reduce((s, p) => s + p.amount, 0);
   return (
     <Link href="/overview/pagamentos" className="block">
-      <Card className={`transition-colors hover:bg-bg-elev-2 ${alert ? "border-warning/60" : "hover:border-primary/50"}`}>
+      <Card
+        className={`transition-colors hover:bg-bg-elev-2 ${alert ? "border-warning/60" : "hover:border-primary/50"}`}
+      >
         <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
           <CardTitle className="flex items-center gap-1.5 text-sm text-text-muted">
             <CalendarClock className="h-4 w-4" /> Pagamentos da semana
           </CardTitle>
           {alert ? (
             <span className="text-xs font-medium text-warning">
-              {[overdue > 0 && `${overdue} atrasado${overdue > 1 ? "s" : ""}`, dueToday > 0 && `${dueToday} vence${dueToday > 1 ? "m" : ""} hoje`]
+              {[
+                overdue > 0 && `${overdue} atrasado${overdue > 1 ? "s" : ""}`,
+                dueToday > 0 && `${dueToday} vence${dueToday > 1 ? "m" : ""} hoje`,
+              ]
                 .filter(Boolean)
                 .join(" · ")}
             </span>
@@ -111,7 +122,12 @@ function WeekPaymentsCard({
           {payments.length === 0 && (
             <p className="text-sm text-text-muted">
               Nada vence nesta semana.
-              {nextPayment && <> Próximo: {nextPayment.item_name} em {fmtDate(nextPayment.due_date, "dd/MM")}.</>}
+              {nextPayment && (
+                <>
+                  {" "}
+                  Próximo: {nextPayment.item_name} em {fmtDate(nextPayment.due_date, "dd/MM")}.
+                </>
+              )}
             </p>
           )}
           {payments.slice(0, 4).map((p) => {
@@ -125,7 +141,9 @@ function WeekPaymentsCard({
                   <span className="text-text-muted"> · {p.label}</span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
-                  <span className={`text-xs ${late ? "font-medium text-danger" : isToday ? "font-medium text-warning" : "text-text-muted"}`}>
+                  <span
+                    className={`text-xs ${late ? "font-medium text-danger" : isToday ? "font-medium text-warning" : "text-text-muted"}`}
+                  >
                     {isToday ? "hoje" : fmtDate(p.due_date, "dd/MM")}
                   </span>
                   <Money value={p.amount} size="sm" />
@@ -133,10 +151,13 @@ function WeekPaymentsCard({
               </div>
             );
           })}
-          {payments.length > 4 && <p className="text-xs text-text-muted">e mais {payments.length - 4}</p>}
+          {payments.length > 4 && (
+            <p className="text-xs text-text-muted">e mais {payments.length - 4}</p>
+          )}
           {alert && payments.length > 0 && (
             <p className="flex justify-end pt-1 text-xs text-text-muted">
-              Total da semana&nbsp;<Money value={total} size="sm" />
+              Total da semana&nbsp;
+              <Money value={total} size="sm" />
             </p>
           )}
         </CardContent>
@@ -158,11 +179,16 @@ export const OBRA_SECTIONS = [
 
 function statusLabel(s: string): string {
   switch (s) {
-    case "active": return "ativo";
-    case "paused": return "pausado";
-    case "completed": return "concluído";
-    case "archived": return "arquivado";
-    default: return s;
+    case "active":
+      return "ativo";
+    case "paused":
+      return "pausado";
+    case "completed":
+      return "concluído";
+    case "archived":
+      return "arquivado";
+    default:
+      return s;
   }
 }
 
@@ -192,7 +218,9 @@ export function ObraDashboard({
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <Badge variant={module.status === "active" ? "success" : "secondary"}>{statusLabel(module.status)}</Badge>
+          <Badge variant={module.status === "active" ? "success" : "secondary"}>
+            {statusLabel(module.status)}
+          </Badge>
           <button
             type="button"
             onClick={() => setTourOpen(true)}
@@ -206,8 +234,12 @@ export function ObraDashboard({
       <section className="grid gap-3 sm:grid-cols-2">
         <Card className="h-full overflow-hidden">
           <Link href="/overview/gasto" className="block transition-colors hover:bg-bg-elev-2">
-            <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Gasto até o momento</CardTitle></CardHeader>
-            <CardContent className="pb-4 pt-0"><Money value={spentTotal} size="xl" /></CardContent>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-text-muted">Gasto até o momento</CardTitle>
+            </CardHeader>
+            <CardContent className="pb-4 pt-0">
+              <Money value={spentTotal} size="xl" />
+            </CardContent>
           </Link>
           {planned.total > 0 && (
             <Link
@@ -219,33 +251,47 @@ export function ObraDashboard({
                 <Money value={planned.total} size="md" className="font-medium" />
               </div>
               <p className="text-[11px] text-text-muted">
-                {planned.installments} parcela{planned.installments > 1 ? "s" : ""} agendada{planned.installments > 1 ? "s" : ""} de{" "}
-                {planned.quotes} cotaç{planned.quotes > 1 ? "ões" : "ão"} em execução
+                {planned.installments} parcela{planned.installments > 1 ? "s" : ""} agendada
+                {planned.installments > 1 ? "s" : ""} de {planned.quotes} cotaç
+                {planned.quotes > 1 ? "ões" : "ão"} em execução
               </p>
               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border">
                 <div
                   className="h-full rounded-full bg-primary"
-                  style={{ width: `${Math.round((spentTotal / (spentTotal + planned.total)) * 100)}%` }}
+                  style={{
+                    width: `${Math.round((spentTotal / (spentTotal + planned.total)) * 100)}%`,
+                  }}
                 />
               </div>
               <p className="mt-1 flex items-baseline justify-between text-[11px] text-text-muted">
-                <span>{Math.round((spentTotal / (spentTotal + planned.total)) * 100)}% já pago</span>
                 <span>
-                  Total comprometido <Money value={spentTotal + planned.total} size="sm" className="text-text" />
+                  {Math.round((spentTotal / (spentTotal + planned.total)) * 100)}% já pago
+                </span>
+                <span>
+                  Total comprometido{" "}
+                  <Money value={spentTotal + planned.total} size="sm" className="text-text" />
                 </span>
               </p>
             </Link>
           )}
         </Card>
         {canWrite && (
-          <button type="button" onClick={() => setShowQuickAdd(true)} className="block w-full text-left">
-            <Card className="h-full transition-colors hover:border-primary/50 hover:bg-bg-elev-2">
-              <CardHeader className="pb-2"><CardTitle className="text-sm text-text-muted">Adicionar despesa</CardTitle></CardHeader>
+          <button
+            type="button"
+            onClick={() => setShowQuickAdd(true)}
+            className="block w-full text-left"
+          >
+            <Card className="hover:border-primary/50 h-full transition-colors hover:bg-bg-elev-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-text-muted">Adicionar despesa</CardTitle>
+              </CardHeader>
               <CardContent className="flex items-center gap-2 pt-0">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-primary text-primary-foreground">
+                <span className="bg-gradient-primary flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-primary-foreground">
                   <Plus className="h-5 w-5" />
                 </span>
-                <span className="text-sm text-text-muted">Valor, fornecedor e cotação ou feito</span>
+                <span className="text-sm text-text-muted">
+                  Valor, fornecedor e cotação ou feito
+                </span>
               </CardContent>
             </Card>
           </button>
@@ -255,10 +301,19 @@ export function ObraDashboard({
       {(upcomingPayments.length > 0 || nextPayment) && (
         <WeekPaymentsCard payments={upcomingPayments} nextPayment={nextPayment} today={today} />
       )}
-      {upcomingActivities.length > 0 && <TodayActivitiesCard activities={upcomingActivities} today={today} />}
+      {upcomingActivities.length > 0 && (
+        <TodayActivitiesCard activities={upcomingActivities} today={today} />
+      )}
+      <ObraSiteCard moduleId={module.id} config={module.config ?? {}} canWrite={canWrite} />
       <PushOptIn />
       <AppTour canWrite={canWrite} open={tourOpen} onOpenChange={setTourOpen} />
-      {!tourOpen && <DailyBriefingDialog payments={upcomingPayments} activities={upcomingActivities} today={today} />}
+      {!tourOpen && (
+        <DailyBriefingDialog
+          payments={upcomingPayments}
+          activities={upcomingActivities}
+          today={today}
+        />
+      )}
 
       {showQuickAdd && (
         <QuickAddExpenseDialog
@@ -276,9 +331,9 @@ export function ObraDashboard({
           <Link
             key={href}
             href={href}
-            className="group flex flex-col items-center gap-2 rounded-2xl border border-border bg-bg-elev px-2 py-3 text-text-muted transition-colors hover:border-primary/50 hover:bg-bg-elev-2 hover:text-text"
+            className="hover:border-primary/50 group flex flex-col items-center gap-2 rounded-2xl border border-border bg-bg-elev px-2 py-3 text-text-muted transition-colors hover:bg-bg-elev-2 hover:text-text"
           >
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-bg-elev-2 text-text-muted transition-colors group-hover:bg-gradient-primary group-hover:text-primary-foreground">
+            <span className="group-hover:bg-gradient-primary flex h-11 w-11 items-center justify-center rounded-xl bg-bg-elev-2 text-text-muted transition-colors group-hover:text-primary-foreground">
               <Icon className="h-5 w-5" />
             </span>
             <span className="text-center text-[11px] font-medium leading-tight">{label}</span>
@@ -344,9 +399,13 @@ export function Gallery({
     setItems((s) => s.map((i) => (movedIds.has(i.id) ? { ...i, folder_id: folderId } : i)));
     setSelectedIds(new Set());
     if (movedIds.size < ids.length) {
-      toast.error(`Só consegui mover ${movedIds.size} de ${ids.length}. Confere sua permissão na obra.`);
+      toast.error(
+        `Só consegui mover ${movedIds.size} de ${ids.length}. Confere sua permissão na obra.`,
+      );
     } else {
-      toast.success(`${movedIds.size} arquivo${movedIds.size === 1 ? "" : "s"} movido${movedIds.size === 1 ? "" : "s"}.`);
+      toast.success(
+        `${movedIds.size} arquivo${movedIds.size === 1 ? "" : "s"} movido${movedIds.size === 1 ? "" : "s"}.`,
+      );
     }
   }
 
@@ -528,10 +587,20 @@ export function Gallery({
                     className="absolute left-1.5 top-1.5 z-10 h-5 w-5 accent-primary"
                   />
                 )}
-                <a href={i.image_url} target="_blank" rel="noreferrer" className="block h-full w-full">
+                <a
+                  href={i.image_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block h-full w-full"
+                >
                   {isVideo ? (
                     <>
-                      <video src={i.image_url} className="h-full w-full object-cover" muted preload="metadata" />
+                      <video
+                        src={i.image_url}
+                        className="h-full w-full object-cover"
+                        muted
+                        preload="metadata"
+                      />
                       <div className="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors group-hover:bg-black/40">
                         <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-black">
                           ▶
@@ -540,10 +609,16 @@ export function Gallery({
                     </>
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={i.image_url} alt={i.caption ?? "Foto da obra"} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                    <img
+                      src={i.image_url}
+                      alt={i.caption ?? "Foto da obra"}
+                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                    />
                   )}
                   <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
-                    <p className="text-xs text-white">{i.caption ?? (isVideo ? "Vídeo" : "Foto")}</p>
+                    <p className="text-xs text-white">
+                      {i.caption ?? (isVideo ? "Vídeo" : "Foto")}
+                    </p>
                   </div>
                 </a>
                 {canWrite && (
@@ -569,4 +644,3 @@ export function Gallery({
     </div>
   );
 }
-
